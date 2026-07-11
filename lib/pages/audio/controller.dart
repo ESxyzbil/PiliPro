@@ -76,6 +76,12 @@ class AudioController extends GetxController
   final audioItem = Rxn<DetailItem>();
   final audioTitle = ''.obs;
   final audioArtist = ''.obs;
+  // 离线回退信息
+  String? _fallbackTitle;
+  String? _fallbackCover;
+  String? _fallbackOwnerName;
+  int? _fallbackOwnerMid;
+  List<Map<String, dynamic>>? offlineEntries;
 
   bool _hasInit = false;
   @override
@@ -200,6 +206,15 @@ class AudioController extends GetxController
       } catch (_) {}
     }
 
+    // 读取离线回退信息
+    _fallbackTitle = args['title'] as String?;
+    _fallbackCover = args['cover'] as String?;
+    _fallbackOwnerName = args['ownerName'] as String?;
+    _fallbackOwnerMid = args['ownerMid'] as int?;
+    offlineEntries = (args['offlineEntries'] as List?)
+        ?.map((e) => (e as Map<String, dynamic>))
+        .toList();
+
     _queryPlayList(isInit: true);
 
     final String? audioUrl = args['audioUrl'];
@@ -319,6 +334,25 @@ class AudioController extends GetxController
         if (response.list.isNotEmpty) {
           playlist?.addAll(response.list);
         }
+      }
+      return;
+    }
+    if (isInit && _fallbackTitle != null) {
+      // offline fallback: use passed metadata
+      audioTitle.value = _fallbackTitle!;
+      if (_fallbackOwnerName != null) {
+        audioArtist.value = _fallbackOwnerName!;
+      }
+      if (_fallbackCover != null) {
+        _mediaControl.updateMetadata(
+          title: _fallbackTitle!,
+          artist: _fallbackOwnerName ?? '',
+          thumbnail: _fallbackCover!,
+        );
+      }
+      if (_fallbackOwnerName != null) {
+        final title = '${_fallbackTitle} ${_fallbackOwnerName}';
+        searchLyrics(title);
       }
     } else {
       res.toast();

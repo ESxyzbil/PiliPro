@@ -14,6 +14,7 @@ import 'package:PiliPlus/pages/audio/view.dart';
 import 'package:PiliPlus/pages/fav_detail/controller.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
+import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:flutter/material.dart';
@@ -136,6 +137,41 @@ class FavVideoCardH extends StatelessWidget {
                             child: selectMask(
                               colorScheme,
                               item.checked,
+                            ),
+                          ),
+                        // 音频模式播放按钮
+                        if (item.type != 24 && !isSort && !(ctr?.enableMultiSelect.value ?? false))
+                          Positioned(
+                            bottom: 6.0,
+                            left: 6.0,
+                            child: Material(
+                              type: MaterialType.transparency,
+                              child: InkWell(
+                                onTap: () {
+                                  if (item.type == 12) {
+                                    AudioPage.toAudioPage(
+                                      oid: item.id!,
+                                      itemType: 3,
+                                      from: PlaylistSource.AUDIO_CARD,
+                                    );
+                                  } else if (ctr != null) {
+                                    ctr!.onPlayAudio(item);
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.headphones,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                       ],

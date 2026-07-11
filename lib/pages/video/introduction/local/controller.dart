@@ -51,24 +51,44 @@ class LocalIntroController extends CommonIntroController {
   void onInit() {
     super.onInit();
     videoDetail.value.title = videoDetailCtr.args['title'];
-    final controller = Get.find<DownloadPageController>();
-    final list = <BiliDownloadEntryInfo>[];
-    for (final e in controller.pages) {
-      final items = e.entries..sort((a, b) => a.sortKey.compareTo(b.sortKey));
-      final completed = items.where((e) => e.isCompleted);
-      list.addAllIf(completed.isNotEmpty, completed);
-      if (completed.length == 1) {
-        aidSet.add(e.pageId);
+    // collectionEntries from collection playback
+    final collectionEntries =
+        videoDetailCtr.args['collectionEntries']
+            as List<BiliDownloadEntryInfo>?;
+    if (collectionEntries != null && collectionEntries.isNotEmpty) {
+      this.list.value = collectionEntries.toList();
+      final currCid = videoDetailCtr.cid.value;
+      final idx = collectionEntries.indexWhere((e) => e.cid == currCid);
+      this.index.value = idx;
+      if (PlatformUtils.isMobile && idx >= 0) {
+        onVideoDetailChange(collectionEntries[idx]);
+      }
+    } else {
+      try {
+        final controller = Get.find<DownloadPageController>();
+        final listTmp = <BiliDownloadEntryInfo>[];
+        for (final e in controller.pages) {
+          final items = e.entries
+            ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+          final completed = items.where((e) => e.isCompleted);
+          listTmp.addAllIf(completed.isNotEmpty, completed);
+          if (completed.length == 1) {
+            aidSet.add(e.pageId);
+          }
+        }
+        this.list.value = listTmp;
+        final currCid = videoDetailCtr.cid.value;
+        final idx = listTmp.indexWhere((e) => e.cid == currCid);
+        this.index.value = idx;
+        if (PlatformUtils.isMobile && idx >= 0) {
+          onVideoDetailChange(listTmp[idx]);
+        }
+      } catch (_) {
+        this.list.value = [];
+        this.index.value = -1;
       }
     }
-    this.list.value = list;
-    final currCid = videoDetailCtr.cid.value;
-    final index = list.indexWhere((e) => e.cid == currCid);
-    this.index.value = index;
-    if (PlatformUtils.isMobile) {
-      onVideoDetailChange(list[index]);
-    }
-    if (index != 0) {
+    if (this.index.value != 0) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         try {
           if (videoDetailCtr.scrollKey.currentState?.mounted ?? false) {
