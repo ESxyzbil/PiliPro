@@ -782,6 +782,8 @@ class FavDetailController
         }
         final audioFile = File(audioPath);
         if (audioFile.existsSync()) {
+          // 下载服务已初始化，重新同步离线条目
+          _reconcileOfflineEntries();
           AudioPage.toAudioPage(
             oid: avid,
             itemType: 1,
@@ -802,6 +804,7 @@ class FavDetailController
             : '$fileDir/${PathUtils.videoNameType1}';
         final altFile = File(altPath);
         if (altFile.existsSync()) {
+          _reconcileOfflineEntries();
           AudioPage.toAudioPage(
             oid: avid,
             itemType: 1,
@@ -832,7 +835,6 @@ class FavDetailController
       cover: item.cover,
       ownerName: item.upper?.name,
       ownerMid: item.upper?.mid,
-      offlineEntries: collectionCachedEntries.toList(),
     );
   }
 
@@ -889,4 +891,35 @@ class FavDetailController
     }
   }
 
+  /// 在下载服务初始化后重新构建离线条目列表
+  void _reconcileOfflineEntries() {
+    final ds = Get.find<DownloadService>();
+
+    // 1. 优先用 fav cache 全量扫描
+    final allItems = _loadFavCacheItems();
+    if (allItems != null && allItems.isNotEmpty) {
+      final matched = allItems.map((item) {
+        final itemCid = item.ugc?.firstCid;
+        final itemBvid = item.bvid;
+        if (itemCid == null || itemBvid == null) return null;
+        final avid = IdUtils.bv2av(itemBvid);
+        return ds.downloadList.firstWhereOrNull(
+          (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+        );
+      }).whereType<BiliDownloadEntryInfo>().toList();
+      if (matched.isNotEmpty) {
+        collectionCachedEntries.value = matched;
+        GStorage.localCache.put(
+          _favCachedEntriesKey,
+          matched.map((e) => {'avid': e.avid, 'cid': e.cid}).toList(),
+        );
+        return;
+      }
+    }
+
+    // 2. 退而求其次用当前页数据扫描
+    if (loadingState.value case Success(:final response) when response != null) {
+      _refreshCollectionCachedEntries(response);
+    }
+  }
 }
