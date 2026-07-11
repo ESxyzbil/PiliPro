@@ -219,8 +219,9 @@ class AudioController extends GetxController
 
     if (offlineEntries != null && offlineEntries!.isNotEmpty) {
       // 离线模式：不请求 API 播放列表，直接用本地缓存
-      index = 0;
-      final entry = offlineEntries![0];
+      index = offlineEntries!.indexWhere((e) => e.avid == oid.toInt());
+      if (index == -1) index = 0;
+      final entry = offlineEntries![index!];
       audioTitle.value = entry.title;
       audioArtist.value = entry.ownerName ?? '';
       if (entry.cover.isNotEmpty) {
