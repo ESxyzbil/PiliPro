@@ -1,5 +1,7 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/grpc/audio.dart';
@@ -39,6 +41,7 @@ import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/services/shutdown_timer_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
+import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/global_data.dart';
@@ -46,7 +49,6 @@ import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
-import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
@@ -81,7 +83,7 @@ class AudioController extends GetxController
   String? _fallbackCover;
   String? _fallbackOwnerName;
   int? _fallbackOwnerMid;
-  List<Map<String, dynamic>>? offlineEntries;
+  List<BiliDownloadEntryInfo>? offlineEntries;
 
   bool _hasInit = false;
   @override
@@ -211,8 +213,8 @@ class AudioController extends GetxController
     _fallbackCover = args['cover'] as String?;
     _fallbackOwnerName = args['ownerName'] as String?;
     _fallbackOwnerMid = args['ownerMid'] as int?;
-    offlineEntries = (args['offlineEntries'] as List?)
-        ?.map((e) => (e as Map<String, dynamic>))
+    offlineEntries = (args["offlineEntries"] as List?)
+        ?.map((e) => BiliDownloadEntryInfo.fromJson(e as Map<String, dynamic>))
         .toList();
 
     _queryPlayList(isInit: true);
@@ -766,6 +768,14 @@ class AudioController extends GetxController
         return true;
       }
     }
+    // 离线模式
+    if (index != null && offlineEntries != null && player != null) {
+      final prev = index! - 1;
+      if (prev >= 0) {
+        playOfflineIndex(prev);
+        return true;
+      }
+    }
     return false;
   }
 
@@ -790,6 +800,8 @@ class AudioController extends GetxController
           if (!playNext(nextPart: true)) {
             if (index != null && index != 0 && playlist != null) {
               playIndex(0);
+            } else if (index != null && offlineEntries != null && offlineEntries!.isNotEmpty) {
+              playOfflineIndex(0);
             } else {
               onPlay();
             }
@@ -831,6 +843,14 @@ class AudioController extends GetxController
         return true;
       }
     }
+    // 离线模式
+    if (index != null && offlineEntries != null && player != null) {
+      final next = index! + 1;
+      if (next < offlineEntries!.length) {
+        playOfflineIndex(next);
+        return true;
+      }
+    }
     return false;
   }
 
@@ -852,6 +872,64 @@ class AudioController extends GetxController
     });
   }
 
+
+  /// 离线播放：从本地缓存文件切歌
+  Future<void> playOfflineIndex(int index) async {
+    if (offlineEntries == null || index >= offlineEntries!.length) return;
+    final entry = offlineEntries![index];
+    this.index = index;
+
+    // 更新当前状态
+    oid = Int64(entry.avid);
+    subId = [Int64(entry.cid)];
+
+    // 构造音频文件路径
+    final fileDir = entry.typeTag != null && entry.typeTag!.isNotEmpty
+        ? '${entry.entryDirPath}/${entry.typeTag}'
+        : entry.entryDirPath;
+    if (fileDir.isEmpty) {
+      SmartDialog.showToast('缓存路径为空');
+      return;
+    }
+
+    String? audioPath;
+    if (entry.mediaType == 1) {
+      audioPath = '$fileDir/${PathUtils.videoNameType1}';
+    } else {
+      audioPath = '$fileDir/${PathUtils.audioNameType2}';
+    }
+
+    final audioFile = File(audioPath);
+    if (!audioFile.existsSync()) {
+      // 尝试另一种格式
+      audioPath = entry.mediaType == 1
+          ? '$fileDir/${PathUtils.audioNameType2}'
+          : '$fileDir/${PathUtils.videoNameType1}';
+      if (!File(audioPath).existsSync()) {
+        SmartDialog.showToast('本地音频文件不存在');
+        return;
+      }
+    }
+
+    // 更新 UI 信息
+    audioTitle.value = entry.title;
+    audioArtist.value = entry.ownerName ?? '';
+    if (entry.cover.isNotEmpty) {
+      _mediaControl.updateMetadata(
+        title: entry.title,
+        artist: entry.ownerName ?? '',
+        thumbnail: entry.cover,
+      );
+    }
+
+    // 切歌后重新搜索歌词
+    final lyricTitle = '${entry.title} ${entry.ownerName ?? ''}';
+    searchLyrics(lyricTitle);
+
+    // 打开本地文件播放
+    await _initPlayerIfNeeded();
+    player?.open(Media(audioPath));
+  }
   void setSpeed(double speed) {
     if (player case final player?) {
       this.speed = speed;

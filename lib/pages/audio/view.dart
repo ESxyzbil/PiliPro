@@ -523,13 +523,13 @@ class _AudioPageState extends State<AudioPage> {
                     itemCount: entries.length,
                     itemBuilder: (context, index) {
                       final e = entries[index];
-                      final isCurr = e['avid'] == _controller.oid.toInt();
+                      final isCurr = e.avid == _controller.oid.toInt();
                       return ListTile(
                         dense: true,
                         minTileHeight: 45,
                         selected: isCurr,
                         selectedTileColor: cs.primaryContainer,
-                        title: Text(e['title'] as String? ?? '',
+                        title: Text(e.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -538,15 +538,17 @@ class _AudioPageState extends State<AudioPage> {
                             color: isCurr ? cs.primary : null,
                           ),
                         ),
-                        subtitle: (e['owner_name'] as String?) != null && (e['owner_name'] as String).isNotEmpty
-                          ? Text(e['owner_name'] as String, style: TextStyle(fontSize: 12, color: cs.outline))
+                        subtitle: (e.ownerName) != null && e.ownerName!.isNotEmpty
+                          ? Text(e.ownerName!, style: TextStyle(fontSize: 12, color: cs.outline))
                           : null,
                         trailing: isCurr
                           ? Icon(Icons.play_arrow_rounded, color: cs.primary)
                           : null,
                         onTap: () {
                           Navigator.pop(context);
-                          SmartDialog.showToast('切换曲目... 请在收藏夹中重新播放');
+                          if (!isCurr) {
+                            _controller.playOfflineIndex(index);
+                          }
                         },
                       );
                     },
