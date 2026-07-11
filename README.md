@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
     <img width="200" height="200" src="assets/images/logo/logo.png">
 </div>
 
@@ -91,6 +91,8 @@
 - [x] 调节字幕大小
 - [x] 调节全屏弹幕大小
 - [x] 收藏夹/稍后再看多选删除
+- [x] 收藏夹离线缓存 + 全量扫描本地缓存条目
+- [x] 离线模式切歌（音频模式）
 - [x] 搜索用户动态
 - [x] 直播弹幕
 - [x] 修改头像/用户名/签名/性别/生日

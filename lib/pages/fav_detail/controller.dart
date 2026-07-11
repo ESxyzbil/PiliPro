@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -179,8 +179,9 @@ class FavDetailController
       _isOwner.value = data.info?.mid == account.mid;
       if (data.medias case final List<FavDetailItemModel> items when items.isNotEmpty) {
         final count = folderInfo.value.mediaCount;
-        if (!isEnd && count > items.length) {
+        if (count > items.length) {
           // 还有更多页 → 加载全部再缓存
+          isEnd = false;
           _cacheAllPages();
         } else {
           _saveFavCache(items);
@@ -558,16 +559,15 @@ class FavDetailController
   /// 从 downloadList 中筛选当前收藏夹已缓存的条目
   void _refreshCollectionCachedEntries(List<FavDetailItemModel> items) {
     final ds = Get.find<DownloadService>();
-    final cached = ds.downloadList
-        .where((e) => items.any((item) {
-          final itemCid = item.ugc?.firstCid;
-          final itemBvid = item.bvid;
-          if (itemCid == null || itemBvid == null) return false;
-          return e.avid == IdUtils.bv2av(itemBvid) &&
-              e.cid == itemCid &&
-              e.isCompleted;
-        }))
-        .toList();
+    final cached = items.map((item) {
+      final itemCid = item.ugc?.firstCid;
+      final itemBvid = item.bvid;
+      if (itemCid == null || itemBvid == null) return null;
+      final avid = IdUtils.bv2av(itemBvid);
+      return ds.downloadList.firstWhereOrNull(
+        (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+      );
+    }).whereType<BiliDownloadEntryInfo>().toList();
     collectionCachedEntries.value = cached;
     GStorage.localCache.put(
       _favCachedEntriesKey,
@@ -757,6 +757,7 @@ class FavDetailController
 
   /// 音频模式播放：离线优先查找本地缓存
   Future<void> onPlayAudio(FavDetailItemModel item) async {
+    _ensureCollectionCachedEntries();
     final avid = item.bvid != null ? IdUtils.bv2av(item.bvid!) : item.id;
     final cid = item.ugc?.firstCid;
     if (avid == null || cid == null) {
@@ -831,10 +832,12 @@ class FavDetailController
       cover: item.cover,
       ownerName: item.upper?.name,
       ownerMid: item.upper?.mid,
+      offlineEntries: collectionCachedEntries.toList(),
     );
   }
 
   void _ensureCollectionCachedEntries() {
+    // 尝试从持久化缓存恢复
     if (collectionCachedEntries.isEmpty) {
       _restoreCollectionCachedEntries();
     }
@@ -843,6 +846,46 @@ class FavDetailController
           when response != null) {
         _refreshCollectionCachedEntries(response);
       }
+    }
+    // 如果缓存条目数少于收藏夹总数 → 用 fav cache 文件扫全量
+    final totalCount = folderInfo.value.mediaCount;
+    if (totalCount > 0 && collectionCachedEntries.length < totalCount) {
+      final ds = Get.find<DownloadService>();
+      final cached = _loadFavCacheItems();
+      if (cached != null && cached.length > collectionCachedEntries.length) {
+        final matched = cached.map((item) {
+          final itemCid = item.ugc?.firstCid;
+          final itemBvid = item.bvid;
+          if (itemCid == null || itemBvid == null) return null;
+          final avid = IdUtils.bv2av(itemBvid);
+          return ds.downloadList.firstWhereOrNull(
+            (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+          );
+        }).whereType<BiliDownloadEntryInfo>().toList();
+        if (matched.length > collectionCachedEntries.length) {
+          collectionCachedEntries.value = matched;
+          GStorage.localCache.put(
+            _favCachedEntriesKey,
+            matched.map((e) => {'avid': e.avid, 'cid': e.cid}).toList(),
+          );
+        }
+      }
+    }
+  }
+
+  /// 从 fav cache 文件读取完整条目列表，null 表示文件不存在或损坏
+  List<FavDetailItemModel>? _loadFavCacheItems() {
+    final file = File('$tmpDirPath/fav_detail_$mediaId.json');
+    if (!file.existsSync()) return null;
+    try {
+      final raw = file.readAsStringSync();
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final rawList = data['items'] as List;
+      return rawList
+          .map((e) => FavDetailItemModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return null;
     }
   }
 

@@ -92,10 +92,14 @@ extension _ListOrderExt on ListOrder {
 }
 
 class _AudioPageState extends State<AudioPage> {
-  final _controller = Get.put(
-    AudioController(),
-    tag: Utils.generateRandomString(8),
-  );
+  late final _controller = _initController();
+
+  AudioController _initController() {
+    if (Get.isRegistered<AudioController>()) {
+      Get.delete<AudioController>(force: true);
+    }
+    return Get.put(AudioController());
+  }
   final _lyricsScrollCtr = ScrollController();
   int _lastScrolledLine = -1;
 
@@ -109,6 +113,9 @@ class _AudioPageState extends State<AudioPage> {
   @override
   void dispose() {
     _lyricsScrollCtr.dispose();
+    if (Get.isRegistered<AudioController>()) {
+      Get.delete<AudioController>(force: true);
+    }
     super.dispose();
   }
 

@@ -217,7 +217,23 @@ class AudioController extends GetxController
         ?.map((e) => BiliDownloadEntryInfo.fromJson(e as Map<String, dynamic>))
         .toList();
 
-    _queryPlayList(isInit: true);
+    if (offlineEntries != null && offlineEntries!.isNotEmpty) {
+      // 离线模式：不请求 API 播放列表，直接用本地缓存
+      index = 0;
+      final entry = offlineEntries![0];
+      audioTitle.value = entry.title;
+      audioArtist.value = entry.ownerName ?? '';
+      if (entry.cover.isNotEmpty) {
+        _mediaControl.updateMetadata(
+          title: entry.title,
+          artist: entry.ownerName ?? '',
+          thumbnail: entry.cover,
+        );
+      }
+      searchLyrics('${entry.title} ${entry.ownerName ?? ''}');
+    } else {
+      _queryPlayList(isInit: true);
+    }
 
     final String? audioUrl = args['audioUrl'];
     final hasAudioUrl = audioUrl != null;
@@ -971,7 +987,49 @@ class AudioController extends GetxController
   void onChangeOrder(ListOrder value) {
     if (order != value) {
       order = value;
-      _queryPlayList(isInit: true);
+      if (offlineEntries != null && offlineEntries!.isNotEmpty) {
+        _sortOfflineEntries();
+      } else {
+        _queryPlayList(isInit: true);
+      }
+    }
+  }
+
+  void _sortOfflineEntries() {
+    if (offlineEntries == null || offlineEntries!.isEmpty) return;
+    final currentAvid = oid.toInt();
+    switch (order) {
+      case ListOrder.ORDER_REVERSE:
+        offlineEntries = offlineEntries!.reversed.toList();
+        break;
+      case ListOrder.ORDER_RANDOM:
+        // 随机排序时当前曲目保持在首位
+        final currentIdx = offlineEntries!.indexWhere(
+          (e) => e.avid == currentAvid,
+        );
+        final BiliDownloadEntryInfo? current =
+            currentIdx != -1 ? offlineEntries![currentIdx] : null;
+        if (current != null) {
+          final rest = offlineEntries!
+              .where((e) => e.avid != currentAvid)
+              .toList();
+          rest.shuffle();
+          offlineEntries = [current, ...rest];
+          index = 0;
+        } else {
+          offlineEntries = List.of(offlineEntries!);
+          offlineEntries!.shuffle();
+        }
+        break;
+      default: // ORDER_NORMAL, NO_ORDER — keep original order
+        return;
+    }
+    if (offlineEntries == null) return;
+    final newIndex = offlineEntries!.indexWhere((e) => e.avid == currentAvid);
+    if (newIndex != -1) {
+      index = newIndex;
+    } else {
+      index = 0;
     }
   }
 
