@@ -232,6 +232,14 @@ class AudioController extends GetxController
         );
       }
       searchLyrics('${entry.title} ${entry.ownerName ?? ''}');
+      // 通知 audio_service 更新媒体通知（SMTC + 系统通知栏）
+      if (videoPlayerServiceHandler != null) {
+        videoPlayerServiceHandler!.onVideoDetailChange(
+          entry,
+          entry.cid,
+          'audio_offline',
+        );
+      }
     } else {
       _queryPlayList(isInit: true);
     }
@@ -946,6 +954,15 @@ class AudioController extends GetxController
     // 打开本地文件播放
     await _initPlayerIfNeeded();
     player?.open(Media(audioPath));
+
+    // 通知 audio_service 更新媒体通知
+    if (videoPlayerServiceHandler != null) {
+      videoPlayerServiceHandler!.onVideoDetailChange(
+        entry,
+        entry.cid,
+        'audio_offline',
+      );
+    }
   }
   void setSpeed(double speed) {
     if (player case final player?) {

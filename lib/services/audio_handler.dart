@@ -242,7 +242,8 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     //   debugPrint('当前调用栈为：');
     //   debugPrint(StackTrace.current);
     // }
-    if (!PlPlayerController.instanceExists()) return;
+    // 音频页（离线/在线）使用 media_kit Player，不是 PlPlayerController
+    if (data is! BiliDownloadEntryInfo && !PlPlayerController.instanceExists()) return;
     if (data == null) return;
 
     Uri getUri(String? cover) => Uri.parse(ImageUtils.safeThumbnailUrl(cover));
@@ -322,7 +323,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     }
 
     // if (kDebugMode) debugPrint("exist: ${PlPlayerController.instanceExists()}");
-    if (!PlPlayerController.instanceExists()) return;
+    if (data is! BiliDownloadEntryInfo && !PlPlayerController.instanceExists()) return;
     _item.add(mediaItem);
     setMediaItem(mediaItem);
     // 重置原标题缓存，下次 updateLyrics 会重新捕获
