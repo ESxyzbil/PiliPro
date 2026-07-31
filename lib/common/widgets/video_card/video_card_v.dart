@@ -1,5 +1,6 @@
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
@@ -90,13 +91,19 @@ class VideoCardV extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Card(
-          clipBehavior: Clip.hardEdge,
-          child: InkWell(
-            onTap: onPushDetail,
-            onLongPress: onLongPress,
-            onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
-            child: Column(
+        GlassContainer(
+          kind: GlassKind.card,
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
+          child: Card(
+            clipBehavior: Clip.hardEdge,
+            color: Glass.enabled(GlassKind.card)
+                ? Glass.bgColor(ColorScheme.of(context), GlassKind.card)
+                : null,
+            child: InkWell(
+              onTap: onPushDetail,
+              onLongPress: onLongPress,
+              onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 AspectRatio(
@@ -134,8 +141,8 @@ class VideoCardV extends StatelessWidget {
             ),
           ),
         ),
-        if (videoItem.goto == 'av')
-          Positioned(
+      ),
+        if (videoItem.goto == 'av')          Positioned(
             right: -5,
             bottom: -2,
             width: 29,

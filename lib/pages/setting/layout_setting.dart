@@ -1,3 +1,4 @@
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/pages/setting/models/layout_settings.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +20,7 @@ class _LayoutSettingState extends State<LayoutSetting> {
     final padding = MediaQuery.viewPaddingOf(context);
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: showAppBar ? AppBar(title: const Text('布局设置')) : null,
+      appBar: showAppBar ? AppBar(title: const Text('甯冨眬璁剧疆')) : null,
       body: ListView.builder(
         padding: EdgeInsets.only(
           left: showAppBar ? padding.left : 0,
@@ -27,8 +28,9 @@ class _LayoutSettingState extends State<LayoutSetting> {
           bottom: padding.bottom + 100,
         ),
         itemCount: settings.length,
-        itemBuilder: (context, index) => settings[index].widget,
+        itemBuilder: (context, index) => buildInfoCard(settings[index].widget),
       ),
     );
   }
 }
+

@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:PiliPlus/build_config.dart';
 import 'package:PiliPlus/common/constants.dart';
+import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/back_detector.dart';
 import 'package:PiliPlus/common/widgets/custom_toast.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
@@ -85,6 +88,17 @@ Future<void> _initTmpPath() async {
   tmpDirPath = (await getTemporaryDirectory()).path;
 }
 
+Future<void> _initAppFont() async {
+  final fontPath = Pref.appFontFamily;
+  if (fontPath.isEmpty) return;
+  try {
+    final bytes = await File(fontPath).readAsBytes();
+    await ui.loadFontFromList(bytes, fontFamily: Style.appFontFamilyName);
+  } catch (e) {
+    if (kDebugMode) debugPrint('App font load failed: $e');
+  }
+}
+
 Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
@@ -101,6 +115,7 @@ void main() async {
     exit(0);
   }
   ScaledWidgetsFlutterBinding.instance.scaleFactor = Pref.uiScale;
+  await _initAppFont();
   await Future.wait([
     _initDownPath(),
     _initTmpPath(),
@@ -345,6 +360,14 @@ class MyApp extends StatelessWidget {
         child: child!,
       );
     }
+    // 全局背景层：包住整个 Navigator，二级页面也能透出背景
+    child = Stack(
+      fit: StackFit.expand,
+      children: [
+        const AppBackgroundLayer(),
+        child!,
+      ],
+    );
     if (PlatformUtils.isDesktop) {
       return BackDetector(
         onBack: _onBack,

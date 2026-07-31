@@ -1,3 +1,4 @@
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart';
 import 'package:flutter/material.dart';
 
@@ -27,8 +28,9 @@ class _PlaySettingState extends State<PlaySetting> {
           bottom: padding.bottom + 100,
         ),
         itemCount: settings.length,
-        itemBuilder: (context, index) => settings[index].widget,
+        itemBuilder: (context, index) => buildInfoCard(settings[index].widget),
       ),
     );
   }
 }
+

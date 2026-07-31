@@ -12,6 +12,7 @@ import 'package:PiliPlus/pages/setting/privacy_setting.dart';
 import 'package:PiliPlus/pages/setting/recommend_setting.dart';
 import 'package:PiliPlus/pages/setting/style_setting.dart';
 import 'package:PiliPlus/pages/setting/video_setting.dart';
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
 import 'package:PiliPlus/pages/webdav/view.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -193,35 +194,43 @@ class _SettingPageState extends State<SettingPage> {
         ..._items
             .take(_items.length - 1)
             .map(
-              (item) => ListTile(
-                tileColor: _getTileColor(theme, item.type),
-                onTap: () => _toPage(item.type),
-                leading: item.icon,
-                title: Text(item.type.title, style: titleStyle),
-                subtitle: item.subtitle == null
-                    ? null
-                    : Text(item.subtitle!, style: subTitleStyle),
+              (item) => buildInfoCard(
+                ListTile(
+                  tileColor: _getTileColor(theme, item.type),
+                  onTap: () => _toPage(item.type),
+                  leading: item.icon,
+                  title: Text(item.type.title, style: titleStyle),
+                  subtitle: item.subtitle == null
+                      ? null
+                      : Text(item.subtitle!, style: subTitleStyle),
+                ),
               ),
             ),
-        ListTile(
-          onTap: () => LoginPageController.switchAccountDialog(context),
-          leading: const Icon(Icons.switch_account_outlined),
-          title: Text('切换账号', style: titleStyle),
+        buildInfoCard(
+          ListTile(
+            onTap: () => LoginPageController.switchAccountDialog(context),
+            leading: const Icon(Icons.switch_account_outlined),
+            title: Text('切换账号', style: titleStyle),
+          ),
         ),
         Obx(
           () => _noAccount.value
               ? const SizedBox.shrink()
-              : ListTile(
-                  leading: const Icon(Icons.logout_outlined),
-                  onTap: () => _logoutDialog(context),
-                  title: Text('退出登录', style: titleStyle),
+              : buildInfoCard(
+                  ListTile(
+                    leading: const Icon(Icons.logout_outlined),
+                    onTap: () => _logoutDialog(context),
+                    title: Text('退出登录', style: titleStyle),
+                  ),
                 ),
         ),
-        ListTile(
-          tileColor: _getTileColor(theme, _items.last.type),
-          onTap: () => _toPage(_items.last.type),
-          leading: _items.last.icon,
-          title: Text(_items.last.type.title, style: titleStyle),
+        buildInfoCard(
+          ListTile(
+            tileColor: _getTileColor(theme, _items.last.type),
+            onTap: () => _toPage(_items.last.type),
+            leading: _items.last.icon,
+            title: Text(_items.last.type.title, style: titleStyle),
+          ),
         ),
       ],
     );

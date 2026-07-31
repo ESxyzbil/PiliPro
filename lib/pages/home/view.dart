@@ -1,5 +1,6 @@
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/custom_height_widget.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart';
 import 'package:PiliPlus/pages/common/common_page.dart';
@@ -63,7 +64,9 @@ class _HomePageState extends CommonPageState<HomePage>
       if (_homeController.hideTopBar &&
           _mainController.barHideType == .instant) {
         tabBar = Material(
-          color: theme.colorScheme.surface,
+          color: Glass.enabled(GlassKind.topBar)
+              ? Glass.bgColor(theme.colorScheme, GlassKind.topBar)
+              : theme.colorScheme.surface,
           child: tabBar,
         );
       }
@@ -129,9 +132,10 @@ class _HomePageState extends CommonPageState<HomePage>
         userAvatar(theme: theme, mainController: _mainController),
       ],
     );
+    Widget result;
     if (_homeController.hideTopBar) {
       if (_mainController.barOffset case final barOffset?) {
-        return Obx(
+        result = Obx(
           () {
             final offset = barOffset.value;
             return CustomHeightWidget(
@@ -144,9 +148,8 @@ class _HomePageState extends CommonPageState<HomePage>
             );
           },
         );
-      }
-      if (_homeController.showTopBar case final showTopBar?) {
-        return Obx(() {
+      } else if (_homeController.showTopBar case final showTopBar?) {
+        result = Obx(() {
           final showSearchBar = showTopBar.value;
           return AnimatedOpacity(
             opacity: showSearchBar ? 1 : 0,
@@ -160,13 +163,31 @@ class _HomePageState extends CommonPageState<HomePage>
             ),
           );
         });
+      } else {
+        result = Container(
+          height: Style.topBarHeight,
+          padding: padding,
+          child: child,
+        );
       }
+    } else {
+      result = Container(
+        height: Style.topBarHeight,
+        padding: padding,
+        child: child,
+      );
     }
-    return Container(
-      height: Style.topBarHeight,
-      padding: padding,
-      child: child,
-    );
+    // 顶栏毛玻璃
+    if (Glass.enabled(GlassKind.topBar)) {
+      result = GlassContainer(
+        kind: GlassKind.topBar,
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(10),
+        ),
+        child: result,
+      );
+    }
+    return result;
   }
 
   Widget searchBar(ThemeData theme) {

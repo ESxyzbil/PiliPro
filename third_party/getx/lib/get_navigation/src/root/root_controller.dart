@@ -1,0 +1,77 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+class GetMaterialController extends SuperController {
+  bool testMode = false;
+  Key? unikey;
+  ThemeData? theme;
+  ThemeData? darkTheme;
+  ThemeMode? themeMode;
+
+  final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  Transition defaultTransition = Transition.native;
+
+  final routing = Routing();
+
+  Map<String, String?> parameters = {};
+
+  var _key = GlobalKey<NavigatorState>(debugLabel: 'Key Created by default');
+
+  Map<dynamic, GlobalKey<NavigatorState>> keys = {};
+
+  GlobalKey<NavigatorState> get key => _key;
+
+  GlobalKey<NavigatorState>? addKey(GlobalKey<NavigatorState> newKey) {
+    _key = newKey;
+    return key;
+  }
+
+  @override
+  void didChangeLocales(List<Locale>? locales) {
+    Get.asap(() {
+      final locale = Get.deviceLocale;
+      if (locale != null) {
+        Get.updateLocale(locale);
+      }
+    });
+  }
+
+  @override
+  void onDetached() {}
+
+  @override
+  void onInactive() {}
+
+  @override
+  void onPaused() {}
+
+  @override
+  void onResumed() {}
+
+  @override
+  void onHidden() {}
+
+  void restartApp() {
+    unikey = UniqueKey();
+    update();
+  }
+
+  void setTheme(ThemeData value) {
+    if (darkTheme == null) {
+      theme = value;
+    } else {
+      if (value.brightness == Brightness.light) {
+        theme = value;
+      } else {
+        darkTheme = value;
+      }
+    }
+    update();
+  }
+
+  void setThemeMode(ThemeMode value) {
+    themeMode = value;
+    update();
+  }
+}

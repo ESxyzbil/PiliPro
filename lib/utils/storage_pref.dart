@@ -571,6 +571,81 @@ abstract final class Pref {
   static int get appFontWeight =>
       _setting.get(SettingBoxKey.appFontWeight, defaultValue: -1);
 
+  static String get appFontFamily =>
+      _setting.get(SettingBoxKey.appFontFamily, defaultValue: '');
+
+  static String get globalBg =>
+      _setting.get(SettingBoxKey.globalBg, defaultValue: '');
+
+  static String get homeBg =>
+      _setting.get(SettingBoxKey.homeBg, defaultValue: '');
+
+  static String get dynamicsBg =>
+      _setting.get(SettingBoxKey.dynamicsBg, defaultValue: '');
+
+  static String get mineBg =>
+      _setting.get(SettingBoxKey.mineBg, defaultValue: '');
+
+  static double get globalBgOpacity =>
+      _setting.get(SettingBoxKey.globalBgOpacity, defaultValue: 1.0);
+
+  static double get globalBgBlur =>
+      _setting.get(SettingBoxKey.globalBgBlur, defaultValue: 0.0);
+
+  static double get homeBgOpacity =>
+      _setting.get(SettingBoxKey.homeBgOpacity, defaultValue: 1.0);
+
+  static double get homeBgBlur =>
+      _setting.get(SettingBoxKey.homeBgBlur, defaultValue: 0.0);
+
+  static double get dynamicsBgOpacity =>
+      _setting.get(SettingBoxKey.dynamicsBgOpacity, defaultValue: 1.0);
+
+  static double get dynamicsBgBlur =>
+      _setting.get(SettingBoxKey.dynamicsBgBlur, defaultValue: 0.0);
+
+  static double get mineBgOpacity =>
+      _setting.get(SettingBoxKey.mineBgOpacity, defaultValue: 1.0);
+
+  static double get mineBgBlur =>
+      _setting.get(SettingBoxKey.mineBgBlur, defaultValue: 0.0);
+
+  static bool get glassTopBar =>
+      _setting.get(SettingBoxKey.glassTopBar, defaultValue: false);
+
+  static double get glassTopBarBlur =>
+      _setting.get(SettingBoxKey.glassTopBarBlur, defaultValue: 8.0);
+
+  static double get glassTopBarOpacity =>
+      _setting.get(SettingBoxKey.glassTopBarOpacity, defaultValue: 0.72);
+
+  static String get glassTopBarColor =>
+      _setting.get(SettingBoxKey.glassTopBarColor, defaultValue: '');
+
+  static bool get glassCard =>
+      _setting.get(SettingBoxKey.glassCard, defaultValue: false);
+
+  static double get glassCardBlur =>
+      _setting.get(SettingBoxKey.glassCardBlur, defaultValue: 8.0);
+
+  static double get glassCardOpacity =>
+      _setting.get(SettingBoxKey.glassCardOpacity, defaultValue: 0.72);
+
+  static String get glassCardColor =>
+      _setting.get(SettingBoxKey.glassCardColor, defaultValue: '');
+
+  static bool get glassInfoCard =>
+      _setting.get(SettingBoxKey.glassInfoCard, defaultValue: false);
+
+  static double get glassInfoCardBlur =>
+      _setting.get(SettingBoxKey.glassInfoCardBlur, defaultValue: 8.0);
+
+  static double get glassInfoCardOpacity =>
+      _setting.get(SettingBoxKey.glassInfoCardOpacity, defaultValue: 0.72);
+
+  static String get glassInfoCardColor =>
+      _setting.get(SettingBoxKey.glassInfoCardColor, defaultValue: '');
+
   static bool get enableDragSubtitle =>
       _setting.get(SettingBoxKey.enableDragSubtitle, defaultValue: false);
 

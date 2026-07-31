@@ -109,9 +109,7 @@ dependencies:
       url: https://github.com/bggRGjQaUbCoE/font_awesome_flutter.git
       ref: v10.9.0
   get:
-    git:
-      url: https://github.com/bggRGjQaUbCoE/getx.git
-      ref: version_4.7.2
+    path: third_party/getx
   hive_ce: ^2.19.3
   html: ^0.15.4
   http2: ^2.3.1

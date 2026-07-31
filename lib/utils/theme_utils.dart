@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/cupertino.dart' show CupertinoThemeData;
@@ -42,6 +43,10 @@ abstract final class ThemeUtils {
     ThemeData themeData = ThemeData(
       colorScheme: colorScheme,
       useMaterial3: true,
+      // 背景由全局背景层填充，Scaffold 透明露出背景图
+      // （纯黑主题 darkenTheme 仍保持黑色，不显示背景图）
+      scaffoldBackgroundColor: Colors.transparent,
+      fontFamily: Pref.appFontFamily.isEmpty ? null : Style.appFontFamilyName,
       textTheme: fontWeight == null
           ? null
           : TextTheme(
@@ -69,7 +74,9 @@ abstract final class ThemeUtils {
         titleSpacing: 0,
         centerTitle: false,
         scrolledUnderElevation: 0,
-        backgroundColor: colorScheme.surface,
+        backgroundColor: Glass.enabled(GlassKind.topBar)
+            ? Glass.bgColor(colorScheme, GlassKind.topBar)
+            : colorScheme.surface,
         titleTextStyle: TextStyle(
           fontSize: 16,
           color: colorScheme.onSurface,
@@ -146,7 +153,10 @@ abstract final class ThemeUtils {
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: ZoomPageTransitionsBuilder(),
+          // backgroundColor 透明：过渡动画不再铺纯色 scrim，直接露出背景层
+          TargetPlatform.android: ZoomPageTransitionsBuilder(
+            backgroundColor: Colors.transparent,
+          ),
         },
       ),
     );

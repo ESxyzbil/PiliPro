@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamics_type.dart';
@@ -85,6 +86,16 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
     );
   }
 
+  /// 动态卡片包装：列表项加卡片背景（可毛玻璃）
+  Widget _wrapDynCard(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    child: GlassContainer(
+      kind: GlassKind.infoCard,
+      borderRadius: BorderRadius.circular(10),
+      child: child,
+    ),
+  );
+
   Widget _buildBody(LoadingState<List<DynamicItemModel>?> loadingState) {
     return switch (loadingState) {
       Loading() => dynSkeleton,
@@ -99,12 +110,15 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
                             controller.onLoadMore();
                           }
                           final item = response[index];
-                          return DynamicPanel(
-                            item: item,
-                            onRemove: (idStr) =>
-                                controller.onRemove(index, idStr),
-                            onBlock: () => controller.onBlock(index),
-                            onUnfold: () => controller.onUnfold(item, index),
+                          return _wrapDynCard(
+                            DynamicPanel(
+                              item: item,
+                              onRemove: (idStr) =>
+                                  controller.onRemove(index, idStr),
+                              onBlock: () => controller.onBlock(index),
+                              onUnfold: () =>
+                                  controller.onUnfold(item, index),
+                            ),
                           );
                         },
                         childCount: response.length,
@@ -116,12 +130,14 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
                           controller.onLoadMore();
                         }
                         final item = response[index];
-                        return DynamicPanel(
-                          item: item,
-                          onRemove: (idStr) =>
-                              controller.onRemove(index, idStr),
-                          onBlock: () => controller.onBlock(index),
-                          onUnfold: () => controller.onUnfold(item, index),
+                        return _wrapDynCard(
+                          DynamicPanel(
+                            item: item,
+                            onRemove: (idStr) =>
+                                controller.onRemove(index, idStr),
+                            onBlock: () => controller.onBlock(index),
+                            onUnfold: () => controller.onUnfold(item, index),
+                          ),
                         );
                       },
                       itemCount: response.length,

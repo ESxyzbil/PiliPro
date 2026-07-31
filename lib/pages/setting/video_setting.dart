@@ -1,3 +1,4 @@
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/pages/setting/models/video_settings.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +20,7 @@ class _VideoSettingState extends State<VideoSetting> {
     final padding = MediaQuery.viewPaddingOf(context);
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: showAppBar ? AppBar(title: const Text('音视频设置')) : null,
+      appBar: showAppBar ? AppBar(title: const Text('视频设置')) : null,
       body: ListView.builder(
         padding: EdgeInsets.only(
           left: showAppBar ? padding.left : 0,
@@ -27,8 +28,9 @@ class _VideoSettingState extends State<VideoSetting> {
           bottom: padding.bottom + 100,
         ),
         itemCount: settings.length,
-        itemBuilder: (context, index) => settings[index].widget,
+        itemBuilder: (context, index) => buildInfoCard(settings[index].widget),
       ),
     );
   }
 }
+

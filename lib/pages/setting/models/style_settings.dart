@@ -82,18 +82,23 @@ List<SettingsModel> get styleSettings => [
     defaultVal: false,
     needReboot: true,
   ),
-  SplitModel(
-    normalModel: const NormalModel.split(
-      title: 'App字体字重',
-      subtitle: '点击设置',
-      leading: Icon(Icons.text_fields),
-    ),
-    switchModel: SwitchModel.split(
-      defaultVal: false,
-      setKey: SettingBoxKey.appFontWeight,
-      onChanged: (_) => Get.updateMyAppTheme(),
-      onTap: _showFontWeightDialog,
-    ),
+  NormalModel(
+    title: '字体设置',
+    subtitle: '选择系统字体、调整字重',
+    leading: const Icon(Icons.font_download_outlined),
+    onTap: (context, setState) => Get.toNamed('/fontSetting'),
+  ),
+  NormalModel(
+    title: '设置背景',
+    subtitle: '为各页面设置背景图片',
+    leading: const Icon(Icons.wallpaper_outlined),
+    onTap: (context, setState) => Get.toNamed('/backgroundSetting'),
+  ),
+  NormalModel(
+    title: '毛玻璃',
+    subtitle: '顶栏/卡片毛玻璃开关与效果调节',
+    leading: const Icon(Icons.blur_on_outlined),
+    onTap: (context, setState) => Get.toNamed('/glassSetting'),
   ),
   NormalModel(
     title: '界面缩放',
@@ -322,20 +327,6 @@ List<SettingsModel> get styleSettings => [
     title: '滑动动画弹簧参数',
     leading: Icon(Icons.chrome_reader_mode_outlined),
     onTap: _showSpringDialog,
-  ),
-  NormalModel(
-    onTap: (context, setState) async {
-      final res = await Get.toNamed('/fontSizeSetting');
-      if (res != null) {
-        setState();
-      }
-    },
-    title: '字体大小',
-    leading: const Icon(Icons.format_size_outlined),
-    getSubtitle: () {
-      final scale = Pref.defaultTextScale;
-      return scale == 1.0 ? '默认' : scale.toString();
-    },
   ),
   NormalModel(
     onTap: (context, setState) => Get.toNamed(
@@ -629,23 +620,6 @@ void _showSpringDialog(BuildContext context, _) {
       ],
     ),
   );
-}
-
-Future<void> _showFontWeightDialog(BuildContext context) async {
-  final res = await showDialog<double>(
-    context: context,
-    builder: (context) => SliderDialog(
-      title: const Text('App字体字重'),
-      value: Pref.appFontWeight.toDouble() + 1,
-      min: 1,
-      max: FontWeight.values.length.toDouble(),
-      divisions: FontWeight.values.length - 1,
-    ),
-  );
-  if (res != null) {
-    await GStorage.setting.put(SettingBoxKey.appFontWeight, res.toInt() - 1);
-    Get.updateMyAppTheme();
-  }
 }
 
 Future<void> _showTransitionDialog(
