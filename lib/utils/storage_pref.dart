@@ -646,6 +646,30 @@ abstract final class Pref {
   static String get glassInfoCardColor =>
       _setting.get(SettingBoxKey.glassInfoCardColor, defaultValue: '');
 
+  static bool get glassBottomBar =>
+      _setting.get(SettingBoxKey.glassBottomBar, defaultValue: false);
+
+  static double get glassBottomBarBlur =>
+      _setting.get(SettingBoxKey.glassBottomBarBlur, defaultValue: 8.0);
+
+  static double get glassBottomBarOpacity =>
+      _setting.get(SettingBoxKey.glassBottomBarOpacity, defaultValue: 0.72);
+
+  static String get glassBottomBarColor =>
+      _setting.get(SettingBoxKey.glassBottomBarColor, defaultValue: '');
+
+  static bool get glassReplyPanel =>
+      _setting.get(SettingBoxKey.glassReplyPanel, defaultValue: false);
+
+  static double get glassReplyPanelBlur =>
+      _setting.get(SettingBoxKey.glassReplyPanelBlur, defaultValue: 8.0);
+
+  static double get glassReplyPanelOpacity =>
+      _setting.get(SettingBoxKey.glassReplyPanelOpacity, defaultValue: 0.72);
+
+  static String get glassReplyPanelColor =>
+      _setting.get(SettingBoxKey.glassReplyPanelColor, defaultValue: '');
+
   static bool get enableDragSubtitle =>
       _setting.get(SettingBoxKey.enableDragSubtitle, defaultValue: false);
 

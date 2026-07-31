@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:flutter/material.dart';
 
@@ -74,6 +75,63 @@ class FloatingNavigationBar extends StatelessWidget {
 
     final padding = MediaQuery.viewPaddingOf(context);
 
+    // 底栏毛玻璃：开启时背景透明，由外层 GlassContainer 提供模糊+半透明
+    final glassOn = Glass.enabled(GlassKind.bottomBar);
+    final barColor = glassOn
+        ? Colors.transparent
+        : ElevationOverlay.applySurfaceTint(
+            backgroundColor ??
+                navigationBarTheme.backgroundColor ??
+                defaults.backgroundColor!,
+            surfaceTintColor ??
+                navigationBarTheme.surfaceTintColor ??
+                defaults.surfaceTintColor,
+            elevation ??
+                navigationBarTheme.elevation ??
+                defaults.elevation!,
+          );
+
+    final bar = DecoratedBox(
+      decoration: ShapeDecoration(
+        color: barColor,
+        shape: RoundedSuperellipseBorder(
+          side: defaults.borderSide,
+          borderRadius: _kBorderRadius,
+        ),
+      ),
+      child: Padding(
+        padding: _kIndicatorPadding,
+        child: Row(
+          crossAxisAlignment: .stretch,
+          children: <Widget>[
+            for (int i = 0; i < destinations.length; i++)
+              Expanded(
+                child: _SelectableAnimatedBuilder(
+                  duration: animationDuration,
+                  isSelected: i == selectedIndex,
+                  builder: (context, animation) {
+                    return _NavigationDestinationInfo(
+                      index: i,
+                      selectedIndex: selectedIndex,
+                      totalNumberOfDestinations: destinations.length,
+                      selectedAnimation: animation,
+                      labelBehavior: effectiveLabelBehavior,
+                      indicatorColor: indicatorColor,
+                      indicatorShape: indicatorShape,
+                      overlayColor: overlayColor,
+                      onTap: _handleTap(i),
+                      labelTextStyle: labelTextStyle,
+                      labelPadding: labelPadding,
+                      child: destinations[i],
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
     return UnconstrainedBox(
       child: Padding(
         padding: .fromLTRB(
@@ -85,56 +143,14 @@ class FloatingNavigationBar extends StatelessWidget {
         child: SizedBox(
           height: _kNavigationHeight,
           width: destinations.length * _kIndicatorWidth,
-          child: DecoratedBox(
-            decoration: ShapeDecoration(
-              color: ElevationOverlay.applySurfaceTint(
-                backgroundColor ??
-                    navigationBarTheme.backgroundColor ??
-                    defaults.backgroundColor!,
-                surfaceTintColor ??
-                    navigationBarTheme.surfaceTintColor ??
-                    defaults.surfaceTintColor,
-                elevation ??
-                    navigationBarTheme.elevation ??
-                    defaults.elevation!,
-              ),
-              shape: RoundedSuperellipseBorder(
-                side: defaults.borderSide,
-                borderRadius: _kBorderRadius,
-              ),
-            ),
-            child: Padding(
-              padding: _kIndicatorPadding,
-              child: Row(
-                crossAxisAlignment: .stretch,
-                children: <Widget>[
-                  for (int i = 0; i < destinations.length; i++)
-                    Expanded(
-                      child: _SelectableAnimatedBuilder(
-                        duration: animationDuration,
-                        isSelected: i == selectedIndex,
-                        builder: (context, animation) {
-                          return _NavigationDestinationInfo(
-                            index: i,
-                            selectedIndex: selectedIndex,
-                            totalNumberOfDestinations: destinations.length,
-                            selectedAnimation: animation,
-                            labelBehavior: effectiveLabelBehavior,
-                            indicatorColor: indicatorColor,
-                            indicatorShape: indicatorShape,
-                            overlayColor: overlayColor,
-                            onTap: _handleTap(i),
-                            labelTextStyle: labelTextStyle,
-                            labelPadding: labelPadding,
-                            child: destinations[i],
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          child: glassOn
+              ? GlassContainer(
+                  kind: GlassKind.bottomBar,
+                  borderRadius: _kBorderRadius,
+                  fallbackColor: defaults.backgroundColor!,
+                  child: bar,
+                )
+              : bar,
         ),
       ),
     );

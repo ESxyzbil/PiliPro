@@ -2,6 +2,7 @@ import 'package:PiliPlus/common/skeleton/video_reply.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/colored_box_transition.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/sliver/sliver_pinned_header.dart';
 import 'package:PiliPlus/common/widgets/view_safe_area.dart';
@@ -140,38 +141,47 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
   @override
   Widget buildPage(ThemeData theme) {
     Widget child() => enableSlide ? slideList(theme) : buildList(theme);
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: widget.isVideoDetail
-          ? Column(
-              children: [
-                Container(
-                  height: 45,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        width: 1,
-                        color: theme.dividerColor.withValues(alpha: 0.1),
-                      ),
+    Widget content() => widget.isVideoDetail
+        ? Column(
+            children: [
+              Container(
+                height: 45,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      width: 1,
+                      color: theme.dividerColor.withValues(alpha: 0.1),
                     ),
                   ),
-                  padding: const EdgeInsets.only(left: 12, right: 2),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: <Widget>[
-                      Text(isDialogue ? '对话列表' : '评论详情'),
-                      IconButton(
-                        tooltip: '关闭',
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: Get.back,
-                      ),
-                    ],
-                  ),
                 ),
-                Expanded(child: child()),
-              ],
+                padding: const EdgeInsets.only(left: 12, right: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Text(isDialogue ? '对话列表' : '评论详情'),
+                    IconButton(
+                      tooltip: '关闭',
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: Get.back,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(child: child()),
+            ],
+          )
+        : child();
+    final glassOn = Glass.enabled(GlassKind.replyPanel);
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor: glassOn ? Colors.transparent : null,
+      body: glassOn
+          ? GlassContainer(
+              kind: GlassKind.replyPanel,
+              borderRadius: BorderRadius.circular(16),
+              child: content(),
             )
-          : child(),
+          : content(),
     );
   }
 

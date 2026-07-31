@@ -119,6 +119,17 @@ List<SettingsModel> get styleSettings => [
     defaultVal: true,
     needReboot: true,
   ),
+  const GroupTitleModel(
+    '底栏设置',
+    subtitle: '底部导航栏样式与效果',
+  ),
+  const SwitchModel(
+    title: '底栏毛玻璃',
+    subtitle: '底部导航栏半透明模糊，透出背景',
+    leading: Icon(Icons.blur_on_outlined),
+    setKey: SettingBoxKey.glassBottomBar,
+    defaultVal: false,
+  ),
   const SwitchModel(
     title: 'MD3样式底栏',
     subtitle: 'Material You设计规范底栏，关闭可变窄',
@@ -132,6 +143,20 @@ List<SettingsModel> get styleSettings => [
     leading: Icon(MdiIcons.soundbar),
     setKey: SettingBoxKey.floatingNavBar,
     defaultVal: false,
+    needReboot: true,
+  ),
+  NormalModel(
+    onTap: _showBarHideTypeDialog,
+    title: '顶/底栏收起类型',
+    leading: const Icon(MdiIcons.arrowExpandVertical),
+    getSubtitle: () => '当前：${Pref.barHideType.label}',
+  ),
+  SwitchModel(
+    title: '首页底栏收起',
+    subtitle: '首页列表滑动时，收起底栏',
+    leading: const Icon(Icons.vertical_align_bottom_outlined),
+    setKey: SettingBoxKey.hideBottomBar,
+    defaultVal: PlatformUtils.isMobile,
     needReboot: true,
   ),
   NormalModel(
@@ -200,25 +225,11 @@ List<SettingsModel> get styleSettings => [
     getSubtitle: () =>
         '当前消息类型：${Pref.msgUnReadTypeV2.map((item) => item.title).join('、')}',
   ),
-  NormalModel(
-    onTap: _showBarHideTypeDialog,
-    title: '顶/底栏收起类型',
-    leading: const Icon(MdiIcons.arrowExpandVertical),
-    getSubtitle: () => '当前：${Pref.barHideType.label}',
-  ),
   SwitchModel(
     title: '首页顶栏收起',
     subtitle: '首页列表滑动时，收起顶栏',
     leading: const Icon(Icons.vertical_align_top_outlined),
     setKey: SettingBoxKey.hideTopBar,
-    defaultVal: PlatformUtils.isMobile,
-    needReboot: true,
-  ),
-  SwitchModel(
-    title: '首页底栏收起',
-    subtitle: '首页列表滑动时，收起底栏',
-    leading: const Icon(Icons.vertical_align_bottom_outlined),
-    setKey: SettingBoxKey.hideBottomBar,
     defaultVal: PlatformUtils.isMobile,
     needReboot: true,
   ),

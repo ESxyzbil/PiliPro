@@ -36,6 +36,7 @@ import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
@@ -129,13 +130,15 @@ class ReplyItemGrpc extends StatelessWidget {
         ],
       );
     }
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: () => replyReply?.call(replyItem, null),
-        onLongPress: showMore,
-        onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
-        child: child,
+    return buildInfoCard(
+      Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () => replyReply?.call(replyItem, null),
+          onLongPress: showMore,
+          onSecondaryTap: PlatformUtils.isMobile ? null : showMore,
+          child: child,
+        ),
       ),
     );
   }

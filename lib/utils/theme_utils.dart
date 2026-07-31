@@ -153,10 +153,9 @@ abstract final class ThemeUtils {
       ),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          // backgroundColor 透明：过渡动画不再铺纯色 scrim，直接露出背景层
-          TargetPlatform.android: ZoomPageTransitionsBuilder(
-            backgroundColor: Colors.transparent,
-          ),
+          // 用 OpenUpwards（Material3 默认）：无 scrim 遮罩，
+          // 过渡动画期间露出的区域透明，直接透出背景层
+          TargetPlatform.android: OpenUpwardsPageTransitionsBuilder(),
         },
       ),
     );

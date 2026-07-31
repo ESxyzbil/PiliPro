@@ -20,7 +20,7 @@ class _ExtraSettingState extends State<ExtraSetting> {
     final padding = MediaQuery.viewPaddingOf(context);
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: showAppBar ? AppBar(title: const Text('鍏跺畠璁剧疆')) : null,
+      appBar: showAppBar ? AppBar(title: const Text('其它设置')) : null,
       body: ListView.builder(
         padding: EdgeInsets.only(
           left: showAppBar ? padding.left : 0,

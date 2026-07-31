@@ -43,6 +43,7 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 
 class UgcIntroPanel extends StatefulWidget {
   const UgcIntroPanel({
@@ -112,7 +113,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
                 feedBack();
                 introController.expandableCtr.toggle();
               },
-              child: Column(
+              child: buildInfoCard(Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   GestureDetector(
@@ -307,7 +308,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
                       ),
                     ),
                 ],
-              ),
+              ),)
             ),
           );
         },

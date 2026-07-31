@@ -30,6 +30,54 @@ sealed class SettingsModel {
   });
 }
 
+/// 分组标题：在设置列表中插入一个分组标题（不包卡片）。
+class GroupTitleModel extends SettingsModel {
+  const GroupTitleModel(
+    this.title, {
+    super.subtitle,
+  });
+
+  @override
+  final String title;
+
+  @override
+  String get effectiveTitle => title;
+
+  @override
+  String? get effectiveSubtitle => subtitle;
+
+  @override
+  Widget get widget => Builder(
+    builder: (context) {
+      final theme = Theme.of(context);
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
 class SplitModel extends SettingsModel {
   const SplitModel({
     super.contentPadding,

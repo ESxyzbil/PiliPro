@@ -175,9 +175,9 @@ Cannot read the previousTitle for a route that has not yet been installed''',
             child,
           );
         }
-        return const ZoomPageTransitionsBuilder(
-          backgroundColor: Colors.transparent,
-        ).buildTransitions(
+        // Android: ZoomPageTransitionsBuilder 内置 scrim(最大 60% 黑色遮罩),
+        // 会盖住背景层; 改用 OpenUpwards(Material3 默认, 无 scrim)。
+        return const OpenUpwardsPageTransitionsBuilder().buildTransitions(
           rawRoute,
           context,
           animation,

@@ -3,8 +3,8 @@ import 'dart:ui' as ui;
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/material.dart';
 
-/// 毛玻璃类别：顶栏 / 视频卡片 / 信息卡片（设置、动态等列表项）
-enum GlassKind { topBar, card, infoCard }
+/// 毛玻璃类别：顶栏 / 视频卡片 / 信息卡片 / 底栏 / 回复弹层
+enum GlassKind { topBar, card, infoCard, bottomBar, replyPanel }
 
 /// 毛玻璃效果统一入口：按类别读取独立配置。
 abstract final class Glass {
@@ -12,12 +12,16 @@ abstract final class Glass {
     GlassKind.topBar => Pref.glassTopBar,
     GlassKind.card => Pref.glassCard,
     GlassKind.infoCard => Pref.glassInfoCard,
+    GlassKind.bottomBar => Pref.glassBottomBar,
+    GlassKind.replyPanel => Pref.glassReplyPanel,
   };
 
   static double blur(GlassKind k) => switch (k) {
     GlassKind.topBar => Pref.glassTopBarBlur,
     GlassKind.card => Pref.glassCardBlur,
     GlassKind.infoCard => Pref.glassInfoCardBlur,
+    GlassKind.bottomBar => Pref.glassBottomBarBlur,
+    GlassKind.replyPanel => Pref.glassReplyPanelBlur,
   }
       .clamp(0.0, 20.0);
 
@@ -25,6 +29,8 @@ abstract final class Glass {
     GlassKind.topBar => Pref.glassTopBarOpacity,
     GlassKind.card => Pref.glassCardOpacity,
     GlassKind.infoCard => Pref.glassInfoCardOpacity,
+    GlassKind.bottomBar => Pref.glassBottomBarOpacity,
+    GlassKind.replyPanel => Pref.glassReplyPanelOpacity,
   }
       .clamp(0.0, 1.0);
 
@@ -32,6 +38,8 @@ abstract final class Glass {
     GlassKind.topBar => Pref.glassTopBarColor,
     GlassKind.card => Pref.glassCardColor,
     GlassKind.infoCard => Pref.glassInfoCardColor,
+    GlassKind.bottomBar => Pref.glassBottomBarColor,
+    GlassKind.replyPanel => Pref.glassReplyPanelColor,
   };
 
   /// 毛玻璃颜色：未设置时跟随主题表面色

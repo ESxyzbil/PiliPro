@@ -181,7 +181,15 @@ abstract final class SettingBoxKey {
       glassInfoCard = 'glassInfoCard',
       glassInfoCardBlur = 'glassInfoCardBlur',
       glassInfoCardOpacity = 'glassInfoCardOpacity',
-      glassInfoCardColor = 'glassInfoCardColor';
+      glassInfoCardColor = 'glassInfoCardColor',
+      glassBottomBar = 'glassBottomBar',
+      glassBottomBarBlur = 'glassBottomBarBlur',
+      glassBottomBarOpacity = 'glassBottomBarOpacity',
+      glassBottomBarColor = 'glassBottomBarColor',
+      glassReplyPanel = 'glassReplyPanel',
+      glassReplyPanelBlur = 'glassReplyPanelBlur',
+      glassReplyPanelOpacity = 'glassReplyPanelOpacity',
+      glassReplyPanelColor = 'glassReplyPanelColor';
 
   static const String minimizeOnExit = 'minimizeOnExit',
       windowSize = 'windowSize',

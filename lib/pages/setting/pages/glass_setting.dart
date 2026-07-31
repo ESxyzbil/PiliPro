@@ -58,6 +58,26 @@ class _GlassSettingPageState extends State<GlassSettingPage> {
       opacityKey: SettingBoxKey.glassInfoCardOpacity,
       colorKey: SettingBoxKey.glassInfoCardColor,
     ),
+    const _KindConfig(
+      kind: GlassKind.bottomBar,
+      icon: Icons.navigation_outlined,
+      title: '底栏毛玻璃',
+      subtitle: '底部导航栏半透明模糊，透出背景',
+      enabledKey: SettingBoxKey.glassBottomBar,
+      blurKey: SettingBoxKey.glassBottomBarBlur,
+      opacityKey: SettingBoxKey.glassBottomBarOpacity,
+      colorKey: SettingBoxKey.glassBottomBarColor,
+    ),
+    const _KindConfig(
+      kind: GlassKind.replyPanel,
+      icon: Icons.forum_outlined,
+      title: '回复面板毛玻璃',
+      subtitle: '评论回复弹层半透明模糊，提升可读性',
+      enabledKey: SettingBoxKey.glassReplyPanel,
+      blurKey: SettingBoxKey.glassReplyPanelBlur,
+      opacityKey: SettingBoxKey.glassReplyPanelOpacity,
+      colorKey: SettingBoxKey.glassReplyPanelColor,
+    ),
   ];
 
   Future<void> _set(String key, Object value) async {
