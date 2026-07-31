@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get/get_navigation/src/routes/default_transitions.dart';
 
-/// 过渡动画：新页面淡入 + 轻微上滑；旧页面同步淡出。
+/// 过渡动画：新页面淡入 + 轻微上滑；旧页面先淡出。
+/// 错开时序：前 50% 旧页淡出（新页透明），后 50% 新页淡入（旧页已透明），
+/// 新旧页面不会同时半透明叠加，避免产生白色混合层。
 /// 无 scrim 遮罩，过渡期间露出的区域透明，直接透出背景层。
 class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
   const FadePreviousPageTransitionsBuilder();
@@ -25,17 +27,21 @@ class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
       reverseCurve: Curves.easeInCubic,
     );
     return FadeTransition(
-      // 上一页淡出：secondaryAnimation 0→1 时 opacity 1→0
+      // 上一页淡出：前 50% 完成（1→0），后 50% 保持透明
       opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
         CurvedAnimation(
           parent: secondaryAnimation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
+          curve: const _ShiftCurve(out: true),
         ),
       ),
       child: FadeTransition(
-        // 新页面淡入
-        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
+        // 新页面淡入：前 50% 保持透明，后 50% 0→1
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: const _ShiftCurve(out: false),
+          ),
+        ),
         child: SlideTransition(
           // 新页面轻微上滑
           position: Tween<Offset>(
@@ -46,6 +52,26 @@ class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
         ),
       ),
     );
+  }
+}
+
+/// 错开时序曲线：
+/// - out=false（新页）：前 50% 保持透明，后 50% 淡入到 1
+/// - out=true（旧页）：前 50% 淡出到 0，后 50% 保持透明
+/// 正反方向天然对称（pop 时新页前段淡出、旧页后段淡入）。
+class _ShiftCurve extends Curve {
+  const _ShiftCurve({required this.out});
+
+  final bool out;
+
+  @override
+  double transformInternal(double t) {
+    if (out) {
+      if (t >= 0.5) return 0;
+      return 1 - Curves.easeOutCubic.transform(t / 0.5);
+    }
+    if (t <= 0.5) return 0;
+    return Curves.easeOutCubic.transform((t - 0.5) / 0.5);
   }
 }
 
@@ -341,18 +367,34 @@ Cannot read the previousTitle for a route that has not yet been installed''',
           child,
         );
     }
-    // 统一：旧页面淡出（对所有过渡效果都生效）。
-    // 新页面（最上层）secondaryAnimation 恒为 0，opacity 保持 1 不受影响；
-    // 被覆盖的旧页面 secondaryAnimation 0→1，opacity 1→0 淡出。
+    // 统一错开时序（对所有过渡效果都生效）：
+    // - 旧页面：前 50% 淡出（1→0），后 50% 保持透明
+    // - 新页面：前 50% 保持透明，后 50% 淡入（0→1）
+    // 新旧页面不会同时半透明叠加，避免产生白色混合层；
+    // 旧页面动画完成后已完全透明，被 overlay 跳过时无感。
+    // native 已自带错开时序（FadePreviousPageTransitionsBuilder），跳过避免双重；
+    // noTransition 保持完全无动画。
+    final defaultTransition = Get.defaultTransition;
+    if (defaultTransition == Transition.native ||
+        defaultTransition == Transition.noTransition) {
+      return page;
+    }
     return FadeTransition(
       opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
         CurvedAnimation(
           parent: secondaryAnimation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
+          curve: const _ShiftCurve(out: true),
         ),
       ),
-      child: page,
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: const _ShiftCurve(out: false),
+          ),
+        ),
+        child: page,
+      ),
     );
   }
 }
