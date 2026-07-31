@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/view_safe_area.dart';
 import 'package:PiliPlus/grpc/dyn.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -290,6 +291,8 @@ class MainController extends GetxController
     final currentNav = navigationBars[value];
     if (value != selectedIndex.value) {
       selectedIndex.value = value;
+      // 同步全局背景层当前 tab
+      GlobalBgState.tabIndex.value = value;
       if (mainTabBarView) {
         controller.animateTo(value);
       } else {

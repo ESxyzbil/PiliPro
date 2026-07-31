@@ -361,23 +361,13 @@ class MyApp extends StatelessWidget {
         child: child!,
       );
     }
-    // 全局背景层：包住整个 Navigator，二级页面也能透出背景。
-    // 透明度跟随路由状态：tab 页 0，二级页面 1，切换时 450ms 平滑渐变，
-    // 避免「tab 背景 → 全局背景」瞬间跳变
+    // 全局背景层：所有背景统一在这里渲染（tab 背景 + 全局背景），
+    // 包住整个 Navigator，二级页面透出全局背景。
+    // 页面切换时 AnimatedSwitcher 交叉过渡，避免背景瞬间跳变
     child = Stack(
       fit: StackFit.expand,
       children: [
-        ValueListenableBuilder<double>(
-          valueListenable: BgRouteState.target,
-          builder: (context, target, _) => TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: target),
-            duration: const Duration(milliseconds: 450),
-            curve: Curves.easeOut,
-            builder: (context, opacity, _) => AppBackgroundLayer(
-              opacity: opacity.clamp(0.0, 1.0),
-            ),
-          ),
-        ),
+        const GlobalBackgroundLayer(),
         child!,
       ],
     );

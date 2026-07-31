@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
-import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/flutter/tabs.dart';
@@ -507,7 +506,8 @@ class _MainAppState extends PopScopeState<MainApp>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          _buildBackground(theme),
+          // 背景已统一由 main.dart 的 GlobalBackgroundLayer 渲染
+          const SizedBox.shrink(),
           Padding(
             padding: EdgeInsets.only(
               left: _mainController.useBottomNav ? _padding.left : 0.0,
@@ -535,41 +535,6 @@ class _MainAppState extends PopScopeState<MainApp>
 
   /// 根据当前 tab 渲染背景图（单页背景优先，未设置则用全局背景）。
   /// 单层 Obx：同时订阅 tab 切换(selectedIndex) 与 背景刷新(revision)。
-  Widget _buildBackground(ThemeData theme) {
-    return Obx(() {
-      // 订阅背景刷新：设置页调节透明度/模糊/换图时实时重建
-      BgNotifier.revision.value;
-      final pages = _mainController.navigationBars;
-      final idx = _mainController.selectedIndex.value;
-      final type = idx >= 0 && idx < pages.length ? pages[idx] : null;
-      String path;
-      double opacity;
-      double blur;
-      switch (type) {
-        case NavigationBarType.home:
-          path = Pref.homeBg.isNotEmpty ? Pref.homeBg : Pref.globalBg;
-          opacity = Pref.homeBgOpacity;
-          blur = Pref.homeBgBlur;
-        case NavigationBarType.dynamics:
-          path = Pref.dynamicsBg.isNotEmpty ? Pref.dynamicsBg : Pref.globalBg;
-          opacity = Pref.dynamicsBgOpacity;
-          blur = Pref.dynamicsBgBlur;
-        case NavigationBarType.mine:
-          path = Pref.mineBg.isNotEmpty ? Pref.mineBg : Pref.globalBg;
-          opacity = Pref.mineBgOpacity;
-          blur = Pref.mineBgBlur;
-        default:
-          path = Pref.globalBg;
-          opacity = Pref.globalBgOpacity;
-          blur = Pref.globalBgBlur;
-      }
-      if (path.isEmpty || !File(path).existsSync()) {
-        return const SizedBox.shrink();
-      }
-      return AppBackgroundLayer(path: path, opacity: opacity, blur: blur);
-    });
-  }
-
   Widget _buildIcon({required NavigationBarType type, bool selected = false}) {
     final icon = selected ? type.selectIcon : type.icon;
     return type == .dynamics

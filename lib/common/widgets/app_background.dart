@@ -19,22 +19,83 @@ abstract final class BgRouteState {
   static final ValueNotifier<double> target = ValueNotifier(0.0);
 }
 
-/// 监听路由 push/pop，同步全局背景层透明度，
-/// 让「tab 页背景 → 全局背景」的切换跟随页面过渡动画平滑渐变。
+/// 全局背景层状态：所有背景统一由 main.dart 的全局层渲染，
+/// 根据「是否在主 tab 页 + 当前 tab」解析背景图，切换时 AnimatedSwitcher 平滑过渡。
+abstract final class GlobalBgState {
+  /// 是否在主 tab 页（MainApp）。二级页面 push 时 false，pop 回时 true。
+  static final RxBool inMainTab = true.obs;
+
+  /// 当前主 tab 索引（0=首页, 1=动态, 2=我的）。
+  static final RxInt tabIndex = 0.obs;
+
+  /// 解析当前应显示的背景 (path, opacity, blur)。
+  static (String, double, double) resolve() {
+    if (inMainTab.value) {
+      switch (tabIndex.value) {
+        case 0:
+          return (
+            Pref.homeBg.isNotEmpty ? Pref.homeBg : Pref.globalBg,
+            Pref.homeBgOpacity,
+            Pref.homeBgBlur,
+          );
+        case 1:
+          return (
+            Pref.dynamicsBg.isNotEmpty ? Pref.dynamicsBg : Pref.globalBg,
+            Pref.dynamicsBgOpacity,
+            Pref.dynamicsBgBlur,
+          );
+        case 2:
+          return (
+            Pref.mineBg.isNotEmpty ? Pref.mineBg : Pref.globalBg,
+            Pref.mineBgOpacity,
+            Pref.mineBgBlur,
+          );
+      }
+    }
+    return (Pref.globalBg, Pref.globalBgOpacity, Pref.globalBgBlur);
+  }
+}
+
+/// 统一的全局背景层：挂在 main.dart 的 Navigator 之下。
+/// tab 页时显示 tab 背景，二级页面显示全局背景，切换走 AnimatedSwitcher 交叉过渡。
+class GlobalBackgroundLayer extends StatelessWidget {
+  const GlobalBackgroundLayer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      // 订阅背景刷新：设置页调节透明度/模糊/换图时实时重建
+      BgNotifier.revision.value;
+      GlobalBgState.inMainTab.value;
+      GlobalBgState.tabIndex.value;
+      final (path, opacity, blur) = GlobalBgState.resolve();
+      return AppBackgroundLayer(path: path, opacity: opacity, blur: blur);
+    });
+  }
+}
+
+/// 监听路由 push/pop，维护页面深度：
+/// 深度 <=1 时在主 tab 页，否则在二级页面。不依赖路由名判断。
+/// 只统计 PageRoute（页面），忽略 dialog/toast 等 PopupRoute。
 class BgRouteObserver extends NavigatorObserver {
-  static bool isMainTab(Route<dynamic>? route) =>
-      route?.settings.name == '/';
+  int _depth = 1;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    BgRouteState.target.value = isMainTab(route) ? 0.0 : 1.0;
+    if (route is PageRoute) {
+      _depth++;
+      GlobalBgState.inMainTab.value = _depth <= 1;
+    }
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    BgRouteState.target.value = isMainTab(previousRoute) ? 0.0 : 1.0;
+    if (route is PageRoute) {
+      _depth = (_depth - 1) < 1 ? 1 : _depth - 1;
+      GlobalBgState.inMainTab.value = _depth <= 1;
+    }
   }
 }
 
