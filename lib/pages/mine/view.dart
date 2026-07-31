@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
@@ -6,6 +6,7 @@ import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
 import 'package:PiliPlus/pages/common/common_page.dart';
@@ -20,6 +21,7 @@ import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/material.dart' hide ListTile;
 import 'package:get/get.dart';
@@ -70,7 +72,7 @@ class _MediaPageState extends CommonPageState<MinePage>
     return Column(
       children: [
         Padding(
-          padding: const .symmetric(vertical: 10),
+          padding: EdgeInsets.symmetric(vertical: 10, horizontal: Pref.circularScreen ? (View.of(context).physicalSize.width / View.of(context).devicePixelRatio) * 0.2 : 0),
           child: _buildHeaderActions,
         ),
         Expanded(
@@ -80,7 +82,7 @@ class _MediaPageState extends CommonPageState<MinePage>
               onRefresh: controller.onRefresh,
               child: onBuild(
                 ListView(
-                  padding: const .only(bottom: 100),
+                  padding: const EdgeInsets.only(bottom: 100),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
                     _buildUserInfo(theme, secondary),
@@ -102,7 +104,7 @@ class _MediaPageState extends CommonPageState<MinePage>
 
   Widget _buildActions(Color primary) {
     return Row(
-      mainAxisAlignment: .spaceEvenly,
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: controller.list
           .map(
             (e) => Flexible(
@@ -115,8 +117,8 @@ class _MediaPageState extends CommonPageState<MinePage>
                     aspectRatio: 1,
                     child: Column(
                       spacing: 6,
-                      mainAxisSize: .min,
-                      mainAxisAlignment: .center,
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(size: e.size, e.icon, color: primary),
                         Text(
@@ -137,10 +139,10 @@ class _MediaPageState extends CommonPageState<MinePage>
   Widget get _buildHeaderActions {
     const iconSize = 22.0;
     const padding = EdgeInsets.all(8);
-    const style = ButtonStyle(tapTargetSize: .shrinkWrap);
+    const style = ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap);
     return Row(
       spacing: 5,
-      mainAxisAlignment: .end,
+      mainAxisAlignment: Pref.circularScreen ? MainAxisAlignment.center : MainAxisAlignment.end,
       children: [
         if (widget.showBackBtn)
           const Expanded(
@@ -215,7 +217,7 @@ class _MediaPageState extends CommonPageState<MinePage>
           onPressed: () => Get.toNamed('/setting', preventDuplicates: false),
           icon: const Icon(Icons.settings_outlined),
         ),
-        const SizedBox(width: 16),
+        if (!Pref.circularScreen) const SizedBox(width: 16),
       ],
     );
   }
@@ -243,11 +245,14 @@ class _MediaPageState extends CommonPageState<MinePage>
       final hasLevel = levelInfo != null;
       final isVip = userInfo.vipStatus != null && userInfo.vipStatus! > 0;
       final userStat = controller.userStat.value;
-      return Column(
+      final cirPad = Pref.circularScreen ? (View.of(context).physicalSize.width / View.of(context).devicePixelRatio) * 0.12 : 0.0;
+      return Padding(
+        padding: EdgeInsets.symmetric(horizontal: cirPad),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           GestureDetector(
-            behavior: .opaque,
+            behavior: HitTestBehavior.opaque,
             onTap: controller.onLogin,
             onLongPress: () {
               Feedback.forLongPress(context);
@@ -256,76 +261,65 @@ class _MediaPageState extends CommonPageState<MinePage>
             onSecondaryTap: PlatformUtils.isMobile
                 ? null
                 : () => controller.onLogin(true),
-            child: Row(
-              mainAxisSize: .min,
-              children: [
-                const SizedBox(width: 20),
-                userInfo.face != null
-                    ? Stack(
-                        clipBehavior: .none,
-                        children: [
-                          NetworkImgLayer(
-                            src: userInfo.face,
-                            type: .avatar,
-                            width: 55,
-                            height: 55,
-                          ),
-                          if (isVip)
-                            Positioned(
-                              right: -1,
-                              bottom: -2,
-                              child: Image.asset(
-                                Assets.vipIcon,
-                                height: 19,
-                                cacheHeight: 19.cacheSize(context),
-                                semanticLabel: "大会员",
-                              ),
-                            ),
-                        ],
-                      )
-                    : ClipOval(
-                        child: Image.asset(
-                          width: 55,
-                          height: 55,
-                          cacheHeight: 55.cacheSize(context),
-                          Assets.avatarPlaceHolder,
-                          semanticLabel: "默认头像",
-                        ),
-                      ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: .min,
-                    mainAxisAlignment: .center,
-                    crossAxisAlignment: .start,
+            child: Pref.circularScreen
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        spacing: 6,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              userInfo.uname ?? '点击登录',
-                              style: theme.textTheme.titleMedium!.copyWith(
-                                height: 1,
-                                color: isVip && userInfo.vipType == 2
-                                    ? theme.colorScheme.vipColor
-                                    : null,
+                      // avatar
+                      userInfo.face != null
+                          ? Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                NetworkImgLayer(
+                                  src: userInfo.face,
+                                  type: ImageType.avatar,
+                                  width: 65,
+                                  height: 65,
+                                ),
+                                if (isVip)
+                                  Positioned(
+                                    right: -1,
+                                    bottom: -2,
+                                    child: Image.asset(
+                                      Assets.vipIcon,
+                                      height: 19,
+                                      cacheHeight: 19.cacheSize(context),
+                                      semanticLabel: "大会员",
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : ClipOval(
+                              child: Image.asset(
+                                width: 65,
+                                height: 65,
+                                cacheHeight: 65.cacheSize(context),
+                                Assets.avatarPlaceHolder,
+                                semanticLabel: "默认头像",
                               ),
-                              maxLines: 1,
-                              overflow: .ellipsis,
                             ),
-                          ),
-                          Image.asset(
-                            BiliUtils.levelName(
-                              levelInfo?.currentLevel ?? 0,
-                              isSeniorMember: userInfo.isSeniorMember == 1,
-                            ),
-                            height: 10,
-                            cacheHeight: 10.cacheSize(context),
-                          ),
-                        ],
+                      const SizedBox(height: 12),
+                      // username
+                      Text(
+                        userInfo.uname ?? '点击登录',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
+                      if (levelInfo != null) ...[
+                        Image.asset(
+                          BiliUtils.levelName(
+                            levelInfo.currentLevel ?? 0,
+                            isSeniorMember: userInfo.isSeniorMember == 1,
+                          ),
+                          height: 12,
+                          cacheHeight: 12.cacheSize(context),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      // coins + exp
                       Text.rich(
                         TextSpan(
                           children: [
@@ -337,8 +331,9 @@ class _MediaPageState extends CommonPageState<MinePage>
                               text: userInfo.money?.toString() ?? '-',
                               style: coinValStyle,
                             ),
+                            const TextSpan(text: '    '),
                             TextSpan(
-                              text: "      经验 ",
+                              text: "经验 ",
                               style: coinLabelStyle,
                             ),
                             TextSpan(
@@ -351,10 +346,11 @@ class _MediaPageState extends CommonPageState<MinePage>
                             ),
                           ],
                         ),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 225),
+                        constraints: const BoxConstraints(maxWidth: 200),
                         child: LinearProgressIndicator(
                           minHeight: 2.25,
                           value: hasLevel
@@ -368,15 +364,131 @@ class _MediaPageState extends CommonPageState<MinePage>
                         ),
                       ),
                     ],
+                  )
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(width: 20),
+                        userInfo.face != null
+                            ? Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  NetworkImgLayer(
+                                    src: userInfo.face,
+                                    type: ImageType.avatar,
+                                    width: 55,
+                                    height: 55,
+                                  ),
+                                  if (isVip)
+                                    Positioned(
+                                      right: -1,
+                                      bottom: -2,
+                                      child: Image.asset(
+                                        Assets.vipIcon,
+                                        height: 19,
+                                        cacheHeight: 19.cacheSize(context),
+                                        semanticLabel: "大会员",
+                                      ),
+                                    ),
+                                ],
+                              )
+                            : ClipOval(
+                                child: Image.asset(
+                                  width: 55,
+                                  height: 55,
+                                  cacheHeight: 55.cacheSize(context),
+                                  Assets.avatarPlaceHolder,
+                                  semanticLabel: "默认头像",
+                                ),
+                              ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                spacing: 6,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      userInfo.uname ?? '点击登录',
+                                      style: theme.textTheme.titleMedium!.copyWith(
+                                        height: 1,
+                                        color: isVip && userInfo.vipType == 2
+                                            ? theme.colorScheme.vipColor
+                                            : null,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Image.asset(
+                                    BiliUtils.levelName(
+                                      levelInfo?.currentLevel ?? 0,
+                                      isSeniorMember: userInfo.isSeniorMember == 1,
+                                    ),
+                                    height: 10,
+                                    cacheHeight: 10.cacheSize(context),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: '硬币 ',
+                                      style: coinLabelStyle,
+                                    ),
+                                    TextSpan(
+                                      text: userInfo.money?.toString() ?? '-',
+                                      style: coinValStyle,
+                                    ),
+                                    TextSpan(
+                                      text: '      经验 ',
+                                      style: coinLabelStyle,
+                                    ),
+                                    TextSpan(
+                                      text: levelInfo?.currentExp?.toString() ?? '-',
+                                      style: coinValStyle,
+                                    ),
+                                    TextSpan(
+                                      text: "/${levelInfo?.nextExp ?? '-'}",
+                                      style: coinLabelStyle,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 225),
+                                child: LinearProgressIndicator(
+                                  minHeight: 2.25,
+                                  value: hasLevel
+                                      ? levelInfo.currentExp! / levelInfo.nextExp!
+                                      : 0,
+                                  backgroundColor: theme.colorScheme.outline.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  valueColor: AlwaysStoppedAnimation<Color>(secondary),
+                                  stopIndicatorColor: Colors.transparent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 20),
-              ],
-            ),
-          ),
           const SizedBox(height: 10),
           Row(
-            mainAxisAlignment: .spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _btn(
                 count: userStat.dynamicCount,
@@ -402,7 +514,8 @@ class _MediaPageState extends CommonPageState<MinePage>
             ],
           ),
         ],
-      );
+      ),
+    );
     });
   }
 
@@ -423,8 +536,8 @@ class _MediaPageState extends CommonPageState<MinePage>
             aspectRatio: 1,
             child: Column(
               spacing: 4,
-              mainAxisSize: .min,
-              mainAxisAlignment: .center,
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   count?.toString() ?? '-',
@@ -466,7 +579,7 @@ class _MediaPageState extends CommonPageState<MinePage>
                     text: '我的收藏  ',
                     style: TextStyle(
                       fontSize: theme.textTheme.titleMedium!.fontSize,
-                      fontWeight: .bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   if (controller.favFolderCount != null)
@@ -517,17 +630,17 @@ class _MediaPageState extends CommonPageState<MinePage>
             height: 200,
             child: ListView.separated(
               controller: controller.scrollController,
-              padding: const .only(left: 20, top: 10, right: 20),
+              padding: const EdgeInsets.only(left: 20, top: 10, right: 20),
               itemCount: response.list.length + (flag ? 1 : 0),
               itemBuilder: (context, index) {
                 if (flag && index == favFolderList.length) {
                   return Padding(
-                    padding: const .only(bottom: 35),
+                    padding: const EdgeInsets.only(bottom: 35),
                     child: Center(
                       child: IconButton(
                         tooltip: '查看更多',
                         style: ButtonStyle(
-                          padding: const WidgetStatePropertyAll(.zero),
+                          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
                           backgroundColor: WidgetStatePropertyAll(
                             theme.colorScheme.secondaryContainer.withValues(
                               alpha: 0.5,
@@ -552,7 +665,7 @@ class _MediaPageState extends CommonPageState<MinePage>
                   );
                 }
               },
-              scrollDirection: .horizontal,
+              scrollDirection: Axis.horizontal,
               separatorBuilder: (_, _) => const SizedBox(width: 14),
             ),
           );
@@ -563,10 +676,11 @@ class _MediaPageState extends CommonPageState<MinePage>
         child: Center(
           child: Text(
             errMsg ?? '',
-            textAlign: .center,
+            textAlign: TextAlign.center,
           ),
         ),
       ),
     };
   }
 }
+

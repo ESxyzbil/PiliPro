@@ -165,7 +165,8 @@ abstract final class SettingBoxKey {
       showWindowTitleBar = 'showWindowTitleBar',
       desktopVolume = 'desktopVolume',
       showTrayIcon = 'showTrayIcon',
-      uiScale = 'uiScale';
+      uiScale = 'uiScale',
+      targetPpi = 'targetPpi';
 
   static const String subtitlePreferenceV2 = 'subtitlePreferenceV2',
       enableDragSubtitle = 'enableDragSubtitle',
@@ -252,7 +253,8 @@ abstract final class SettingBoxKey {
       desktopLyricsStrokeEnabled = 'desktopLyricsStrokeEnabled',
       desktopLyricsStrokeColor = 'desktopLyricsStrokeColor',
       desktopLyricsFontStyle = 'desktopLyricsFontStyle',
-      desktopLyricsTextAlign = 'desktopLyricsTextAlign';
+      desktopLyricsTextAlign = 'desktopLyricsTextAlign',
+      circularScreen = 'circularScreen';
 }
 
 abstract final class LocalCacheKey {

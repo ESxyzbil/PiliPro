@@ -299,27 +299,48 @@ class MyApp extends StatelessWidget {
   }
 
   static Widget _builder(BuildContext context, Widget? child) {
-    final uiScale = Pref.uiScale;
+    final targetPpi = Pref.targetPpi;
     final mediaQuery = MediaQuery.of(context);
     final textScaler = TextScaler.linear(Pref.defaultTextScale);
-    if (uiScale != 1.0) {
+
+    EdgeInsets cirPad(EdgeInsets e) {
+      if (!Pref.circularScreen) return e;
+      final pad = mediaQuery.size.width * 0.24;
+      return e.copyWith(left: e.left + pad, right: e.right + pad);
+    }
+
+    if (targetPpi != null) {
+      final targetDpr = targetPpi / 160.0;
+      final uiScale = targetDpr / mediaQuery.devicePixelRatio;
+      ScaledWidgetsFlutterBinding.instance.scaleFactor = uiScale;
       child = MediaQuery(
         data: mediaQuery.copyWith(
           textScaler: textScaler,
           size: mediaQuery.size / uiScale,
-          padding: tmpPadding ?? mediaQuery.padding / uiScale,
+          padding: tmpPadding ?? cirPad(mediaQuery.padding) / uiScale,
           viewInsets: mediaQuery.viewInsets / uiScale,
           viewPadding: tmpPadding ?? mediaQuery.viewPadding / uiScale,
-          devicePixelRatio: mediaQuery.devicePixelRatio * uiScale,
+          devicePixelRatio: targetDpr,
         ),
         child: child!,
       );
     } else {
+      ScaledWidgetsFlutterBinding.instance.scaleFactor = 1.0;
       child = MediaQuery(
         data: mediaQuery.copyWith(
           textScaler: textScaler,
-          padding: tmpPadding,
-          viewPadding: tmpPadding,
+          padding: tmpPadding ?? cirPad(mediaQuery.padding),
+          viewPadding: tmpPadding ?? mediaQuery.viewPadding,
+        ),
+        child: child!,
+      );
+    }
+    if (Pref.circularScreen) {
+      child = Theme(
+        data: Theme.of(context).copyWith(
+          appBarTheme: Theme.of(context).appBarTheme.copyWith(
+            centerTitle: true,
+          ),
         ),
         child: child!,
       );

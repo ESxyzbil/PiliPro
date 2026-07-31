@@ -664,10 +664,16 @@ abstract final class Pref {
   static double get uiScale =>
       _setting.get(SettingBoxKey.uiScale, defaultValue: 1.0);
 
+  static int? get targetPpi =>
+      _setting.get(SettingBoxKey.targetPpi);
+
   static bool get dynamicsWaterfallFlow => _setting.get(
     SettingBoxKey.dynamicsWaterfallFlow,
     defaultValue: horizontalScreen,
   );
+
+  static bool get circularScreen =>
+      _setting.get(SettingBoxKey.circularScreen, defaultValue: false);
 
   static bool get hideTopBar => _setting.get(
     SettingBoxKey.hideTopBar,

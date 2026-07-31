@@ -137,8 +137,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     bool isLive,
   ) {
     if (!enableBackgroundPlay ||
-        _item.isEmpty ||
-        !PlPlayerController.instanceExists()) {
+        _item.isEmpty) {
       return;
     }
 
@@ -502,8 +501,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
 
   void onPositionChange(Duration position) {
     if (!enableBackgroundPlay ||
-        _item.isEmpty ||
-        !PlPlayerController.instanceExists()) {
+        _item.isEmpty) {
       return;
     }
 

@@ -38,6 +38,7 @@ import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart' hide DraggableScrollableSheet;
@@ -1024,7 +1025,10 @@ class _AudioPageState extends State<AudioPage> {
   }
 
   Widget _buildControls() {
-    return Row(
+    final cir = Pref.circularScreen;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: cir ? MediaQuery.of(context).size.width * Pref.uiScale * 0.12 : 0),
+      child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         Obx(
@@ -1066,6 +1070,7 @@ class _AudioPageState extends State<AudioPage> {
           ),
         ),
       ],
+      ),
     );
   }
 

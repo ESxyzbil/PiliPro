@@ -5,6 +5,7 @@ import 'package:PiliPlus/models/common/setting_type.dart';
 import 'package:PiliPlus/pages/about/view.dart';
 import 'package:PiliPlus/pages/login/controller.dart';
 import 'package:PiliPlus/pages/setting/extra_setting.dart';
+import 'package:PiliPlus/pages/setting/layout_setting.dart';
 import 'package:PiliPlus/pages/setting/pages/desktop_lyrics_page.dart';
 import 'package:PiliPlus/pages/setting/play_setting.dart';
 import 'package:PiliPlus/pages/setting/privacy_setting.dart';
@@ -72,6 +73,11 @@ class _SettingPageState extends State<SettingPage> {
       icon: Icon(Icons.style_outlined),
     ),
     _SettingsModel(
+      type: SettingType.layoutSetting,
+      subtitle: 'PPI、圆形屏幕适配',
+      icon: Icon(Icons.dashboard_outlined),
+    ),
+    _SettingsModel(
       type: SettingType.extraSetting,
       subtitle: '震动、搜索、收藏、ai、评论、动态、代理、更新检查等',
       icon: Icon(Icons.extension_outlined),
@@ -130,6 +136,9 @@ class _SettingPageState extends State<SettingPage> {
                         showAppBar: false,
                       ),
                       SettingType.styleSetting => const StyleSetting(
+                        showAppBar: false,
+                      ),
+                      SettingType.layoutSetting => const LayoutSetting(
                         showAppBar: false,
                       ),
                       SettingType.extraSetting => const ExtraSetting(

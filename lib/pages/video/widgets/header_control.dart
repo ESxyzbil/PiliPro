@@ -1717,9 +1717,22 @@ class HeaderControlState extends State<HeaderControl>
       primary: false,
       automaticallyImplyLeading: false,
       toolbarHeight: showFSActionItem ? 112 : null,
-      flexibleSpace: Column(
+      flexibleSpace: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: Pref.circularScreen
+              ? (View.of(context).physicalSize.width /
+                      View.of(context).devicePixelRatio) *
+                  0.18
+              : 0,
+        ),
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (Pref.circularScreen) ...[
+            const SizedBox(height: 24),
+            const Row(),
+            const SizedBox(height: 8),
+          ],
           const SizedBox(height: 11),
           Row(
             children: [
@@ -2061,6 +2074,7 @@ class HeaderControlState extends State<HeaderControl>
               ],
             ),
         ],
+      ),
       ),
     );
   }

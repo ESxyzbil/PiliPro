@@ -22,6 +22,7 @@ import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -452,6 +453,16 @@ class _MainAppState extends PopScopeState<MainApp>
     Widget? bottomNav;
     if (_mainController.useBottomNav) {
       bottomNav = _bottomNav;
+      if (Pref.circularScreen) {
+        // 圆形屏幕：限制宽度 + 保持在底部，避免内容在有效显示区域外
+        bottomNav = Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            width: 360,
+            child: bottomNav,
+          ),
+        );
+      }
       child = Row(children: [Expanded(child: child)]);
     } else {
       child = Row(
