@@ -79,6 +79,12 @@ class MainController extends GetxController
 
     setNavBarConfig();
 
+    // tab 切换（点击底栏/侧栏/滑动翻页）都同步全局背景层当前 tab
+    ever(selectedIndex, (value) {
+      GlobalBgState.tabIndex.value = value;
+    });
+    GlobalBgState.tabIndex.value = selectedIndex.value;
+
     controller = mainTabBarView
         ? TabController(
             vsync: this,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/flutter/tabs.dart';
@@ -90,6 +91,8 @@ class _MainAppState extends PopScopeState<MainApp>
   @override
   void didPopNext() {
     addObserverMobile(this);
+    // 回到主 tab 页：全局背景层切回 tab 背景
+    GlobalBgState.inMainTab.value = true;
     _mainController
       ..checkUnreadDynamic()
       ..checkDefaultSearch(true)
@@ -100,6 +103,8 @@ class _MainAppState extends PopScopeState<MainApp>
   @override
   void didPushNext() {
     removeObserverMobile(this);
+    // 被二级页面覆盖：全局背景层切到全局背景
+    GlobalBgState.inMainTab.value = false;
     super.didPushNext();
   }
 

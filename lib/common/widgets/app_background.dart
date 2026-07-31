@@ -74,28 +74,44 @@ class GlobalBackgroundLayer extends StatelessWidget {
   }
 }
 
-/// 监听路由 push/pop，维护页面深度：
-/// 深度 <=1 时在主 tab 页，否则在二级页面。不依赖路由名判断。
-/// 只统计 PageRoute（页面），忽略 dialog/toast 等 PopupRoute。
+/// 监听路由 push/pop，同步全局背景层状态：
+/// 顶层是主 tab 页（栈底 first route）时显示 tab 背景，二级页面显示全局背景。
+/// 用 isFirst + name 双保险判断，不依赖 push 计数。
 class BgRouteObserver extends NavigatorObserver {
-  int _depth = 1;
+  static bool _isMainTab(Route<dynamic>? route) {
+    if (route is! PageRoute) return false;
+    return route.isFirst ||
+        route.settings.name == '/' ||
+        route.settings.name == '/main';
+  }
+
+  void _sync(Route<dynamic>? top) {
+    if (top is! PageRoute) return;
+    GlobalBgState.inMainTab.value = _isMainTab(top);
+  }
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-    if (route is PageRoute) {
-      _depth++;
-      GlobalBgState.inMainTab.value = _depth <= 1;
-    }
+    _sync(route);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    if (route is PageRoute) {
-      _depth = (_depth - 1) < 1 ? 1 : _depth - 1;
-      GlobalBgState.inMainTab.value = _depth <= 1;
-    }
+    _sync(previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _sync(newRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    _sync(previousRoute);
   }
 }
 
