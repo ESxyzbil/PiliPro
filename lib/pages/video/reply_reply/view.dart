@@ -178,7 +178,8 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
       body: glassOn
           ? GlassContainer(
               kind: GlassKind.replyPanel,
-              borderRadius: BorderRadius.circular(16),
+              // 不裁剪圆角：模糊层铺满整个 body（含卡片下方/四周），
+              // 完全盖住一级页面的信息
               child: content(),
             )
           : content(),

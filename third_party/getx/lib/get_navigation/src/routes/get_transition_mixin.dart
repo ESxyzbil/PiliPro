@@ -6,6 +6,49 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get/get_navigation/src/routes/default_transitions.dart';
 
+/// 过渡动画：新页面淡入 + 轻微上滑；旧页面同步淡出。
+/// 无 scrim 遮罩，过渡期间露出的区域透明，直接透出背景层。
+class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
+  const FadePreviousPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return FadeTransition(
+      // 上一页淡出：secondaryAnimation 0→1 时 opacity 1→0
+      opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
+        CurvedAnimation(
+          parent: secondaryAnimation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        ),
+      ),
+      child: FadeTransition(
+        // 新页面淡入
+        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
+        child: SlideTransition(
+          // 新页面轻微上滑
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.04),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 mixin GetPageRouteTransitionMixin<T> on PageRoute<T> {
   ValueNotifier<String?>? _previousTitle;
 
@@ -175,9 +218,9 @@ Cannot read the previousTitle for a route that has not yet been installed''',
             child,
           );
         }
-        // Android: ZoomPageTransitionsBuilder 内置 scrim(最大 60% 黑色遮罩),
-        // 会盖住背景层; 改用 OpenUpwards(Material3 默认, 无 scrim)。
-        return const OpenUpwardsPageTransitionsBuilder().buildTransitions(
+        // Android: 自定义过渡——新页面淡入+轻微上滑，旧页面同步淡出；
+        // 无 scrim 遮罩，不会盖住背景层。
+        return const FadePreviousPageTransitionsBuilder().buildTransitions(
           rawRoute,
           context,
           animation,

@@ -53,6 +53,16 @@ class AppBackgroundLayer extends StatelessWidget {
         fit: BoxFit.cover,
         gaplessPlayback: true,
         cacheWidth: (width * dpr).round(),
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          // 背景图加载完成后透明度渐入，避免切换背景/进入页面时生硬出现
+          if (wasSynchronouslyLoaded) return child;
+          return AnimatedOpacity(
+            opacity: frame == null ? 0 : 1,
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOut,
+            child: child,
+          );
+        },
         errorBuilder: (_, __, ___) => ColoredBox(
           color: theme.scaffoldBackgroundColor,
         ),
