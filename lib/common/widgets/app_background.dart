@@ -13,6 +13,31 @@ abstract final class BgNotifier {
   static void notify() => revision.value++;
 }
 
+/// 全局背景层随路由的透明度状态：
+/// 0 = 主 tab 页（有自己的背景层覆盖），1 = 二级页面（透出全局背景）。
+abstract final class BgRouteState {
+  static final ValueNotifier<double> target = ValueNotifier(0.0);
+}
+
+/// 监听路由 push/pop，同步全局背景层透明度，
+/// 让「tab 页背景 → 全局背景」的切换跟随页面过渡动画平滑渐变。
+class BgRouteObserver extends NavigatorObserver {
+  static bool isMainTab(Route<dynamic>? route) =>
+      route?.settings.name == '/';
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    BgRouteState.target.value = isMainTab(route) ? 0.0 : 1.0;
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    BgRouteState.target.value = isMainTab(previousRoute) ? 0.0 : 1.0;
+  }
+}
+
 /// 通用背景填充层：
 /// - [path] 为空时回退到全局背景，再没有则铺主题背景色（保证不透明）
 /// - [opacity] 图片透明度 0~1
@@ -97,6 +122,8 @@ class AppBackgroundLayer extends StatelessWidget {
       return Stack(
         fit: StackFit.expand,
         children: [
+          // 基础底色：透明度为 0 / 图片加载中时保证不露黑
+          ColoredBox(color: theme.colorScheme.surface),
           bg,
           // 可读性遮罩：深色模式更暗
           ColoredBox(

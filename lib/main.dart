@@ -306,6 +306,7 @@ class MyApp extends StatelessWidget {
       navigatorObservers: [
         routeObserver,
         FlutterSmartDialog.observer,
+        BgRouteObserver(),
       ],
       scrollBehavior: PlatformUtils.isDesktop
           ? const CustomScrollBehavior(desktopDragDevices)
@@ -360,11 +361,23 @@ class MyApp extends StatelessWidget {
         child: child!,
       );
     }
-    // 全局背景层：包住整个 Navigator，二级页面也能透出背景
+    // 全局背景层：包住整个 Navigator，二级页面也能透出背景。
+    // 透明度跟随路由状态：tab 页 0，二级页面 1，切换时 450ms 平滑渐变，
+    // 避免「tab 背景 → 全局背景」瞬间跳变
     child = Stack(
       fit: StackFit.expand,
       children: [
-        const AppBackgroundLayer(),
+        ValueListenableBuilder<double>(
+          valueListenable: BgRouteState.target,
+          builder: (context, target, _) => TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: target),
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeOut,
+            builder: (context, opacity, _) => AppBackgroundLayer(
+              opacity: opacity.clamp(0.0, 1.0),
+            ),
+          ),
+        ),
         child!,
       ],
     );
