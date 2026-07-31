@@ -207,10 +207,21 @@ Cannot read the previousTitle for a route that has not yet been installed''',
     // In the middle of a back gesture drag, let the transition be linear to
     // match finger motions.
 
+    final Widget page;
     switch (Get.defaultTransition) {
       case Transition.native:
         if (Platform.isIOS || Platform.isMacOS) {
-          return CupertinoRouteTransitionMixin.buildPageTransitions<T>(
+          page = CupertinoRouteTransitionMixin.buildPageTransitions<T>(
+            rawRoute,
+            context,
+            animation,
+            secondaryAnimation,
+            child,
+          );
+        } else {
+          // Android: 自定义过渡——新页面淡入+轻微上滑，旧页面同步淡出；
+          // 无 scrim 遮罩，不会盖住背景层。
+          page = const FadePreviousPageTransitionsBuilder().buildTransitions(
             rawRoute,
             context,
             animation,
@@ -218,18 +229,9 @@ Cannot read the previousTitle for a route that has not yet been installed''',
             child,
           );
         }
-        // Android: 自定义过渡——新页面淡入+轻微上滑，旧页面同步淡出；
-        // 无 scrim 遮罩，不会盖住背景层。
-        return const FadePreviousPageTransitionsBuilder().buildTransitions(
-          rawRoute,
-          context,
-          animation,
-          secondaryAnimation,
-          child,
-        );
 
       case Transition.cupertino || Transition.cupertinoDialog:
-        return CupertinoRouteTransitionMixin.buildPageTransitions<T>(
+        page = CupertinoRouteTransitionMixin.buildPageTransitions<T>(
           rawRoute,
           context,
           animation,
@@ -238,7 +240,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.leftToRight:
-        return SlideLeftTransition.buildTransitions(
+        page = SlideLeftTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -246,7 +248,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.downToUp:
-        return SlideDownTransition.buildTransitions(
+        page = SlideDownTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -254,7 +256,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.upToDown:
-        return SlideTopTransition.buildTransitions(
+        page = SlideTopTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -262,10 +264,10 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.noTransition:
-        return child;
+        page = child;
 
       case Transition.rightToLeft:
-        return SlideRightTransition.buildTransitions(
+        page = SlideRightTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -273,7 +275,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.zoom:
-        return const ZoomPageTransitionsBuilder().buildTransitions(
+        page = const ZoomPageTransitionsBuilder().buildTransitions(
           rawRoute,
           context,
           animation,
@@ -282,7 +284,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.fadeIn:
-        return FadeInTransition.buildTransitions(
+        page = FadeInTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -290,7 +292,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.rightToLeftWithFade:
-        return RightToLeftFadeTransition.buildTransitions(
+        page = RightToLeftFadeTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -298,7 +300,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.leftToRightWithFade:
-        return LeftToRightFadeTransition.buildTransitions(
+        page = LeftToRightFadeTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -306,7 +308,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.size:
-        return SizeTransitions.buildTransitions(
+        page = SizeTransitions.buildTransitions(
           context,
           animation,
           secondaryAnimation,
@@ -314,7 +316,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.fade:
-        return const FadeUpwardsPageTransitionsBuilder().buildTransitions(
+        page = const FadeUpwardsPageTransitionsBuilder().buildTransitions(
           rawRoute,
           context,
           animation,
@@ -323,7 +325,7 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.topLevel:
-        return const ZoomPageTransitionsBuilder().buildTransitions(
+        page = const ZoomPageTransitionsBuilder().buildTransitions(
           rawRoute,
           context,
           animation,
@@ -332,13 +334,26 @@ Cannot read the previousTitle for a route that has not yet been installed''',
         );
 
       case Transition.circularReveal:
-        return CircularRevealTransition.buildTransitions(
+        page = CircularRevealTransition.buildTransitions(
           context,
           animation,
           secondaryAnimation,
           child,
         );
     }
+    // 统一：旧页面淡出（对所有过渡效果都生效）。
+    // 新页面（最上层）secondaryAnimation 恒为 0，opacity 保持 1 不受影响；
+    // 被覆盖的旧页面 secondaryAnimation 0→1，opacity 1→0 淡出。
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
+        CurvedAnimation(
+          parent: secondaryAnimation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        ),
+      ),
+      child: page,
+    );
   }
 }
 

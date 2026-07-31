@@ -54,7 +54,7 @@ class AppBackgroundLayer extends StatelessWidget {
         gaplessPlayback: true,
         cacheWidth: (width * dpr).round(),
         frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-          // 背景图加载完成后透明度渐入，避免切换背景/进入页面时生硬出现
+          // 背景图加载完成后透明度渐入，避免首次出现生硬
           if (wasSynchronouslyLoaded) return child;
           return AnimatedOpacity(
             opacity: frame == null ? 0 : 1,
@@ -79,10 +79,25 @@ class AppBackgroundLayer extends StatelessWidget {
       if (useOpacity < 1.0) {
         img = Opacity(opacity: useOpacity, child: img);
       }
+      // 背景图路径切换时交叉淡入淡出：key 用路径，
+      // 无论图片是否已缓存，每次切换背景都有过渡
+      final bg = AnimatedSwitcher(
+        duration: const Duration(milliseconds: 450),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          fit: StackFit.expand,
+          children: [...previousChildren, if (currentChild != null) currentChild],
+        ),
+        child: KeyedSubtree(
+          key: ValueKey(bgPath),
+          child: img,
+        ),
+      );
       return Stack(
         fit: StackFit.expand,
         children: [
-          img,
+          bg,
           // 可读性遮罩：深色模式更暗
           ColoredBox(
             color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.18),
