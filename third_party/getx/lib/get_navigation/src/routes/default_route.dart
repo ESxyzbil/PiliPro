@@ -47,7 +47,9 @@ class GetPageRoute<T> extends PageRoute<T>
   final List<Bindings>? bindings;
 
   @override
-  final bool opaque = true;
+  bool get opaque =>
+      animation?.status == AnimationStatus.completed &&
+      secondaryAnimation?.status == AnimationStatus.completed;
 
   @override
   final bool barrierDismissible;

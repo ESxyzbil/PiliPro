@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -181,20 +182,11 @@ class AppBackgroundLayer extends StatelessWidget {
       if (useOpacity < 1.0) {
         img = Opacity(opacity: useOpacity, child: img);
       }
-      // 背景图路径切换时交叉淡入淡出：key 用路径，
-      // 无论图片是否已缓存，每次切换背景都有过渡
-      final bg = AnimatedSwitcher(
-        duration: const Duration(milliseconds: 450),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        layoutBuilder: (currentChild, previousChildren) => Stack(
-          fit: StackFit.expand,
-          children: [...previousChildren, if (currentChild != null) currentChild],
-        ),
-        child: KeyedSubtree(
-          key: ValueKey(bgPath),
-          child: img,
-        ),
+      // 背景图路径切换时：旧图保持不透明垫底，新图淡入覆盖。
+      // 相比交叉淡入淡出，过渡中不会露出底色（避免发白）
+      final bg = _BgSwitcher(
+        keyPath: bgPath,
+        child: img,
       );
       return Stack(
         fit: StackFit.expand,
@@ -209,5 +201,72 @@ class AppBackgroundLayer extends StatelessWidget {
         ],
       );
     });
+  }
+}
+
+/// 背景图切换器：旧图保持不透明垫底，新图淡入覆盖。
+/// 相比 AnimatedSwitcher 的交叉淡入淡出，过渡全程不露底色（不会发白）。
+class _BgSwitcher extends StatefulWidget {
+  const _BgSwitcher({required this.keyPath, required this.child});
+
+  /// 背景路径（变化时触发切换动画）
+  final String keyPath;
+
+  final Widget child;
+
+  @override
+  State<_BgSwitcher> createState() => _BgSwitcherState();
+}
+
+class _BgSwitcherState extends State<_BgSwitcher> {
+  static const _duration = Duration(milliseconds: 450);
+
+  Widget? _prevChild;
+  bool _switching = false;
+  Timer? _timer;
+
+  @override
+  void didUpdateWidget(_BgSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.keyPath != widget.keyPath) {
+      // 旧背景保持不透明垫底，新背景淡入覆盖
+      _prevChild = oldWidget.child;
+      _switching = true;
+      _timer?.cancel();
+      _timer = Timer(_duration, () {
+        if (mounted) {
+          setState(() {
+            _prevChild = null;
+            _switching = false;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_switching && _prevChild != null) _prevChild!,
+        // key 用路径：路径变化时重建，新图 0→1 淡入
+        TweenAnimationBuilder<double>(
+          key: ValueKey(widget.keyPath),
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: _duration,
+          curve: Curves.easeOut,
+          builder: (context, opacity, child) =>
+              Opacity(opacity: opacity, child: child),
+          child: widget.child,
+        ),
+      ],
+    );
   }
 }
