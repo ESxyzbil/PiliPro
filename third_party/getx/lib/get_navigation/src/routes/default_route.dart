@@ -39,7 +39,7 @@ class GetPageRoute<T> extends PageRoute<T>
   });
 
   @override
-  final Duration transitionDuration = const Duration(milliseconds: 300);
+  final Duration transitionDuration = const Duration(milliseconds: 400);
   final GetPageBuilder? page;
   final String? routeName;
   final Bindings? binding;

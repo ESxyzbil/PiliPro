@@ -181,56 +181,71 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
               Widget child,
             ) {
               final Transition? t = Get.defaultTransition;
+              debugPrint('[PBEntrance] t=${t?.name} animDuration=' 
+                  '${animation is Animation<double> ? "?" : "?"}');
+              // 进入/退出分离：GetX transition 的进入动画在 0-60%
+              // （视觉 240ms）内完成，pop 时 reverseCurve（线性）全程
+              // （400ms）。native/fallbackBuilder 走 FadePrevious（内部
+              // 已自带 Interval(0.6)），这里不再二次包装。
+              final Animation<double> entrance =
+                  (t == null || t == Transition.native)
+                      ? animation
+                      : CurvedAnimation(
+                          parent: animation,
+                          curve: const Interval(
+                              0.0, 0.6, curve: Curves.easeOutCubic),
+                          reverseCurve: Curves.linear,
+                        );
               switch (t) {
                 case Transition.noTransition:
                   return NoTransition.buildTransitions(context, Curves.easeOut,
-                      Alignment.center, animation, secondaryAnimation, child);
+                      Alignment.center, entrance, secondaryAnimation, child);
                 case Transition.fade:
                 case Transition.fadeIn:
                   return FadeInTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.cupertino:
                 case Transition.cupertinoDialog:
                   return CupertinoPageTransitionsBuilder().buildTransitions(
-                      route, context, animation, secondaryAnimation, child);
+                      route, context, entrance, secondaryAnimation, child);
                 case Transition.leftToRight:
                   return SlideRightTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.downToUp:
                   return SlideTopTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.upToDown:
                   return SlideDownTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.rightToLeft:
                   return SlideLeftTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.zoom:
                 case Transition.topLevel:
                   // 自定义缩放（无 scrim，避免官方 ZoomPageTransitionsBuilder
                   // 的半透明白色遮罩层）。
                   return FadeTransition(
                     opacity: CurvedAnimation(
-                        parent: animation, curve: Curves.easeInOut),
+                        parent: entrance, curve: Curves.easeInOut),
                     child: ScaleTransition(
                       scale: Tween<double>(begin: 0.9, end: 1.0).animate(
                           CurvedAnimation(
-                              parent: animation, curve: Curves.easeInOut)),
+                              parent: entrance, curve: Curves.easeInOut)),
                       child: child,
                     ),
                   );
                 case Transition.circularReveal:
                   return CircularRevealTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.rightToLeftWithFade:
                   return RightToLeftFadeTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.leftToRightWithFade:
                   return LeftToRightFadeTransition.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.size:
                   return SizeTransitions.buildTransitions(
-                      context, animation, secondaryAnimation, child);
+                      context, entrance, secondaryAnimation, child);
                 case Transition.native:
                   // 官方 PredictiveBackPageTransitionsBuilder 在 material src，
                   // 不引入避免耦合；native 回落为默认自定义淡入淡出。

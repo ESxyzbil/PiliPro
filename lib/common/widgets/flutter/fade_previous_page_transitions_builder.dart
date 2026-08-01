@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 /// 过渡动画：新页面淡入 + 轻微上滑；旧页面先淡出。
 /// 错开时序：前 50% 旧页淡出（新页透明），后 50% 新页淡入（旧页已透明），
@@ -15,9 +15,11 @@ class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
+    // 进入/退出分离：进入动画在 route 动画前 60%（视觉 240ms）内完成，
+    // 退出（pop/commit）用 reverseCurve 全程（400ms），避免松手后动画过快。
     final curved = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutCubic,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
       reverseCurve: Curves.easeInCubic,
     );
     return FadeTransition(
@@ -29,15 +31,16 @@ class FadePreviousPageTransitionsBuilder extends PageTransitionsBuilder {
         ),
       ),
       child: FadeTransition(
-        // 新页面淡入：前 50% 保持透明，后 50% 0→1
+        // 新页面淡入：push 时在 0-60% 内 0→1（视觉 240ms），pop 时反向全程淡出
         opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
           CurvedAnimation(
             parent: animation,
-            curve: const _ShiftCurve(out: false),
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+            reverseCurve: const _ShiftCurve(out: false),
           ),
         ),
         child: SlideTransition(
-          // 新页面轻微上滑
+          // 新页面轻微上滑（进入 0-60% 内完成）
           position: Tween<Offset>(
             begin: const Offset(0, 0.04),
             end: Offset.zero,
