@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get/get_navigation/src/router_report.dart';
 import 'package:get/get_navigation/src/routes/get_transition_mixin.dart';

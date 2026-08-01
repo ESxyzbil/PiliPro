@@ -53,7 +53,30 @@ abstract final class GlobalBgState {
           );
       }
     }
-    return (Pref.globalBg, Pref.globalBgOpacity, Pref.globalBgBlur);
+    // 二级页面：优先全局背景；没有则回退当前 tab 的背景，
+    // 避免 push 页面时背景瞬间变白（globalBg 未设置时 AppBackgroundLayer 铺白色）。
+    if (Pref.globalBg.isNotEmpty) {
+      return (Pref.globalBg, Pref.globalBgOpacity, Pref.globalBgBlur);
+    }
+    switch (tabIndex.value) {
+      case 1:
+        return (
+          Pref.dynamicsBg,
+          Pref.dynamicsBgOpacity,
+          Pref.dynamicsBgBlur,
+        );
+      case 2:
+        return (
+          Pref.mineBg,
+          Pref.mineBgOpacity,
+          Pref.mineBgBlur,
+        );
+    }
+    return (
+      Pref.homeBg,
+      Pref.homeBgOpacity,
+      Pref.homeBgBlur,
+    );
   }
 }
 
@@ -95,24 +118,40 @@ class BgRouteObserver extends NavigatorObserver {
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
     _sync(route);
+    // 旧页淡出：只有 push 不透明页面（PageRoute）时才驱动，
+    // 弹窗（PopupRoute 如回复框）覆盖时旧页保持显示，不淡出。
+    if (route is PageRoute && previousRoute is GetPageRoute) {
+      previousRoute.fadeOutOldPage();
+    }
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
     _sync(previousRoute);
+    // 只有 pop 的是不透明页面（PageRoute）时才恢复旧页淡入；
+    // pop 弹窗时旧页没淡出过，不触发。
+    if (route is PageRoute && previousRoute is GetPageRoute) {
+      previousRoute.fadeInOldPage();
+    }
   }
 
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
     _sync(newRoute);
+    if (oldRoute is GetPageRoute && oldRoute != newRoute) {
+      oldRoute.fadeInOldPage();
+    }
   }
 
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didRemove(route, previousRoute);
     _sync(previousRoute);
+    if (previousRoute is GetPageRoute) {
+      previousRoute.fadeInOldPage();
+    }
   }
 }
 

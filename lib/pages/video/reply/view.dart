@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/skeleton/video_reply.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/sliver/sliver_floating_header.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
@@ -11,6 +12,7 @@ import 'package:PiliPlus/pages/video/reply/controller.dart';
 import 'package:PiliPlus/pages/video/reply/widgets/reply_item_grpc.dart';
 import 'package:PiliPlus/pages/video/reply_reply/view.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:flutter/material.dart';
@@ -91,7 +93,9 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
               key: const PageStorageKey(_VideoReplyPanelState),
               slivers: [
                 SliverFloatingHeaderWidget(
-                  backgroundColor: theme.colorScheme.surface,
+                  backgroundColor: Glass.enabled(GlassKind.replyPanel)
+                      ? Glass.bgColor(theme.colorScheme, GlassKind.replyPanel)
+                      : theme.colorScheme.surface,
                   child: Padding(
                     padding: const .fromLTRB(12, 2.5, 6, 2.5),
                     child: Row(
@@ -135,13 +139,18 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
             ),
             Positioned(
               right: 0,
-              bottom: 0,
+              // 圆形屏幕适配：回复按钮从右下角挪到本页（评论区区域）右上角，
+              // 并离开上边/右边稍大距离（避开右上圆弧）。
+              top: Pref.circularScreen ? 0 : null,
+              bottom: Pref.circularScreen ? null : 0,
               child: SlideTransition(
                 position: fabAnimation,
                 child: Padding(
                   padding: .only(
-                    right: kFloatingActionButtonMargin,
+                    right: kFloatingActionButtonMargin +
+                        (Pref.circularScreen ? 16 : 0),
                     bottom: kFloatingActionButtonMargin + bottom,
+                    top: Pref.circularScreen ? 48 : 0,
                   ),
                   child: FloatingActionButton(
                     heroTag: null,

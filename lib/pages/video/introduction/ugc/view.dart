@@ -93,9 +93,9 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
     final isPortrait = widget.isPortrait;
     final isHorizontal = !isPortrait && widget.isHorizontal;
     return SliverPadding(
+      // 不设左右边距：简介大卡片与下方推荐视频卡片（RelatedVideoPanel
+      // 无左右缩进）同宽贴边，宽度一致。
       padding: const EdgeInsets.only(
-        left: Style.safeSpace,
-        right: Style.safeSpace,
         top: 10,
       ),
       sliver: Obx(

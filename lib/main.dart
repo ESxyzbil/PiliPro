@@ -7,6 +7,7 @@ import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/back_detector.dart';
 import 'package:PiliPlus/common/widgets/custom_toast.dart';
+import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
@@ -105,6 +106,8 @@ Future<void> _initAppPath() async {
 
 void main() async {
   ScaledWidgetsFlutterBinding.ensureInitialized();
+  // 主页（根路由）返回手势消费：让 ColorOS 等系统播放「返回桌面」预测性跟手动画
+  WidgetsBinding.instance.addObserver(RootBackGestureObserver());
   MediaKit.ensureInitialized();
   await _initAppPath();
   try {

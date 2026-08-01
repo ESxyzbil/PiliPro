@@ -83,6 +83,9 @@ class _GlassSettingPageState extends State<GlassSettingPage> {
   Future<void> _set(String key, Object value) async {
     await GStorage.setting.put(key, value);
     Get.updateMyAppTheme();
+    // 毛玻璃设置不影响 ThemeData（除顶栏外），updateMyAppTheme 不会触发本页 rebuild，
+    // 必须手动 setState 刷新开关/数值显示。
+    if (mounted) setState(() {});
   }
 
   Future<void> _showSliderDialog({
