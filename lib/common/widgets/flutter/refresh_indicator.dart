@@ -622,7 +622,11 @@ class RefreshScrollBehavior extends CustomScrollBehavior {
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) {
-    return scrollPhysics;
+    // 信息流需要 Refresh 能力（AlwaysScrollable）也要弹性回弹：
+    // RefreshScrollPhysics 继承 AlwaysScrollableScrollPhysics（Android
+    // 默认 Clamping 硬停），包一层 BouncingScrollPhysics 让信息流也有
+    // iOS/MIUI 风格回弹（08-03 用户反馈信息流没有回弹）。
+    return BouncingScrollPhysics(parent: scrollPhysics);
   }
 
   // 禁用 Android 12+ overscroll stretch：信息流列表被 RefreshIndicator
