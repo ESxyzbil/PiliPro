@@ -117,7 +117,6 @@ class GlassContainer extends StatefulWidget {
 
 class _GlassContainerState extends State<GlassContainer>
     with SingleTickerProviderStateMixin {
-  static DateTime? _maskLog;
   AnimationController? _localCtrl;
 
   @override
@@ -211,15 +210,6 @@ class _GlassContainerState extends State<GlassContainer>
           final double rGlobal =
               glassRevealActive.value ? glassRevealProgress.value : 1.0;
           final double r = rLocal < rGlobal ? rLocal : rGlobal;
-          if (r < 1.0) {
-            final now = DateTime.now();
-            if (_maskLog == null ||
-                now.difference(_maskLog!) >
-                    const Duration(milliseconds: 60)) {
-              _maskLog = now;
-              print('[GlassPush] mask r=${r.toStringAsFixed(2)}');
-            }
-          }
           return buildWithReveal(r);
         },
       );

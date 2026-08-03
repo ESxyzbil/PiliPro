@@ -206,8 +206,6 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
                 (gPredictiveBackInProgress ||
                     route.popGestureInProgress ||
                     phase == _PredictiveBackPhase.commit)) {
-              print('[PBTrans] mount: name=${route.settings.name} '
-                  'isCurrent=${route.isCurrent} phase=$phase');
               return _PredictiveBackSharedElementPageTransition(
                 isDelegatedTransition: true,
                 animation: animation,
@@ -227,8 +225,6 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
               Widget child,
             ) {
               final Transition? t = Get.defaultTransition;
-              debugPrint('[PBEntrance] t=${t?.name} animDuration=' 
-                  '${animation is Animation<double> ? "?" : "?"}');
               // 进入/退出分离：GetX transition 的进入动画在 0-60%
               // （视觉 240ms）内完成，pop 时 reverseCurve（线性）全程
               // （400ms）。native/fallbackBuilder 走 FadePrevious（内部
@@ -721,7 +717,6 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
         _phase != _PredictiveBackPhase.update) {
       return;
     }
-    print('[PBDetector] watchdog: gesture stalled, bounce back & cancel');
     final double from = widget.route.animation?.value ?? 1.0;
     int step = 0;
     _bounceTimer?.cancel();
@@ -748,32 +743,12 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
     phase = _PredictiveBackPhase.start;
     final bool gestureInProgress = !backEvent.isButtonEvent && _isEnabled;
     _gestureSeq++;
-    print('[PBDetector] start#${"_gestureSeq"}: isCurrent=${widget.route.isCurrent} '
-        'popGestureEnabled=${widget.route.popGestureEnabled} '
-        'isFirst=${widget.route.isFirst} canPop=${widget.route.navigator?.canPop()} '
-        'enabled=${_isEnabled} '
-        'anim=${widget.route.animation != null} '
-        'animVal=${widget.route.animation?.value.toStringAsFixed(3)} '
-        'sec=${widget.route.secondaryAnimation != null} '
-        'popInProgress=${widget.route.popGestureInProgress} '
-        'fullscreen=${widget.route.fullscreenDialog} '
-        'willHandle=${widget.route.willHandlePopInternally}');
     if (!gestureInProgress) {
       // 未消费：不 arm watchdog。否则 2 秒后触发 handleCancelBackGesture
       // 会把 userGestureInProgress 复位成 false，打断消费页的 commit 动画
       // （effectivePhase 从 commit 跳回 idle -> 页面跳回复位）。
       if (backEvent.isButtonEvent) {
-        print('[PBDbg] button event, not consuming');
       } else {
-        print('[PBDbg] not enabled: isFirst=${widget.route.isFirst} '
-            'willHandle=${widget.route.willHandlePopInternally} '
-            'fullscreen=${widget.route.fullscreenDialog} '
-            'animDone=${widget.route.animation?.isCompleted} '
-            'secDismissed=${widget.route.secondaryAnimation?.isDismissed} '
-            'popInProgress=${widget.route.popGestureInProgress} '
-            'animNull=${widget.route.animation == null} '
-            'secNull=${widget.route.secondaryAnimation == null} '
-            'isCurrent=${widget.route.isCurrent}');
       }
       return false;
     }
@@ -801,9 +776,6 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
   @override
   void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
     phase = _PredictiveBackPhase.update;
-    print('[PBDetector] update#${"_gestureSeq"}: progress=${backEvent.progress.toStringAsFixed(3)} '
-        'swipe=${backEvent.swipeEdge} enabled=$_isEnabled '
-        'animVal=${widget.route.animation?.value.toStringAsFixed(3)}');
     // 直接同步全局手势进度（不依赖 transition 挂载）：目标页渐显
     // 由 predictiveBackProgress 驱动。popGestureInProgress 在 build 时
     // 可能为 false（ColorOS 时序问题），此时 transition 不挂载，
@@ -821,7 +793,6 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
   void handleCancelBackGesture() {
     _gestureWatchdog?.cancel();
     _bounceTimer?.cancel();
-    print('[PBGESTURE] #${"_gestureSeq"} cancel animVal=${widget.route.animation?.value.toStringAsFixed(3)}');
     phase = _PredictiveBackPhase.cancel;
     // 手势取消：锁定手势最后进度（供 fallback 从手势位置恢复），
     // 然后目标页渐显进度复位（目标页回到完全隐藏）
@@ -849,7 +820,6 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
   void handleCommitBackGesture() {
     _gestureWatchdog?.cancel();
     _bounceTimer?.cancel();
-    print('[PBGESTURE] #${"_gestureSeq"} commit animVal=${widget.route.animation?.value.toStringAsFixed(3)}');
     phase = _PredictiveBackPhase.commit;
 
     // 保证 commit 滑出动画至少 200ms：Navigator 的 reverse 时长 =
@@ -921,9 +891,6 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
 
   @override
   Widget build(BuildContext context) {
-    print('[PBDetector] build: phase=$phase '
-        'popInProgress=${widget.route.popGestureInProgress} '
-        'isCurrent=${widget.route.isCurrent}');
     // commit 后 userGestureInProgress 被 route 复位成 false，但 commit 动画
     // 必须保持 transition（phase=commit），否则被 fallback 替换会从头重播。
     final _PredictiveBackPhase effectivePhase =
@@ -1218,12 +1185,6 @@ class _PredictiveBackSharedElementPageTransitionState
           final now = DateTime.now();
           if (now.difference(_lastCommitLog) > const Duration(milliseconds: 90)) {
             _lastCommitLog = now;
-            print('[PBCommit] anim=${widget.animation.value.toStringAsFixed(3)} '
-                'bounce=${_bounceAnimation.value.toStringAsFixed(3)} '
-                'pos=${_positionAnimation.value.dx.toStringAsFixed(0)},'
-                '${_positionAnimation.value.dy.toStringAsFixed(0)} '
-                'opacity=${_opacityTween.evaluate(_commitAnimation).toStringAsFixed(2)} '
-                'lastDrag=${_lastDrag.dx.toStringAsFixed(0)},${_lastDrag.dy.toStringAsFixed(0)}');
           }
         }
         return Transform.scale(

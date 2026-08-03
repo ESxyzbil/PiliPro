@@ -24,7 +24,6 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     final navigator = Get.key.currentState;
     final bool canPop = navigator?.canPop() ?? true;
     // 调试：确认根路由手势是否到达 Dart（release 用 print 输出到 logcat）
-    print('[RootBackGestureObserver] start gesture: canPop=$canPop');
     // 只有根路由（没有任何可 pop 的 route）才消费；
     // 二级页面交给 Navigator/route 的 PredictiveBack 处理。
     if (navigator != null && !canPop) {
@@ -40,12 +39,10 @@ class RootBackGestureObserver with WidgetsBindingObserver {
 
   @override
   void handleCancelBackGesture() {
-    print('[RootBackGestureObserver] gesture canceled');
   }
 
   @override
   void handleCommitBackGesture() {
-    print('[RootBackGestureObserver] gesture committed, exiting');
     // 手势提交（松手确认返回桌面）：退出 app，系统播放返回桌面动画
     SystemNavigator.pop();
   }
