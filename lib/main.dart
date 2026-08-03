@@ -442,3 +442,34 @@ class _CustomHttpOverrides extends HttpOverrides {
     return client;
   }
 }
+
+/// 禁用 Android 12+ 的 overscroll stretch（列表边界拉伸变形）。
+///
+/// 新版 Flutter 的 [MaterialScrollBehavior] 在 Android 上默认用
+/// [StretchingOverscrollIndicator]：滚动到边界时列表内容被 Transform
+/// 拉伸。此时 BackdropFilter 毛玻璃在拉伸变换下采样异常，模糊效果
+/// 丢失（08-03 用户反馈"到边界变形时模糊丢失"）。
+///
+/// 换回传统 [GlowingOverscrollIndicator]（光晕提示，不拉伸）：
+/// 列表不变形、不拉伸，毛玻璃始终稳定。iOS 保持原生回弹。
+class NoStretchScrollBehavior extends MaterialScrollBehavior {
+  const NoStretchScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    if (details.direction == AxisDirection.up ||
+        details.direction == AxisDirection.down) {
+      return GlowingOverscrollIndicator(
+        axisDirection: details.direction,
+        color: Theme.of(context).colorScheme.primary,
+        notificationPredicate: defaultScrollNotificationPredicate,
+        child: child,
+      );
+    }
+    return super.buildOverscrollIndicator(context, child, details);
+  }
+}

@@ -51,7 +51,21 @@ abstract final class Update {
               child: Text(text),
             );
             return AlertDialog(
-              title: const Text('🎉 发现新版本 '),
+              title: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('🎉 原项目仓库'),
+                  const SizedBox(height: 4),
+                  Text(
+                    '本项目为piliplus的修改版',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.outline,
+                    ),
+                  ),
+                ],
+              ),
               content: SizedBox(
                 height: 280,
                 child: SingleChildScrollView(
@@ -69,7 +83,7 @@ abstract final class Update {
                           '${Constants.sourceCodeUrl}/commits/main',
                         ),
                         child: Text(
-                          "点此查看完整更新(即commit)内容",
+                          '点此查看完整更新(即commit)内容',
                           style: TextStyle(color: colorScheme.primary),
                         ),
                       ),
@@ -89,13 +103,6 @@ abstract final class Update {
                       style: TextStyle(color: colorScheme.outline),
                     ),
                   ),
-                TextButton(
-                  onPressed: SmartDialog.dismiss,
-                  child: Text(
-                    '取消',
-                    style: TextStyle(color: colorScheme.outline),
-                  ),
-                ),
                 if (Platform.isWindows) ...[
                   downloadBtn('zip', ext: 'zip'),
                   downloadBtn('exe', ext: 'exe'),
@@ -104,7 +111,7 @@ abstract final class Update {
                   downloadBtn('deb', ext: 'deb'),
                   downloadBtn('targz', ext: 'tar.gz'),
                 ] else
-                  downloadBtn('Github'),
+                  downloadBtn('确定'),
               ],
             );
           },

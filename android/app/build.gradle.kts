@@ -23,7 +23,7 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionName = "U${flutter.versionCode}"
     }
 
     packagingOptions.jniLibs.useLegacyPackaging = true

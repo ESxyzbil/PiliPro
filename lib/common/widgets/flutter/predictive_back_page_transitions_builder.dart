@@ -1,4 +1,4 @@
-// Copyright 2014 The Flutter Authors. All rights reserved.
+﻿// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,6 +16,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'package:PiliPlus/common/widgets/flutter/fade_previous_page_transitions_builder.dart';
+import 'package:PiliPlus/common/widgets/glass.dart'
+    show glassRevealActive, glassRevealProgress;
 import 'package:get/get.dart' show Get, Transition;
 import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:get/get_navigation/src/routes/default_transitions.dart';
@@ -38,10 +40,52 @@ final ValueNotifier<double> predictiveBackProgress = ValueNotifier<double>(0.0);
 /// 的同步瞬间锁定手势进度，fadeInOldPage 一次性消费它来继承松手状态。
 double gPredictiveBackCommitProgress = -1.0;
 
+/// 最近一次 update 手势进度（backEvent.progress，官方语义 = 目标页渐显
+/// 进度 0→1）。commit 时用它锁定 gPredictiveBackCommitProgress，_syncProgress
+/// 跟手同步也用它。
+///
+/// ⚠️ 不能取 widget.route.animation.value：Pili 自定义 PBDetector 没有像
+/// 官方那样把 route.animation 替换成 _PopGestureProxy（value = progress），
+/// 这里拿到的始终是原始 controller（value = 1 - progress）。手势滑到 0.9
+/// 时取 animation.value 会锁成 0.1 → 目标页 opacity = max(0.1, oldFade) ≈
+/// 0.1 → pop 动画期间目标页几乎全透明 → 露出白色 Navigator 背景
+/// （"返回主页闪白一下" 08-02 用户反馈）。
+double gLastGestureProgress = 0.0;
+
+/// pop 动画（非手势，按钮返回/程序化 pop）中「目标页渐显」进度：
+/// 由被 pop 的当前页驱动（pop 动效结束后 0→1），目标页（被 pop 页的
+/// 下一层）读取，让下层页在返回动效结束后渐显（毛玻璃随页面渐显浮现，
+/// 与进入时同理）。
+///
+/// ⚠️ 必须用全局 Notifier 而非 secondaryAnimation：GetPageRouteTransitionMixin
+/// 的 canTransitionTo 恒返回 false（nextRoute 非 Cupertino），导致 route 的
+/// secondaryAnimation 永远是 kAlwaysDismissedAnimation(0)，无法驱动下层页。
+final ValueNotifier<double> popFadeProgress = ValueNotifier<double>(0.0);
+
+/// pop 动画（非手势）进行中标志：由被 pop 页的 _PopFadeWriter 在
+/// animation reverse 时置 true。目标页在 pop 动效中保持隐藏，
+/// 动效结束后再启动渐显（毛玻璃随页面渐显）。
+/// ⚠️ ValueNotifier：目标页的 AnimatedBuilder 需要监听它来强制隐藏。
+final ValueNotifier<bool> gPopInProgress = ValueNotifier<bool>(false);
+
+/// 已挂载 route 的栈（从底到顶）：_PopFadeWriter 挂载/卸载维护，
+/// 用于 pop 时找目标页（被 pop 页的下一层）。
+/// gRouteBelow 原本的设计从未被赋值（全文件只有定义和读取，恒空），
+/// 导致目标页永远找不到，故用栈记录替代。
+final List<Route<dynamic>> _routeStack = <Route<dynamic>>[];
+
+/// pop 动画的目标页（被 pop 页的下一层）：只有它读 popFadeProgress 渐显，
+/// 避免三级返回（A→B→C，pop C）时更下层页面 A 也跟着一起渐显。
+Route<dynamic>? gPopFadeTarget;
+
 /// 取消手势时锁定的手势最后进度（-1 = 无待继承）。取消动画的 route.animation
 /// 从 0 重播进入（controller 被复位），fallback 用 Tween(begin: 此值, end: 1.0)
 /// 让页面从手势位置平滑恢复（而不是从透明重播进入动画）。
 double gPredictiveBackCancelProgress = -1.0;
+
+/// commit 时被临时拉长的 controller.duration 原值（保证滑出动画最小时长后
+/// 恢复，避免影响后续 push 动画时长）。
+Duration? gPiliCommitBaseCtrlDuration;
 
 /// 全局预测返回手势状态（PBDetector 控制）：
 /// start 消费时置 true，cancel/commit 时置 false。
@@ -121,10 +165,12 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
     Animation<double> secondaryAnimation,
     Widget child,
   ) {
-    // 监听 predictiveBackProgress：pop 动画结束后的 delayed clear（progress -> 0）
-    // 触发重建，重算挂载条件（gPredictiveBackInProgress 已清 -> fallback），
-    // 卸载可能残留的 SharedElement（画面「缩小靠右」锁死）。
-    return _PredictiveBackGestureDetector(
+    // 当前页驱动全局 popFadeProgress（pop 动画中 0→1），供下层目标页
+    // 渐显。所有页面都包一层，但只有 route.isCurrent 时写入。
+    return _PopFadeWriter(
+      route: route,
+      animation: animation,
+      child: _PredictiveBackGestureDetector(
       route: route,
       builder:
           (
@@ -223,7 +269,10 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
                 case Transition.zoom:
                 case Transition.topLevel:
                   // 自定义缩放（无 scrim，避免官方 ZoomPageTransitionsBuilder
-                  // 的半透明白色遮罩层）。
+                  // 的半透明白色遮罩层）。下层页渐显由外层 AnimatedBuilder
+                  // 的 opacity = max(oldFade, 1-sec) 驱动（pop 动画中随
+                  // secondaryAnimation 同步渐显），这里只做本页自己的
+                  // 渐显 + 缩放。
                   return FadeTransition(
                     opacity: CurvedAnimation(
                         parent: entrance, curve: Curves.easeInOut),
@@ -269,12 +318,25 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
             if (mixinRoute is GetPageRouteTransitionMixin) {
               oldFadeAnim = mixinRoute.oldPageFade;
             }
-            final List<Listenable> listenables = [predictiveBackProgress];
+            final List<Listenable> listenables = [
+              predictiveBackProgress,
+              gPopInProgress,
+            ];
             if (oldFadeAnim != null) listenables.add(oldFadeAnim);
+            // pop 动画结束后目标页随 popFadeProgress（当前页驱动 0→1）渐显：
+            // oldFade 的 didPopNext 在 pop 动画完成后才触发，太晚且不可靠；
+            // popFadeProgress 让下层页在返回动效结束后渐显（毛玻璃随页面
+            // 渐显浮现，与进入时同理）。
+            listenables.add(popFadeProgress);
             return AnimatedBuilder(
               animation: Listenable.merge(listenables),
               builder: (context, _) {
-                final double p = predictiveBackProgress.value;
+                // 手势中只有目标页（gPredictiveBackTargetRoute，手势 route
+                // 的下一层）读 predictiveBackProgress：更下层页面若也读 p
+                // 会跟着一起渐显（三级返回时露两层，12:59 用户报告）。
+                final double p = identical(route, gPredictiveBackTargetRoute)
+                    ? predictiveBackProgress.value
+                    : 0.0;
                 double oldFade = 1.0;
                 if (oldFadeAnim != null) oldFade = oldFadeAnim.value;
                 // 手势中（全局 progress 活动）：目标页随手势渐显读 p。
@@ -288,11 +350,19 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
                 // pop 结束又变 0（「渐显后消失」）。
                 // 手势中只让目标页（手势 route 的下一层）渐显：更下层页面
                 // 若也读 p 会跟着一起渐显（三级返回时露两层）。
-                final bool gestureActive = gPredictiveBackInProgress &&
-                    identical(route, gPredictiveBackTargetRoute);
-                final double opacity = (gestureActive || route.isCurrent)
-                    ? (p > oldFade ? p : oldFade).clamp(0.0, 1.0)
-                    : oldFade.clamp(0.0, 1.0);
+                final bool isTarget = identical(route, gPopFadeTarget);
+                final double popFade = isTarget ? popFadeProgress.value : 0.0;
+                // 统一 max(base, popFade)：
+                // - base = max(p, oldFade)：手势进度 / oldFade（didPopNext
+                //   在 pop 动画开始时触发，400ms easeIn 0→1）→ 返回动效中
+                //   目标页随 oldFade 渐显，毛玻璃随页面渐显浮现（与进入时
+                //   X 渐显对称）。
+                // - popFade：pop 动效结束后 0→1（250ms）兜底，万一 oldFade
+                //   未触发也能渐显。
+                // 普通 current 页（isTarget=false）popFade=0，无影响。
+                final double base = p > oldFade ? p : oldFade;
+                final double opacity =
+                    (base > popFade ? base : popFade).clamp(0.0, 1.0);
                 // ?? 取消手势动画：不播放任何动画，页面直接回到完整。
                 // 之前试过 animation（0.797->1.0 淡入，像进入动画）、
                 // Reverse（淡出缩小，像返回动画）都不对——取消时页面
@@ -309,6 +379,7 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
               },
             );
           },
+      ),
     );
   }
 }
@@ -398,6 +469,162 @@ typedef _PredictiveBackGestureDetectorWidgetBuilder =
       PredictiveBackEvent? currentBackEvent,
     );
 
+/// 当前页驱动全局 popFadeProgress（供下层目标页在 pop 动画中渐显）。
+///
+/// pop 动画中 animation 1→0 → progress 0→1（目标页渐显）；
+/// push 动画中 animation 0→1 → progress 1→0（目标页淡出，与 oldFade
+/// 淡出同步）。只有 route.isCurrent 时写入（非当前页的 animation 恒定
+/// 1.0，写 0 会覆盖掉当前页的 progress）。
+///
+/// dispose（被 pop 移除）时复位 progress 与目标页标记。
+class _PopFadeWriter extends StatefulWidget {
+  const _PopFadeWriter({
+    required this.route,
+    required this.animation,
+    required this.child,
+  });
+
+  final Route<dynamic> route;
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  State<_PopFadeWriter> createState() => _PopFadeWriterState();
+}
+
+class _PopFadeWriterState extends State<_PopFadeWriter> {
+  Route<dynamic>? _lockedTarget;
+
+  void _onAnimationStatus(AnimationStatus status) {
+    // 手势跟手阶段（gPredictiveBackInProgress）：完全由
+    // predictiveBackProgress 驱动，不干预（避免把已渐显到手势进度的
+    // 目标页强制隐藏回 0）。commit 后 gPredictiveBackInProgress 已清，
+    // predictiveBackProgress 仍锁定手势进度（>0），但不影响下面的处理。
+    if (gPredictiveBackInProgress) return;
+    if (status == AnimationStatus.forward) {
+      // push 开始：清残留的 pop 渐显状态（旧页淡出由 oldFade 负责，
+      // 残留的目标页/进度会把旧页 opacity 顶死导致不淡出）
+      gPopInProgress.value = false;
+      gPopFadeTarget = null;
+      if (popFadeProgress.value > 0.0) popFadeProgress.value = 0.0;
+      // 毛玻璃渐显复位：push 渐显由 GlassContainer 本地动画驱动
+      // （08-02 重构，不再依赖 didPush 全局 Timer），这里必须复位——
+      // pop 取消回弹也走 forward，不复位会让 glassRevealActive 卡 true，
+      // 目标页被永久遮罩/隐藏（"有时候没有渐显效果"的元凶）。
+      glassRevealActive.value = false;
+      glassRevealProgress.value = 1.0;
+      return;
+    }
+    if (status == AnimationStatus.reverse) {
+      // pop 动画进行中：锁定目标页（栈里本页下面一层），动效中保持隐藏
+      gPopInProgress.value = true;
+      final int idx = _routeStack.indexOf(widget.route);
+      _lockedTarget = idx > 0 ? _routeStack[idx - 1] : null;
+      gPopFadeTarget = _lockedTarget;
+      // 按钮返回（无手势）：pop 动画期间目标页完整显示（不闪白），
+      // 不依赖 oldFade（有时不触发 → 目标页全透明露出白底）。
+      // 不设 glassReveal——当前页还在屏幕上，全局卡片遮罩会把正在
+      // 滑出的当前页内容也盖成透明（08-02 用户反馈）。
+      if (predictiveBackProgress.value <= 0.0) {
+        popFadeProgress.value = 1.0;
+      }
+      return;
+    }
+    if (status == AnimationStatus.dismissed) {
+      // 恢复被临时拉长的 controller.duration（避免影响后续 push 动画时长）
+      if (gPiliCommitBaseCtrlDuration != null) {
+        final AnimationController? ctrl =
+            widget.route is TransitionRoute<dynamic> &&
+                (widget.route as TransitionRoute<dynamic>).animation
+                    is AnimationController
+            ? (widget.route as TransitionRoute<dynamic>).animation!
+                as AnimationController
+            : null;
+        if (ctrl != null) {
+          ctrl.duration = gPiliCommitBaseCtrlDuration;
+        }
+        gPiliCommitBaseCtrlDuration = null;
+      }
+      // pop 动画完成：启动目标页渐显。无论按钮返回还是手势 commit
+      // 都必须启动——目标页 opacity = max(p, oldFade, popFade)，
+      // popFade 从 0 渐显、被 p 顶住 → 从手势进度继续平滑渐显，
+      // 不会跳变；不启动则依赖不可靠的 oldFade，动效被吞 + 闪烁。
+      gPopInProgress.value = false;
+      if (gPopFadeTarget == null) {
+        final int idx = _routeStack.indexOf(widget.route);
+        _lockedTarget = idx > 0 ? _routeStack[idx - 1] : null;
+        gPopFadeTarget = _lockedTarget;
+      }
+      // 返回动效结束后页面直接完整显示（popFade=1.0），不再做任何
+      // 渐显（08-02 用户反馈：返回时毛玻璃模糊效果已就绪，无需再过
+      // 一遍从 0 显现）。push 进入时的渐显由 GlassContainer 本地动画
+      // （infoCard 挂载 450ms）负责，与此无关。
+      popFadeProgress.value = 1.0;
+    }
+  }
+
+  /// 渐显动画：独立 Timer 驱动（不依赖本 state 生命周期）：pop 动画完成瞬间
+  /// 当前页的 overlay entry 会被移除（dispose），Timer 仍继续跑完。
+  /// - 页面透明度渐显：250ms（用户认可的速度，11:36）
+  /// - 毛玻璃/背景模糊渐显（glassReveal）：357ms（250ms / 0.7，
+  ///   用户 12:43 要求放慢到当前速率的 0.7x）
+  @override
+  void initState() {
+    super.initState();
+    // 维护 route 栈（从底到顶）：用于 pop 时找目标页。
+    // 同时补上 gRouteBelow 的赋值（手势路径也在读它）。
+    if (!_routeStack.contains(widget.route)) {
+      _routeStack.add(widget.route);
+      final int idx = _routeStack.indexOf(widget.route);
+      if (idx > 0) {
+        gRouteBelow[widget.route] = _routeStack[idx - 1];
+      }
+    }
+    // 只挂 status listener，不主动调用：新页挂载时 status=dismissed
+    //（动画未开始），不应触发渐显。
+    widget.animation.addStatusListener(_onAnimationStatus);
+  }
+
+  @override
+  void didUpdateWidget(_PopFadeWriter oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animation != oldWidget.animation) {
+      oldWidget.animation.removeStatusListener(_onAnimationStatus);
+      widget.animation.addStatusListener(_onAnimationStatus);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_onAnimationStatus);
+    _routeStack.remove(widget.route);
+    // ⚠️ 不 cancel _fadeTimer：pop 完成瞬间启动的渐显由 Timer 独立驱动，
+    // dispose 后继续跑完 250ms 让目标页渐显完成。
+    // 延迟复位：等目标页 oldFade（didPopNext 触发 0→1）接管后再清，
+    // 且只在目标页仍是本页锁定的目标时清（防止覆盖新 push 的 progress）。
+    final Route<dynamic>? locked = _lockedTarget;
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      if (identical(gPopFadeTarget, locked)) {
+        gPopFadeTarget = null;
+        if (popFadeProgress.value > 0.0) popFadeProgress.value = 0.0;
+      }
+      if (identical(gPredictiveBackTargetRoute, locked)) {
+        gPredictiveBackTargetRoute = null;
+      }
+      gPopInProgress.value = false;
+      // 毛玻璃遮罩兜底复位（保留：无害，pop 渐显已移除）。
+      if (!glassRevealActive.value) {
+        glassRevealActive.value = false;
+        glassRevealProgress.value = 1.0;
+      }
+    });
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// The phases of a predictive back gesture.
 enum _PredictiveBackPhase {
   /// There is no active predictive back gesture in progress.
@@ -432,6 +659,10 @@ class _PredictiveBackGestureDetector extends StatefulWidget {
 
 class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDetector>
     with WidgetsBindingObserver {
+  /// 手势前的 route animation controller（手势中 route.animation 被换成
+  /// _PopGestureProxy，cast 不到 controller；在手势开始前记录）。
+  AnimationController? _routeAnimCtrl;
+
   /// 手势序号（诊断用）：每次 start 递增，跨实例累计。
   static int _gestureSeq = 0;
 
@@ -549,6 +780,10 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
 
     // 手势开始：目标页从透明渐显（避免上次手势残留的进度导致闪变）
     predictiveBackProgress.value = 0.0;
+    // 记录手势前的 route animation controller（手势中 route.animation 被
+    // 替换成 _PopGestureProxy，拿不到 controller；这里趁 proxy 替换前记录）
+    final Animation<double>? anim0 = widget.route.animation;
+    if (anim0 is AnimationController) _routeAnimCtrl = anim0;
     // ⚠️ progress 参数 = 目标页渐显进度（官方语义），route 内部会 1-progress
     // 设当前页动画。之前传 1-progress 导致 start 时当前页动画瞬间 dismissed
     // （controller=0），系统检测异常放弃预测 -> 触发率低。
@@ -574,6 +809,7 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
     // 可能为 false（ColorOS 时序问题），此时 transition 不挂载，
     // _syncProgress 不跑，必须在这里直接更新。
     // backEvent.progress 即目标页渐显进度（0→1）。
+    gLastGestureProgress = backEvent.progress;
     predictiveBackProgress.value = backEvent.progress;
     // ⚠️ 同 start：传目标页渐显进度，不要 1-progress（否则当前页动画位置全错）
     widget.route.handleUpdateBackGestureProgress(progress: backEvent.progress);
@@ -592,6 +828,9 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
     gPredictiveBackCancelProgress = predictiveBackProgress.value;
     predictiveBackProgress.value = 0.0;
     gPredictiveBackInProgress = false;
+    // 取消手势：目标页不再读 p（避免残留导致后续按钮 pop 时目标页
+    // 透明度被旧锁定值顶住）
+    gPredictiveBackTargetRoute = null;
 
     widget.route.handleCancelBackGesture();
     startBackEvent = currentBackEvent = null;
@@ -613,13 +852,31 @@ class _PredictiveBackGestureDetectorState extends State<_PredictiveBackGestureDe
     print('[PBGESTURE] #${"_gestureSeq"} commit animVal=${widget.route.animation?.value.toStringAsFixed(3)}');
     phase = _PredictiveBackPhase.commit;
 
-    // 锁定手势最后进度：route.animation 是 _PopGestureProxy（value = 1 -
-    // controller = progress），所以直接取 animation.value 就是手势进度。
-    // ⚠️ 不能 1-animation：proxy 已是 progress，取补会继承 1-progress（反）。
-    gPredictiveBackCommitProgress = widget.route.animation?.value ?? 0.0;
+    // 保证 commit 滑出动画至少 200ms：Navigator 的 reverse 时长 =
+    // controller.value（= 1 - progress，剩余动画比例）× controller.duration。
+    // 手势滑得远时（progress 接近 1，controller.value 接近 0）剩余动画极短
+    // （如 0.09 × 400ms ≈ 36ms）→ "松手后几乎瞬间滑出"。
+    // 临时拉长 controller.duration，让 reverse 至少 200ms。
+    // （二级返回手势滑得少、剩余 >200ms 时不受影响。）
+    if (_routeAnimCtrl != null) {
+      final double remain = _routeAnimCtrl!.value;
+      final int baseMs = widget.route.transitionDuration.inMilliseconds;
+      if (remain > 0.02 && (remain * baseMs).round() < 200) {
+        gPiliCommitBaseCtrlDuration = _routeAnimCtrl!.duration;
+        _routeAnimCtrl!.duration =
+            Duration(milliseconds: (200 / remain).round());
+      }
+    }
+
+    // 锁定手势最后进度：用 update 阶段记录的 backEvent.progress（官方
+    // 语义 = 目标页渐显进度）。⚠️ 不能取 widget.route.animation.value：
+    // Pili 自定义 detector 未替换 _PopGestureProxy，animation 是原始
+    // controller（value = 1 - progress），取它会把进度锁成 1-progress
+    // （≈0.1）→ 目标页 opacity 掉到 0.1 → 返回瞬间露白色背景（闪白）。
+    gPredictiveBackCommitProgress = gLastGestureProgress;
     // commit 时锁定全局手势进度：pop 后目标页 opacity = max(progress, oldFade)
     // 兜底，防止 fadeInOldPage 继承前的瞬间黑帧/跳变。
-    predictiveBackProgress.value = gPredictiveBackCommitProgress;
+    predictiveBackProgress.value = gLastGestureProgress;
     gPredictiveBackInProgress = false;
     widget.route.handleCommitBackGesture();
     startBackEvent = currentBackEvent = null;
@@ -712,13 +969,22 @@ class _PredictiveBackSharedElementPageTransition extends StatefulWidget {
 
 class _PredictiveBackSharedElementPageTransitionState
     extends State<_PredictiveBackSharedElementPageTransition>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   // Constants as per the motion specs
   // https://developer.android.com/design/ui/mobile/guides/patterns/predictive-back#motion-specs
   static const double _kMinScale = 0.90;
   static const double _kDivisionFactor = 20.0;
   static const double _kMargin = 8.0;
   static const double _kYPositionFactor = 0.1;
+
+  /// commit 阶段的独立动画控制器：松手后从手势位置完整滑出屏幕外
+  /// （200ms）。不依赖 route 动画的剩余区间——手势滑得远时剩余区间极小
+  /// （controller.value 接近 0），用 route 动画驱动位置会被
+  /// [_kCommitInterval] clamp 到终点，页面"瞬间消失、动效不见"。
+  late final AnimationController _commitCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
 
   // The duration of the commit transition.
   //
@@ -800,7 +1066,9 @@ class _PredictiveBackSharedElementPageTransitionState
 
   void _updateAnimations(Size screenSize) {
     _animation.parent = switch (widget.phase) {
-      _PredictiveBackPhase.commit => _curvedAnimationReversed,
+      // commit 用独立 200ms 控制器（0→1 完整播放），避免 route 动画
+      // 剩余区间被 Interval clamp 导致页面瞬间消失。
+      _PredictiveBackPhase.commit => _commitCtrl,
       _ => widget.animation,
     };
 
@@ -811,7 +1079,7 @@ class _PredictiveBackSharedElementPageTransitionState
       _PredictiveBackPhase.commit => Tween<double>(
         begin: _lastBounceAnimationValue,
         end: 1.0,
-      ).animate(_curvedAnimation!),
+      ).animate(_commitCtrl),
       // 非 commit：widget.animation 是 proxy（value=progress），直接用
       // progress 驱动 scale（progress=0 -> 1.0，progress=1 -> 0.9）。
       // ⚠️ 官方用 ReverseAnimation 是假设 animation=controller(1-progress)，
@@ -821,7 +1089,7 @@ class _PredictiveBackSharedElementPageTransitionState
     };
 
     _commitAnimation.parent = switch (widget.phase) {
-      _PredictiveBackPhase.commit => _animation,
+      _PredictiveBackPhase.commit => _commitCtrl,
       _ => kAlwaysDismissedAnimation,
     };
 
@@ -894,12 +1162,12 @@ class _PredictiveBackSharedElementPageTransitionState
     if (!gPredictiveBackInProgress) {
       return;
     }
-    // 手势中 widget.animation 是 _PopGestureProxy（value = 1 - controller =
-    // progress，官方代理反向），所以 progress = animation.value 本身（0→1）。
-    // ⚠️ 不能写 1 - animation：proxy 已经是 progress，再取补就是 1-progress，
-    // 导致目标页 opacity = max(1-progress, 0) 渐隐（动效全反）。
-    final double v = widget.animation.value;
-    predictiveBackProgress.value = v;
+    // 手势中 widget.animation 是官方 _PopGestureProxy（value = 1 - controller =
+    // progress，官方代理反向）。但 Pili 自定义 detector 未替换 proxy，
+    // widget.animation 是原始 controller（value = 1 - progress），取它会写反
+    // （1-progress）→ 目标页 opacity = max(1-progress, ...) 渐隐（动效全反）。
+    // 统一用 update 阶段记录的 backEvent.progress（官方语义 = 目标页渐显进度）。
+    predictiveBackProgress.value = gLastGestureProgress;
   }
 
   @override
@@ -918,6 +1186,8 @@ class _PredictiveBackSharedElementPageTransitionState
       _updateCurvedAnimations();
     }
     if (widget.phase != oldWidget.phase && widget.phase == _PredictiveBackPhase.commit) {
+      // 松手 commit：独立 200ms 动画从 0→1 完整播放（位置从手势处滑出屏幕外）
+      _commitCtrl.forward(from: 0);
       _updateAnimations(MediaQuery.sizeOf(context));
     }
   }
@@ -934,6 +1204,7 @@ class _PredictiveBackSharedElementPageTransitionState
     widget.animation.removeListener(_syncProgress);
     _curvedAnimation!.dispose();
     _curvedAnimationReversed!.dispose();
+    _commitCtrl.dispose();
     super.dispose();
   }
 
