@@ -76,3 +76,29 @@ class ReloadScrollPhysics extends AlwaysScrollableScrollPhysics {
     );
   }
 }
+
+
+/// 禁用 Android 12+ 的 overscroll stretch（列表边界拉伸变形）。
+///
+/// 滚动到边界时直接钳制停止：不拉伸（避免信息流卡片变形 + 毛玻璃
+/// 在拉伸变换下采样异常）、不画光晕（GlowingOverscrollIndicator 在
+/// 毛玻璃列表上合成开销大，08-03 实测卡顿）。零额外合成开销。
+///
+/// [getScrollPhysics] 返回 [ClampingScrollPhysics]：Android 传统"硬停"
+/// 手感；[buildOverscrollIndicator] 直接返回 child：不绘制任何指示器。
+class NoStretchScrollBehavior extends MaterialScrollBehavior {
+  const NoStretchScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      const ClampingScrollPhysics();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+}

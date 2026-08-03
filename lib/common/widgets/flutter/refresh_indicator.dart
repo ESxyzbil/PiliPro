@@ -624,4 +624,17 @@ class RefreshScrollBehavior extends CustomScrollBehavior {
   ScrollPhysics getScrollPhysics(BuildContext context) {
     return scrollPhysics;
   }
+
+  // 禁用 Android 12+ overscroll stretch：信息流列表被 RefreshIndicator
+  // 包裹，若沿用 MaterialScrollBehavior 默认的 StretchingOverscrollIndicator，
+  // 滚动到边界仍会把信息流卡片拉伸变形（+ 毛玻璃采样异常，08-03 定位）。
+  // 直接返回 child：不画任何 overscroll 指示器，零合成开销。
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
 }

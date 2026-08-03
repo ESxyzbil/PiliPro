@@ -11,6 +11,7 @@ import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart'
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
+import 'package:PiliPlus/common/widgets/scroll_physics.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
@@ -313,7 +314,7 @@ class MyApp extends StatelessWidget {
       ],
       scrollBehavior: PlatformUtils.isDesktop
           ? const CustomScrollBehavior(desktopDragDevices)
-          : null,
+          : const NoStretchScrollBehavior(),
     );
   }
 
@@ -373,6 +374,16 @@ class MyApp extends StatelessWidget {
         const GlobalBackgroundLayer(),
         child!,
       ],
+    );
+    // 强制禁用 Android overscroll stretch：GetMaterialApp 的 scrollBehavior
+    // 参数可能被 Get 内部包装覆盖（信息流列表实测滚到边界仍拉伸变形，
+    // 08-03 定位）。builder 里强制包 ScrollConfiguration，Navigator 内
+    // 所有 Scrollable 都用 NoStretch（除非页面自己再包一层）。
+    child = ScrollConfiguration(
+      behavior: PlatformUtils.isDesktop
+          ? const CustomScrollBehavior(desktopDragDevices)
+          : const NoStretchScrollBehavior(),
+      child: child,
     );
     if (PlatformUtils.isDesktop) {
       return BackDetector(
@@ -452,24 +463,3 @@ class _CustomHttpOverrides extends HttpOverrides {
 ///
 /// 换回传统 [GlowingOverscrollIndicator]（光晕提示，不拉伸）：
 /// 列表不变形、不拉伸，毛玻璃始终稳定。iOS 保持原生回弹。
-class NoStretchScrollBehavior extends MaterialScrollBehavior {
-  const NoStretchScrollBehavior();
-
-  @override
-  Widget buildOverscrollIndicator(
-    BuildContext context,
-    Widget child,
-    ScrollableDetails details,
-  ) {
-    if (details.direction == AxisDirection.up ||
-        details.direction == AxisDirection.down) {
-      return GlowingOverscrollIndicator(
-        axisDirection: details.direction,
-        color: Theme.of(context).colorScheme.primary,
-        notificationPredicate: defaultScrollNotificationPredicate,
-        child: child,
-      );
-    }
-    return super.buildOverscrollIndicator(context, child, details);
-  }
-}
