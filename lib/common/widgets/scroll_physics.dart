@@ -84,14 +84,19 @@ class ReloadScrollPhysics extends AlwaysScrollableScrollPhysics {
 /// 在拉伸变换下采样异常）、不画光晕（GlowingOverscrollIndicator 在
 /// 毛玻璃列表上合成开销大，08-03 实测卡顿）。零额外合成开销。
 ///
-/// [getScrollPhysics] 返回 [ClampingScrollPhysics]：Android 传统"硬停"
+/// [getScrollPhysics] 返回 [BouncingScrollPhysics]：iOS/MIUI 风格弹性
+/// 回弹（拖到边界有阻力跟随，松手弹回）；[buildOverscrollIndicator]
+/// 直接返回 child：不绘制任何指示器（无拉伸、无光晕、零合成开销）。
 /// 手感；[buildOverscrollIndicator] 直接返回 child：不绘制任何指示器。
 class NoStretchScrollBehavior extends MaterialScrollBehavior {
   const NoStretchScrollBehavior();
 
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
-      const ClampingScrollPhysics();
+      // iOS/MIUI 风格弹性回弹：拖到边界有阻力跟随，松手后阻尼弹回，
+      // 不再是生硬的钳制硬停（08-03 用户反馈"突然停下有点生硬"）。
+      // 弹跳是整体位移（不拉伸内容），毛玻璃 BackdropFilter 采样正常。
+      const BouncingScrollPhysics();
 
   @override
   Widget buildOverscrollIndicator(
