@@ -72,9 +72,11 @@ class _SendDanmakuPanelState extends CommonTextPubPageState<SendDanmakuPanel> {
     _mode = (widget.dmConfig?.mode ?? 1).obs;
     _fontSize = (widget.dmConfig?.fontSize ?? 25).obs;
     _color = (widget.dmConfig?.color ?? Colors.white).obs;
-    if (Pref.userInfoCache?.vipStatus == 1) {
-      _colorList.add(Colors.transparent);
-    }
+    // 大会员专属渐变弹幕（粉→蓝，Colors.transparent 项）：无条件显示，
+    // 不再按 vipStatus 限制——userInfoCache 可能未刷新/为 null 导致
+    // 大会员也看不到（08-04 用户要求弹幕样式包括大会员专属颜色）。
+    // 是否可用由服务端按会员状态校验（发送失败会 toast 提示）。
+    _colorList.add(Colors.transparent);
   }
 
   @override

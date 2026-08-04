@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/skeleton/msg_feed_top.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
@@ -98,80 +99,84 @@ class _AtMePageState extends State<AtMePage> {
                     title: const Text('确定删除该通知?'),
                     onConfirm: () => _atMeController.onRemove(item.id!, index),
                   );
-                  return ListTile(
-                    safeArea: true,
-                    onTap: () {
-                      String? nativeUri = item.item?.nativeUri;
-                      if (nativeUri == null ||
-                          nativeUri.isEmpty ||
-                          nativeUri.startsWith('?')) {
-                        return;
-                      }
-                      PiliScheme.routePushFromUrl(nativeUri);
-                    },
-                    onLongPress: onLongPress,
-                    onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
-                    leading: GestureDetector(
-                      onTap: () => Get.toNamed('/member?mid=${item.user?.mid}'),
-                      child: NetworkImgLayer(
-                        width: 45,
-                        height: 45,
-                        type: ImageType.avatar,
-                        src: item.user?.avatar,
+                  return GlassContainer(
+                    kind: GlassKind.infoCard,
+                    borderRadius: BorderRadius.circular(12),
+                    child:                   ListTile(
+                      safeArea: true,
+                      onTap: () {
+                        String? nativeUri = item.item?.nativeUri;
+                        if (nativeUri == null ||
+                            nativeUri.isEmpty ||
+                            nativeUri.startsWith('?')) {
+                          return;
+                        }
+                        PiliScheme.routePushFromUrl(nativeUri);
+                      },
+                      onLongPress: onLongPress,
+                      onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
+                      leading: GestureDetector(
+                        onTap: () => Get.toNamed('/member?mid=${item.user?.mid}'),
+                        child: NetworkImgLayer(
+                          width: 45,
+                          height: 45,
+                          type: ImageType.avatar,
+                          src: item.user?.avatar,
+                        ),
                       ),
-                    ),
-                    title: Text.rich(
-                      TextSpan(
+                      title: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: "${item.user?.nickname}",
+                              style: theme.textTheme.titleSmall!.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            TextSpan(
+                              text: " 在${item.item?.business}中@了我",
+                              style: theme.textTheme.titleSmall!.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TextSpan(
-                            text: "${item.user?.nickname}",
-                            style: theme.textTheme.titleSmall!.copyWith(
-                              color: theme.colorScheme.primary,
+                          if (item.item?.sourceContent?.isNotEmpty == true) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              item.item!.sourceContent!,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium!.copyWith(
+                                color: theme.colorScheme.outline,
+                              ),
                             ),
-                          ),
-                          TextSpan(
-                            text: " 在${item.item?.business}中@了我",
-                            style: theme.textTheme.titleSmall!.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (item.item?.sourceContent?.isNotEmpty == true) ...[
+                          ],
                           const SizedBox(height: 4),
                           Text(
-                            item.item!.sourceContent!,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                            DateFormatUtils.dateFormat(item.atTime),
                             style: theme.textTheme.bodyMedium!.copyWith(
+                              fontSize: 13,
                               color: theme.colorScheme.outline,
                             ),
                           ),
                         ],
-                        const SizedBox(height: 4),
-                        Text(
-                          DateFormatUtils.dateFormat(item.atTime),
-                          style: theme.textTheme.bodyMedium!.copyWith(
-                            fontSize: 13,
-                            color: theme.colorScheme.outline,
-                          ),
-                        ),
-                      ],
+                      ),
+                      trailing: item.item?.image?.isNotEmpty == true
+                          ? NetworkImgLayer(
+                              width: 45,
+                              height: 45,
+                              src: item.item?.image,
+                              borderRadius: const BorderRadius.all(
+                                Radius.circular(8),
+                              ),
+                            )
+                          : null,
                     ),
-                    trailing: item.item?.image?.isNotEmpty == true
-                        ? NetworkImgLayer(
-                            width: 45,
-                            height: 45,
-                            src: item.item?.image,
-                            borderRadius: const BorderRadius.all(
-                              Radius.circular(8),
-                            ),
-                          )
-                        : null,
                   );
                 },
                 separatorBuilder: (context, index) => divider,

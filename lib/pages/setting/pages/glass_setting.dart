@@ -70,9 +70,9 @@ class _GlassSettingPageState extends State<GlassSettingPage> {
     ),
     const _KindConfig(
       kind: GlassKind.replyPanel,
-      icon: Icons.forum_outlined,
-      title: '回复面板毛玻璃',
-      subtitle: '评论回复弹层半透明模糊，提升可读性',
+      icon: Icons.wallpaper_outlined,
+      title: '后景毛玻璃',
+      subtitle: '音频页等全屏背景半透明模糊（原回复面板）',
       enabledKey: SettingBoxKey.glassReplyPanel,
       blurKey: SettingBoxKey.glassReplyPanelBlur,
       opacityKey: SettingBoxKey.glassReplyPanelOpacity,

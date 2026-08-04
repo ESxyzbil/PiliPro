@@ -4,6 +4,7 @@ import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/gesture/tap_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/hero.dart';
@@ -194,30 +195,61 @@ class _AudioPageState extends State<AudioPage> {
           const SizedBox(width: 5),
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.only(
-          left: 20 + padding.left,
-          right: 20 + padding.right,
-          bottom: 30 + padding.bottom,
-        ),
-        child: isPortrait
+      body: Stack(
+        children: [
+          // 全屏后景毛玻璃：跟随后景（原回复面板）设置
+          Positioned.fill(
+            child: GlassContainer(
+              kind: GlassKind.replyPanel,
+              borderRadius: BorderRadius.zero,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          isPortrait
             ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Obx(
-                      () => _controller.showCoverInfo.value
-                          ? _buildInfo(colorScheme, isPortrait)
-                          : _buildNewPage(colorScheme, isPortrait),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: 20 + padding.left,
+                        right: 20 + padding.right,
+                      ),
+                      child: Obx(
+                        () => _controller.showCoverInfo.value
+                            ? _buildInfo(colorScheme, isPortrait)
+                            : _buildNewPage(colorScheme, isPortrait),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 25),
-                  _buildProgressBar(colorScheme),
-                  _buildDuration(colorScheme),
-                  _buildControls(),
+                  // 底部整个区域铺满顶栏毛玻璃（全宽、无圆角卡片）
+                  GlassContainer(
+                    kind: GlassKind.topBar,
+                    borderRadius: BorderRadius.zero,
+                    padding: EdgeInsets.only(
+                      left: 20 + padding.left,
+                      right: 20 + padding.right,
+                      top: 18,
+                      bottom: 30 + padding.bottom,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildProgressBar(colorScheme),
+                        _buildDuration(colorScheme),
+                        _buildControls(),
+                      ],
+                    ),
+                  ),
                 ],
               )
-            : Row(
+            : Padding(
+                padding: EdgeInsets.only(
+                  left: 20 + padding.left,
+                  right: 20 + padding.right,
+                  bottom: 30 + padding.bottom,
+                ),
+                child: Row(
                 spacing: 12,
                 children: [
                   Expanded(
@@ -240,14 +272,30 @@ class _AudioPageState extends State<AudioPage> {
                           return const SizedBox.shrink();
                         }),
                         const SizedBox(height: 25),
-                        _buildProgressBar(colorScheme),
-                        _buildDuration(colorScheme),
-                        _buildControls(),
+                        SizedBox(
+                          width: double.infinity,
+                          child: GlassContainer(
+                            kind: GlassKind.topBar,
+                            borderRadius: BorderRadius.circular(16),
+                            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildProgressBar(colorScheme),
+                                _buildDuration(colorScheme),
+                                _buildControls(),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
+          ),
+        ],
       ),
     );
   }

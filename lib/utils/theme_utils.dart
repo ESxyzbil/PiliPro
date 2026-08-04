@@ -161,6 +161,13 @@ abstract final class ThemeUtils {
           // 新页面淡入+轻微上滑，旧页面同步淡出；
           // 无 scrim 遮罩，过渡动画期间露出的区域透明，直接透出背景层
           TargetPlatform.android: PiliPredictiveBackPageTransitionsBuilder(),
+          // 桌面端同样注册：Get 路由的 secondaryAnimation 恒为 0
+          // （GetPageRouteTransitionMixin.canTransitionTo 返回 false），
+          // 默认 builder 不会让旧页淡出；Pili builder 的 oldPageFade
+          // 机制不依赖平台（无预测返回手势时自然走 fallback）。
+          TargetPlatform.windows: PiliPredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.macOS: PiliPredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.linux: PiliPredictiveBackPageTransitionsBuilder(),
         },
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/skeleton/msg_feed_top.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
@@ -248,107 +249,111 @@ class _LikeMePageState extends State<LikeMePage> {
         );
       },
     );
-    return ListTile(
-      safeArea: true,
-      onTap: () {
-        String? nativeUri = item.item?.nativeUri;
-        bool isInvalid =
-            nativeUri == null || nativeUri.isEmpty || nativeUri.startsWith('?');
-        if (item.counts! > 1) {
-          Get.toNamed(
-            'msgLikeDetail',
-            arguments: {
-              'id': item.id!.toString(),
-              if (!isInvalid) 'uri': nativeUri,
-              'counts': item.counts,
-            },
-          );
-          return;
-        }
-        if (isInvalid) {
-          return;
-        }
-        PiliScheme.routePushFromUrl(nativeUri);
-      },
-      onLongPress: onLongPress,
-      onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
-      leading: avatar,
-      title: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: firstUser.nickname,
-              style: theme.textTheme.titleSmall!.copyWith(
-                height: 1.5,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-            if (item.counts! > 1)
+    return GlassContainer(
+      kind: GlassKind.infoCard,
+      borderRadius: BorderRadius.circular(12),
+      child:     ListTile(
+        safeArea: true,
+        onTap: () {
+          String? nativeUri = item.item?.nativeUri;
+          bool isInvalid =
+              nativeUri == null || nativeUri.isEmpty || nativeUri.startsWith('?');
+          if (item.counts! > 1) {
+            Get.toNamed(
+              'msgLikeDetail',
+              arguments: {
+                'id': item.id!.toString(),
+                if (!isInvalid) 'uri': nativeUri,
+                'counts': item.counts,
+              },
+            );
+            return;
+          }
+          if (isInvalid) {
+            return;
+          }
+          PiliScheme.routePushFromUrl(nativeUri);
+        },
+        onLongPress: onLongPress,
+        onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
+        leading: avatar,
+        title: Text.rich(
+          TextSpan(
+            children: [
               TextSpan(
-                text: ' 等${item.counts}人',
+                text: firstUser.nickname,
                 style: theme.textTheme.titleSmall!.copyWith(
-                  fontSize: 12,
+                  height: 1.5,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              if (item.counts! > 1)
+                TextSpan(
+                  text: ' 等${item.counts}人',
+                  style: theme.textTheme.titleSmall!.copyWith(
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              TextSpan(
+                text: ' 赞了我的${item.item?.business}',
+                style: theme.textTheme.titleSmall!.copyWith(
+                  height: 1.5,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (item.item?.title?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Text(
+                item.item!.title!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  color: theme.colorScheme.outline,
                   height: 1.5,
                 ),
               ),
-            TextSpan(
-              text: ' 赞了我的${item.item?.business}',
-              style: theme.textTheme.titleSmall!.copyWith(
-                height: 1.5,
-                color: theme.colorScheme.onSurfaceVariant,
+            ],
+            const SizedBox(height: 4),
+            Text(
+              DateFormatUtils.dateFormat(item.likeTime),
+              style: theme.textTheme.bodyMedium!.copyWith(
+                fontSize: 13,
+                color: theme.colorScheme.outline,
               ),
             ),
           ],
         ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (item.item?.title?.isNotEmpty == true) ...[
-            const SizedBox(height: 4),
-            Text(
-              item.item!.title!,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium!.copyWith(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (item.item?.image?.isNotEmpty == true)
+              NetworkImgLayer(
+                width: 45,
+                height: 45,
+                src: item.item!.image,
+                borderRadius: const BorderRadius.all(
+                  Radius.circular(8),
+                ),
+              ),
+            if (item.noticeState == 1) ...[
+              if (item.item?.image?.isNotEmpty == true) const SizedBox(width: 4),
+              Icon(
+                size: 18,
+                Icons.notifications_off,
                 color: theme.colorScheme.outline,
-                height: 1.5,
               ),
-            ),
+            ],
           ],
-          const SizedBox(height: 4),
-          Text(
-            DateFormatUtils.dateFormat(item.likeTime),
-            style: theme.textTheme.bodyMedium!.copyWith(
-              fontSize: 13,
-              color: theme.colorScheme.outline,
-            ),
-          ),
-        ],
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (item.item?.image?.isNotEmpty == true)
-            NetworkImgLayer(
-              width: 45,
-              height: 45,
-              src: item.item!.image,
-              borderRadius: const BorderRadius.all(
-                Radius.circular(8),
-              ),
-            ),
-          if (item.noticeState == 1) ...[
-            if (item.item?.image?.isNotEmpty == true) const SizedBox(width: 4),
-            Icon(
-              size: 18,
-              Icons.notifications_off,
-              color: theme.colorScheme.outline,
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

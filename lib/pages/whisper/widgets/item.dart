@@ -4,6 +4,7 @@ import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
+import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/grpc/bilibili/app/im/v1.pb.dart'
     show Session, SessionId, SessionPageType, SessionType, UnreadStyle;
@@ -47,7 +48,10 @@ class WhisperSessionItem extends StatelessWidget {
         : null;
     final ThemeData theme = Theme.of(context);
 
-    return ListTile(
+    return GlassContainer(
+      kind: GlassKind.infoCard,
+      borderRadius: BorderRadius.circular(12),
+      child: ListTile(
       safeArea: true,
       tileColor: item.isPinned
           ? theme.colorScheme.onInverseSurface.withValues(
@@ -323,6 +327,8 @@ class WhisperSessionItem extends StatelessWidget {
                   : null,
             ),
         ],
+      ),
+    
       ),
     );
   }
