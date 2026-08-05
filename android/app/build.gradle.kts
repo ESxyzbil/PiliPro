@@ -23,7 +23,8 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
-        versionName = "U${flutter.versionCode}"
+        // 版本名：U + 主.次（2.1.0 → U2.1；之前是 U+versionCode 只能显示 U2）
+        versionName = "U${flutter.versionName.substringBeforeLast('.')}"
     }
 
     packagingOptions.jniLibs.useLegacyPackaging = true
