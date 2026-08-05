@@ -598,14 +598,57 @@ String _extractDanmakuText(DanmakuElem e) {
   return text;
 }
 
-/// 统计某作者弹幕去重后的不同文本数（过滤重复刷屏）
-int _distinctDanmakuTexts(List<DanmakuElem> list) {
-  final seen = <String>{};
+/// 汉字占比
+double _hanRatio(String s) {
+  if (s.isEmpty) return 0;
+  var han = 0;
+  for (final r in s.runes) {
+    if (r >= 0x4E00 && r <= 0x9FFF) han++;
+  }
+  return han / s.runes.length;
+}
+
+/// 判断作者弹幕是否「歌词节奏」（多条件过滤，防刷屏/解说/评论混入）
+bool _isDanmakuLyricAuthor(List<DanmakuElem> list) {
+  if (list.length < 4) return false;
+  // 去重文本数（防同一句刷屏）
+  final texts = <String>[];
   for (final e in list) {
     final t = _extractDanmakuText(e);
-    if (t.isNotEmpty) seen.add(t);
+    if (t.isNotEmpty) texts.add(t);
   }
-  return seen.length;
+  if (texts.length < 4) return false;
+  final distinct = texts.toSet();
+  if (distinct.length < 4) return false;
+  if (distinct.length / texts.length < 0.3) return false; // 重复率过高
+  // 时间跨度
+  final span = list.last.progress - list.first.progress;
+  if (span < 15000) return false;
+  // 相邻间隔中位数（歌词节奏）
+  final gaps = <int>[];
+  for (var i = 1; i < list.length; i++) {
+    gaps.add(list[i].progress - list[i - 1].progress);
+  }
+  gaps.sort();
+  final med = gaps[gaps.length ~/ 2];
+  if (med < 2000 || med > 15000) return false;
+  // 文本特征：句号比例（解说/评论常带句号）、平均长度、汉字占比、密度
+  var periodCount = 0;
+  var totalLen = 0;
+  var totalHan = 0.0;
+  var totalRunes = 0;
+  for (final t in texts) {
+    if (t.contains('。')) periodCount++;
+    totalLen += t.length;
+    totalHan += _hanRatio(t) * t.runes.length;
+    totalRunes += t.runes.length;
+  }
+  if (periodCount / texts.length > 0.25) return false; // 解说型
+  if (totalLen / texts.length > 25) return false; // 长句解说
+  if (totalRunes > 0 && totalHan / totalRunes < 0.5) return false; // 非汉字（kksk等）
+  final density = list.length / (span / 1000);
+  if (density < 0.12) return false; // 密度过低（零散评论）
+  return true;
 }
 
 /// 弹幕 → 歌词行（多作者合并：时间排序 + 相邻去重 + 同期冲突取更长文本）
@@ -689,18 +732,7 @@ Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
     // 4. 找所有「歌词节奏」作者（支持多人分段接力）
     final authors = <List<DanmakuElem>>[];
     for (final list in byUser.values) {
-      if (list.length < 4) continue; // 太少不构成歌词
-      if (_distinctDanmakuTexts(list) < 4) continue; // 重复刷屏评论
-      final span = list.last.progress - list.first.progress;
-      if (span < 15000) continue; // 时间跨度太短
-      final gaps = <int>[];
-      for (var i = 1; i < list.length; i++) {
-        gaps.add(list[i].progress - list[i - 1].progress);
-      }
-      gaps.sort();
-      final med = gaps[gaps.length ~/ 2];
-      if (med < 2000 || med > 15000) continue; // 间隔不像歌词节奏
-      authors.add(list);
+      if (_isDanmakuLyricAuthor(list)) authors.add(list);
     }
     if (authors.isEmpty) {
       return LyricsResult(
