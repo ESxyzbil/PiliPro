@@ -9,6 +9,7 @@ import 'package:PiliPlus/utils/id_utils.dart';
 enum LyricsSource {
   netease('网易云音乐', '☁️'),
   kugou('酷狗音乐', '🐶'),
+  douyin('汽水音乐', '💧'),
   bilibili_cc('B站CC字幕', '📄');
 
   final String label;
@@ -33,6 +34,7 @@ class LyricsSearchItem {
   final String? kugouFileHash;
   final String? kugouId; // candidate id
   final String? kugouAccesskey;
+  final String? qishuiId; // 汽水音乐 item_id
 
   const LyricsSearchItem({
     required this.title,
@@ -42,6 +44,7 @@ class LyricsSearchItem {
     this.kugouFileHash,
     this.kugouId,
     this.kugouAccesskey,
+    this.qishuiId,
   });
 }
 
@@ -282,6 +285,92 @@ Future<LyricsResult> _kugouFetchByHash(String fileHash) async {
 }
 
 // ═══════════════════════════════════════════
+//  汽水音乐（抖音音乐）
+// ═══════════════════════════════════════════
+
+const String _qishuiSearchApi = 'https://api-vehicle.volcengine.com/v2/search/type';
+const String _qishuiDetailApi = 'https://api-vehicle.volcengine.com/v2/custom/contents';
+
+Future<List<LyricsSearchItem>> searchQishui(String keyword,
+    {int page = 1, int limit = 20}) async {
+  try {
+    final offset = (page - 1) * limit;
+    final searchUri = Uri.parse(
+      '$_qishuiSearchApi?keyword=${Uri.encodeComponent(keyword)}'
+      '&search_type=music&limit=$limit&real_offset=$offset&search_source=qishui',
+    );
+    final searchBody = await _httpGet(searchUri);
+    final searchData = jsonDecode(searchBody);
+    final list = searchData['data']?['list'] as List?;
+    if (list == null || list.isEmpty) return [];
+    return list.map((s) {
+      final author = s['author_info'] as Map?;
+      final album = s['album_info'] as Map?;
+      return LyricsSearchItem(
+        title: s['title'] as String? ?? '',
+        artist: author?['name'] as String? ?? '',
+        subtitle: album?['name'] as String? ?? '',
+        qishuiId: s['item_id']?.toString(),
+      );
+    }).toList();
+  } catch (_) {
+    return [];
+  }
+}
+
+Future<LyricsResult> fetchFromQishui(LyricsSearchItem item) async {
+  final songId = item.qishuiId;
+  if (songId == null || songId.isEmpty) {
+    return LyricsResult(source: '汽水音乐', error: '缺少歌曲标识');
+  }
+  return _qishuiFetchById(songId);
+}
+
+Future<LyricsResult> fetchFromQishuiByKeyword(String keyword) async {
+  try {
+    final items = await searchQishui(keyword);
+    if (items.isEmpty) {
+      return LyricsResult(source: '汽水音乐', error: '未找到歌曲');
+    }
+    final songId = items.first.qishuiId;
+    if (songId == null) {
+      return LyricsResult(source: '汽水音乐', error: '无法获取歌曲信息');
+    }
+    return await _qishuiFetchById(songId);
+  } catch (e) {
+    return LyricsResult(source: '汽水音乐', error: e.toString());
+  }
+}
+
+Future<LyricsResult> _qishuiFetchById(String songId) async {
+  try {
+    final detailUri = Uri.parse(
+      '$_qishuiDetailApi?sources=qishui&need_author=true&need_album=true'
+      '&need_ugc=true&need_stat=true&item_ids=$songId',
+    );
+    final detailBody = await _httpGet(detailUri);
+    final detailData = jsonDecode(detailBody);
+    final list = detailData['data']?['list'] as List?;
+    if (list == null || list.isEmpty) {
+      return LyricsResult(source: '汽水音乐', error: '歌曲详情为空');
+    }
+    final lyricInfo = list.first['lyric_info'] as Map?;
+    final lrcText = lyricInfo?['lyric_text'] as String?;
+    if (lrcText == null || lrcText.isEmpty) {
+      return LyricsResult(source: '汽水音乐', error: '无歌词');
+    }
+    final parsed = parseLrc(lrcText);
+    return LyricsResult(
+      source: '汽水音乐',
+      syncedLines: parsed,
+      plainText: lrcText,
+    );
+  } catch (e) {
+    return LyricsResult(source: '汽水音乐', error: e.toString());
+  }
+}
+
+// ═══════════════════════════════════════════
 //  统一搜索接口
 // ═══════════════════════════════════════════
 
@@ -290,6 +379,7 @@ Future<Map<LyricsSource, List<LyricsSearchItem>>> searchAllPlatforms(String keyw
   final results = <LyricsSource, List<LyricsSearchItem>>{
     LyricsSource.netease: await searchNetease(keyword),
     LyricsSource.kugou: await searchKugou(keyword),
+    LyricsSource.douyin: await searchQishui(keyword),
   };
   return results;
 }
@@ -301,6 +391,8 @@ Future<LyricsResult> fetchLyricsForItem(LyricsSource source, LyricsSearchItem it
       return fetchFromNetease(item);
     case LyricsSource.kugou:
       return fetchFromKugou(item);
+    case LyricsSource.douyin:
+      return fetchFromQishui(item);
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
   }
@@ -313,6 +405,8 @@ Future<LyricsResult> searchAndPickFirst(LyricsSource source, String keyword) {
       return fetchFromNeteaseByKeyword(keyword);
     case LyricsSource.kugou:
       return fetchFromKugouByKeyword(keyword);
+    case LyricsSource.douyin:
+      return fetchFromQishuiByKeyword(keyword);
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
   }
@@ -324,6 +418,7 @@ Future<Map<LyricsSource, LyricsResult>> searchAllSources(String keyword) async {
   final futures = <MapEntry<LyricsSource, Future<LyricsResult>>>[
     MapEntry(LyricsSource.netease, searchAndPickFirst(LyricsSource.netease, keyword)),
     MapEntry(LyricsSource.kugou, searchAndPickFirst(LyricsSource.kugou, keyword)),
+    MapEntry(LyricsSource.douyin, searchAndPickFirst(LyricsSource.douyin, keyword)),
   ];
   for (final entry in futures) {
     results[entry.key] = await entry.value;

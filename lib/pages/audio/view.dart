@@ -1501,6 +1501,8 @@ class _AudioPageState extends State<AudioPage> {
                                     await searchNetease(keyword, page: 1),
                                   LyricsSource.kugou =>
                                     await searchKugou(keyword, page: 1),
+                                  LyricsSource.douyin =>
+                                    await searchQishui(keyword, page: 1),
                                   LyricsSource.bilibili_cc => [],
                                 };
                               } catch (_) {
@@ -1687,6 +1689,7 @@ class _AudioPageState extends State<AudioPage> {
       return switch (source) {
         LyricsSource.netease => await searchNetease(keyword, page: page),
         LyricsSource.kugou => await searchKugou(keyword, page: page),
+        LyricsSource.douyin => await searchQishui(keyword, page: page),
         LyricsSource.bilibili_cc => [],
       };
     } catch (_) {
