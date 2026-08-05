@@ -1189,6 +1189,14 @@ class AudioController extends GetxController
           return;
         }
 
+        // 弹幕歌词：不用搜索，[lyricsResults] 已在 [_fetchDanmakuLyrics] 中加载
+        // （否则会走 _searchAndUseRemembered → fetchLyricsForItem → "不支持此方式"）
+        if (rememberedSource == LyricsSource.danmaku) {
+          isLoadingLyrics.value = false;
+          _saveLyricsCache();
+          return;
+        }
+
         final items = searchResults[rememberedSource];
         if (items != null) {
           // 在搜索结果中找标题+歌手匹配的完整项（含平台 ID）
