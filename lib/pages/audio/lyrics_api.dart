@@ -609,6 +609,9 @@ double _hanRatio(String s) {
 }
 
 /// 判断作者弹幕是否「歌词节奏」（多条件过滤，防刷屏/解说/评论混入）
+///
+/// ⚠️ 不检查句号率：底置歌词翻译弹幕也带句号（"你可把所有泪水与委屈…无妨。"），
+/// 句号过滤会误杀真歌词。解说的干扰靠「主作者=条数最多」+ 密度/均长过滤解决。
 bool _isDanmakuLyricAuthor(List<DanmakuElem> list) {
   if (list.length < 4) return false;
   // 去重文本数（防同一句刷屏）
@@ -632,18 +635,16 @@ bool _isDanmakuLyricAuthor(List<DanmakuElem> list) {
   gaps.sort();
   final med = gaps[gaps.length ~/ 2];
   if (med < 2000 || med > 15000) return false;
-  // 文本特征：句号比例（解说/评论常带句号）、平均长度、汉字占比、密度
-  var periodCount = 0;
+  // 文本特征：平均长度（长句解说）、汉字占比、密度
   var totalLen = 0;
   var totalHan = 0.0;
   var totalRunes = 0;
   for (final t in texts) {
-    if (t.contains('。')) periodCount++;
     totalLen += t.length;
     totalHan += _hanRatio(t) * t.runes.length;
     totalRunes += t.runes.length;
   }
-  if (periodCount / texts.length > 0.25) return false; // 解说型
+  // ⚠️ 不用句号率过滤：歌词翻译弹幕（底置逐句）也带句号，会误杀
   if (totalLen / texts.length > 25) return false; // 长句解说
   if (totalRunes > 0 && totalHan / totalRunes < 0.5) return false; // 非汉字（kksk等）
   final density = list.length / (span / 1000);
