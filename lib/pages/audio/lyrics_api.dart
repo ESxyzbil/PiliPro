@@ -677,10 +677,11 @@ List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
 ///
 /// 识别策略：
 /// 1. 候选 = 顶置(mode5) / 底置(mode4) / 字幕池(pool1) / 高级(mode7) 弹幕
-/// 2. 发布者聚类：同一 midHash 发 ≥4 条、去重文本 ≥4、时间跨度 ≥15s、
-///    相邻间隔中位数 2~15s（歌词节奏）→ 判定为「歌词作者」
-/// 3. 所有歌词作者按时间排序合并（B 站顶置歌词常多人分段接力），
-///    同期冲突（±3s）取更长文本，相邻重复去重
+/// 2. 发布者聚类：同一 midHash 发 ≥4 条、去重文本 ≥4（去重率≥0.3）、
+///    时间跨度 ≥15s、间隔中位数 2~15s、句号率≤0.25、均长≤25字、
+///    密度≥0.12条/秒、汉字占比≥0.5 → 判定为「歌词作者」
+/// 3. 取条数最多的歌词作者（B 站顶置歌词实际是单作者发一段；
+///    其他通过过滤的作者多为重复发歌词/讨论，混入会污染歌词）
 /// 4. 没有歌词节奏作者 → 报错（不把零散评论弹幕当歌词）
 Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
   if (cid <= 0) {
@@ -739,13 +740,12 @@ Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
           source: '弹幕歌词', error: '未识别到歌词弹幕（顶/底弹幕多为评论）');
     }
 
-    // 5. 合并所有歌词作者 → 排序 → 去重
-    final merged = <DanmakuElem>[];
-    for (final l in authors) {
-      merged.addAll(l);
-    }
-    merged.sort((a, b) => a.progress.compareTo(b.progress));
-    final lines = _danmakuToLinesDedup(merged);
+    // 5. 取主歌词作者（条数最多、发得最全）——
+    //    B 站顶置歌词实际是单个作者发一段（多个"作者"多为重复发歌词或讨论），
+    //    区间内/外塞入其他作者弹幕都会混入讨论 → 只信主作者
+    authors.sort((a, b) => b.length.compareTo(a.length));
+    final main = authors.first;
+    final lines = _danmakuToLinesDedup(main);
     if (lines.length < 6) {
       return LyricsResult(source: '弹幕歌词', error: '识别出的歌词过少');
     }
