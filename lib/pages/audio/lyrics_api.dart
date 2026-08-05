@@ -598,20 +598,17 @@ String _extractDanmakuText(DanmakuElem e) {
   return text;
 }
 
-/// 弹幕 → 歌词行（歌词作者模式：保留与上一条不同的文本）
-List<LyricsLine> _danmakuToLines(List<DanmakuElem> list) {
-  final lines = <LyricsLine>[];
-  String? lastText;
+/// 统计某作者弹幕去重后的不同文本数（过滤重复刷屏）
+int _distinctDanmakuTexts(List<DanmakuElem> list) {
+  final seen = <String>{};
   for (final e in list) {
-    final text = _extractDanmakuText(e);
-    if (text.isEmpty || text == lastText) continue;
-    lastText = text;
-    lines.add(LyricsLine(Duration(milliseconds: e.progress), text));
+    final t = _extractDanmakuText(e);
+    if (t.isNotEmpty) seen.add(t);
   }
-  return lines;
+  return seen.length;
 }
 
-/// 弹幕 → 歌词行（无单一作者模式：同期冲突取更长文本）
+/// 弹幕 → 歌词行（多作者合并：时间排序 + 相邻去重 + 同期冲突取更长文本）
 List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
   final lines = <LyricsLine>[];
   String? lastText;
@@ -637,20 +634,28 @@ List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
 ///
 /// 识别策略：
 /// 1. 候选 = 顶置(mode5) / 底置(mode4) / 字幕池(pool1) / 高级(mode7) 弹幕
-/// 2. 发布者聚类：同一 midHash 发 ≥5 条、时间跨度 ≥30s、相邻间隔
-///    中位数 1.5~20s → 判定为「歌词作者」，取其全部候选为歌词
-/// 3. 无单一作者 → 全部候选按时间排序，同期冲突取更长文本
+/// 2. 发布者聚类：同一 midHash 发 ≥4 条、去重文本 ≥4、时间跨度 ≥15s、
+///    相邻间隔中位数 2~15s（歌词节奏）→ 判定为「歌词作者」
+/// 3. 所有歌词作者按时间排序合并（B 站顶置歌词常多人分段接力），
+///    同期冲突（±3s）取更长文本，相邻重复去重
+/// 4. 没有歌词节奏作者 → 报错（不把零散评论弹幕当歌词）
 Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
   if (cid <= 0) {
     return LyricsResult(source: '弹幕歌词', error: '无弹幕数据');
   }
   try {
-    // 1. 拉取全部分段弹幕（每段 6 分钟）
+    // 1. 拉取全部分段弹幕（每段 6 分钟，最多 40 段；连续 2 段空才停）
     final all = <DanmakuElem>[];
+    var emptyStreak = 0;
     for (var i = 1; i <= 40; i++) {
       final res = await DmGrpc.dmSegMobile(cid: cid, segmentIndex: i);
       if (res case Success(:final response)) {
-        if (response.elems.isEmpty) break;
+        if (response.elems.isEmpty) {
+          emptyStreak++;
+          if (emptyStreak >= 2) break;
+          continue;
+        }
+        emptyStreak = 0;
         all.addAll(response.elems);
       } else {
         break;
@@ -681,35 +686,36 @@ Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
       l.sort((a, b) => a.progress.compareTo(b.progress));
     }
 
-    List<DanmakuElem>? best;
-    for (final entry in byUser.entries) {
-      final list = entry.value;
-      if (list.length < 5) continue; // 太少不构成歌词
+    // 4. 找所有「歌词节奏」作者（支持多人分段接力）
+    final authors = <List<DanmakuElem>>[];
+    for (final list in byUser.values) {
+      if (list.length < 4) continue; // 太少不构成歌词
+      if (_distinctDanmakuTexts(list) < 4) continue; // 重复刷屏评论
       final span = list.last.progress - list.first.progress;
-      if (span < 30000) continue; // 时间跨度太短
+      if (span < 15000) continue; // 时间跨度太短
       final gaps = <int>[];
       for (var i = 1; i < list.length; i++) {
         gaps.add(list[i].progress - list[i - 1].progress);
       }
       gaps.sort();
       final med = gaps[gaps.length ~/ 2];
-      if (med < 1500 || med > 20000) continue; // 间隔不像歌词节奏
-      if (best == null || list.length > best.length) {
-        best = list;
-      }
+      if (med < 2000 || med > 15000) continue; // 间隔不像歌词节奏
+      authors.add(list);
+    }
+    if (authors.isEmpty) {
+      return LyricsResult(
+          source: '弹幕歌词', error: '未识别到歌词弹幕（顶/底弹幕多为评论）');
     }
 
-    // 4. 生成歌词行
-    List<LyricsLine> lines;
-    if (best != null && best.length >= 5) {
-      lines = _danmakuToLines(best);
-    } else {
-      final sorted = List.of(candidates)
-        ..sort((a, b) => a.progress.compareTo(b.progress));
-      lines = _danmakuToLinesDedup(sorted);
+    // 5. 合并所有歌词作者 → 排序 → 去重
+    final merged = <DanmakuElem>[];
+    for (final l in authors) {
+      merged.addAll(l);
     }
-    if (lines.isEmpty) {
-      return LyricsResult(source: '弹幕歌词', error: '未能识别出歌词');
+    merged.sort((a, b) => a.progress.compareTo(b.progress));
+    final lines = _danmakuToLinesDedup(merged);
+    if (lines.length < 6) {
+      return LyricsResult(source: '弹幕歌词', error: '识别出的歌词过少');
     }
     return LyricsResult(
       source: '弹幕歌词',
