@@ -117,23 +117,39 @@ class LyricsMemory {
   }
 
   /// 记忆：当前音频使用 CC 字幕
-  static void rememberCc(String audioTitle, String audioArtist) {
+  static void rememberCc(String audioTitle, String audioArtist) =>
+      rememberSource(audioTitle, audioArtist, LyricsSource.bilibili_cc);
+
+  /// 检查是否记忆了 CC 字幕
+  static bool isRememberedCc(String audioTitle, String audioArtist) =>
+      isRememberedSource(audioTitle, audioArtist, LyricsSource.bilibili_cc);
+
+  /// 记忆：当前音频使用指定源（CC 字幕/弹幕歌词等不进搜索的源）
+  static void rememberSource(
+    String audioTitle,
+    String audioArtist,
+    LyricsSource source,
+  ) {
     final data = _load();
     final key = _audioKey(audioTitle, audioArtist);
     data[key] = {
-      'source': LyricsSource.bilibili_cc.name,
+      'source': source.name,
       'songTitle': '',
       'songArtist': '',
     };
     _save(data);
   }
 
-  /// 检查是否记忆了 CC 字幕
-  static bool isRememberedCc(String audioTitle, String audioArtist) {
+  /// 检查是否记忆了指定源
+  static bool isRememberedSource(
+    String audioTitle,
+    String audioArtist,
+    LyricsSource source,
+  ) {
     final data = _load();
     final key = _audioKey(audioTitle, audioArtist);
     final entry = data[key];
-    return entry != null && entry['source'] == LyricsSource.bilibili_cc.name;
+    return entry != null && entry['source'] == source.name;
   }
 
   /// 全局默认使用 CC 字幕
@@ -144,4 +160,13 @@ class LyricsMemory {
 
   static set defaultCc(bool value) =>
       GStorage.setting.put(SettingBoxKey.defaultCcLyrics, value);
+
+  /// 全局默认使用弹幕歌词
+  static bool get defaultDanmaku => GStorage.setting.get(
+        SettingBoxKey.defaultDanmakuLyrics,
+        defaultValue: false,
+      ) as bool;
+
+  static set defaultDanmaku(bool value) =>
+      GStorage.setting.put(SettingBoxKey.defaultDanmakuLyrics, value);
 }

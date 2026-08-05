@@ -1359,8 +1359,9 @@ class _AudioPageState extends State<AudioPage> {
                               : colorScheme.error,
                         ),
                       ),
-                    // CC字幕：锁定 + 全局默认
-                    if (source == LyricsSource.bilibili_cc)
+                    // CC字幕/弹幕歌词：锁定 + 全局默认
+                    if (source == LyricsSource.bilibili_cc ||
+                        source == LyricsSource.danmaku)
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1369,15 +1370,21 @@ class _AudioPageState extends State<AudioPage> {
                             onTapDown: (details) {
                               // 阻止冒泡到父层的 onTap
                             },
-                            onTap: () => _controller.toggleCcLock(),
+                            onTap: () => source == LyricsSource.bilibili_cc
+                                ? _controller.toggleCcLock()
+                                : _controller.toggleDmLock(),
                             child: Obx(() => Padding(
                                   padding: const EdgeInsets.only(left: 2),
                                   child: Icon(
-                                    _controller.ccLocked.value
+                                    (source == LyricsSource.bilibili_cc
+                                            ? _controller.ccLocked.value
+                                            : _controller.dmLocked.value)
                                         ? Icons.lock
                                         : Icons.lock_open_outlined,
                                     size: 16,
-                                    color: _controller.ccLocked.value
+                                    color: (source == LyricsSource.bilibili_cc
+                                            ? _controller.ccLocked.value
+                                            : _controller.dmLocked.value)
                                         ? (isSelected
                                             ? colorScheme.onPrimary
                                             : colorScheme.primary)
@@ -1391,19 +1398,30 @@ class _AudioPageState extends State<AudioPage> {
                               // 阻止冒泡到父层的 onTap
                             },
                             onTap: () {
-                              LyricsMemory.defaultCc =
-                                  !LyricsMemory.defaultCc;
-                              _controller.ccDefault.value =
-                                  LyricsMemory.defaultCc;
+                              if (source == LyricsSource.bilibili_cc) {
+                                LyricsMemory.defaultCc =
+                                    !LyricsMemory.defaultCc;
+                                _controller.ccDefault.value =
+                                    LyricsMemory.defaultCc;
+                              } else {
+                                LyricsMemory.defaultDanmaku =
+                                    !LyricsMemory.defaultDanmaku;
+                                _controller.dmDefault.value =
+                                    LyricsMemory.defaultDanmaku;
+                              }
                             },
                             child: Padding(
                               padding: const EdgeInsets.only(left: 3),
                               child: Obx(() => Icon(
-                                    _controller.ccDefault.value
+                                    (source == LyricsSource.bilibili_cc
+                                            ? _controller.ccDefault.value
+                                            : _controller.dmDefault.value)
                                         ? Icons.language
                                         : Icons.language_outlined,
                                     size: 16,
-                                    color: _controller.ccDefault.value
+                                    color: (source == LyricsSource.bilibili_cc
+                                            ? _controller.ccDefault.value
+                                            : _controller.dmDefault.value)
                                         ? (isSelected
                                             ? colorScheme.onPrimary
                                             : colorScheme.primary)

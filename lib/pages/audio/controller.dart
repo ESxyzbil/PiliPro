@@ -128,6 +128,10 @@ class AudioController extends GetxController
   final RxBool ccLocked = false.obs;
   /// 全局默认 CC 字幕（响应式）
   final RxBool ccDefault = false.obs;
+  /// 弹幕歌词锁定状态（响应式）
+  final RxBool dmLocked = false.obs;
+  /// 全局默认弹幕歌词（响应式）
+  final RxBool dmDefault = false.obs;
   final RxInt currentLineIndex = 0.obs;
   final RxBool isLoadingLyrics = false.obs;
   final RxString lyricsError = ''.obs;
@@ -1159,6 +1163,8 @@ class AudioController extends GetxController
     // 重置 CC 字幕状态（切歌时清掉上一首的）
     ccLocked.value = false;
     ccDefault.value = false;
+    dmLocked.value = false;
+    dmDefault.value = false;
 
     // 同时取 B站 CC 字幕（不参与搜索，基于 aid+cid）
     _fetchBilibiliCc();
@@ -1253,7 +1259,37 @@ class AudioController extends GetxController
     if (cid == null || cid <= 0) return;
     final result = await fetchLyricsFromDanmaku(cid);
     lyricsResults[LyricsSource.danmaku] = result;
+    if (result.isSuccess) {
+      // 初始化锁定 & 全局默认状态
+      dmLocked.value = LyricsMemory.isRememberedSource(
+          audioTitle.value, audioArtist.value, LyricsSource.danmaku);
+      dmDefault.value = LyricsMemory.defaultDanmaku;
+      // 自动切换到弹幕歌词的条件（按优先级，同 CC 字幕）：
+      // 1. 单曲锁定（remembered）
+      // 2. 全局默认（defaultDanmaku）
+      // 3. 已选中弹幕歌词
+      // 4. 还没有任何歌词源成功
+      if (dmLocked.value ||
+          dmDefault.value ||
+          selectedSource.value == LyricsSource.danmaku ||
+          !lyricsResults.values.any((r) => r.isSuccess)) {
+        selectedSource.value = LyricsSource.danmaku;
+      }
+    }
     update();
+  }
+
+  /// 切换弹幕歌词的记忆锁定
+  void toggleDmLock() {
+    final title = audioTitle.value;
+    final artist = audioArtist.value;
+    if (LyricsMemory.isRememberedSource(title, artist, LyricsSource.danmaku)) {
+      LyricsMemory.forget(title, artist);
+      dmLocked.value = false;
+    } else {
+      LyricsMemory.rememberSource(title, artist, LyricsSource.danmaku);
+      dmLocked.value = true;
+    }
   }
 
   /// 取 B站 CC 字幕（基于 aid + cid）

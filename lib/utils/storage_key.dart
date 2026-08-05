@@ -32,7 +32,8 @@ abstract final class SettingBoxKey {
       showBatteryLevel = 'showBatteryLevel',
       playerVolume = 'playerVolume',
       maxVolume = 'maxVolume',
-      defaultCcLyrics = 'defaultCcLyrics';
+      defaultCcLyrics = 'defaultCcLyrics',
+      defaultDanmakuLyrics = 'defaultDanmakuLyrics';
 
   static const String enableVerticalExpand = 'enableVerticalExpand',
       feedBackEnable = 'feedBackEnable',
