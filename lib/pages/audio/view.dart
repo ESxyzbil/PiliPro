@@ -1295,8 +1295,9 @@ class _AudioPageState extends State<AudioPage> {
             final hasResult = result != null && result.isSuccess;
             return GestureDetector(
               onTap: () {
-                if (source == LyricsSource.bilibili_cc) {
-                  // CC字幕：点一下切过去，不出列表
+                if (source == LyricsSource.bilibili_cc ||
+                    source == LyricsSource.danmaku) {
+                  // CC字幕/弹幕歌词：点一下切过去，不出列表
                   _controller.switchLyricsSource(source);
                   return;
                 }
@@ -1503,6 +1504,7 @@ class _AudioPageState extends State<AudioPage> {
                                     await searchKugou(keyword, page: 1),
                                   LyricsSource.douyin =>
                                     await searchQishui(keyword, page: 1),
+                                  LyricsSource.danmaku => [],
                                   LyricsSource.bilibili_cc => [],
                                 };
                               } catch (_) {
@@ -1690,6 +1692,7 @@ class _AudioPageState extends State<AudioPage> {
         LyricsSource.netease => await searchNetease(keyword, page: page),
         LyricsSource.kugou => await searchKugou(keyword, page: page),
         LyricsSource.douyin => await searchQishui(keyword, page: page),
+        LyricsSource.danmaku => [],
         LyricsSource.bilibili_cc => [],
       };
     } catch (_) {

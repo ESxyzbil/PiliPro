@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
+import 'package:PiliPlus/grpc/bilibili/community/service/dm/v1.pb.dart';
+import 'package:PiliPlus/grpc/dm.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
@@ -10,6 +12,7 @@ enum LyricsSource {
   netease('网易云音乐', '☁️'),
   kugou('酷狗音乐', '🐶'),
   douyin('汽水音乐', '💧'),
+  danmaku('弹幕歌词', '🎯'),
   bilibili_cc('B站CC字幕', '📄');
 
   final String label;
@@ -393,6 +396,8 @@ Future<LyricsResult> fetchLyricsForItem(LyricsSource source, LyricsSearchItem it
       return fetchFromKugou(item);
     case LyricsSource.douyin:
       return fetchFromQishui(item);
+    case LyricsSource.danmaku:
+      return Future.value(LyricsResult(source: source.label, error: '弹幕歌词不支持此方式获取'));
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
   }
@@ -407,6 +412,8 @@ Future<LyricsResult> searchAndPickFirst(LyricsSource source, String keyword) {
       return fetchFromKugouByKeyword(keyword);
     case LyricsSource.douyin:
       return fetchFromQishuiByKeyword(keyword);
+    case LyricsSource.danmaku:
+      return Future.value(LyricsResult(source: source.label, error: '弹幕歌词不支持此方式获取'));
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
   }
@@ -570,5 +577,146 @@ Future<LyricsResult> fetchBilibiliCc(int aid, int cid) async {
     return LyricsResult(source: 'B站CC字幕', syncedLines: lines);
   } catch (e) {
     return LyricsResult(source: 'B站CC字幕', error: e.toString());
+  }
+}
+
+// ═══════════════════════════════════════════
+//  弹幕歌词（顶置/底置/高级弹幕识别）
+// ═══════════════════════════════════════════
+
+/// 提取弹幕可读文本（高级弹幕去掉 BBL 标签）
+String _extractDanmakuText(DanmakuElem e) {
+  var text = e.content;
+  if (e.mode == 7) {
+    // BBL 代码弹幕：去掉 [标签] 指令，保留可读文本
+    text = text.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+  }
+  text = text.trim();
+  if (text.isEmpty) return '';
+  // 纯符号/纯 emoji 不是歌词
+  if (RegExp(r'^[\p{P}\p{S}\s]+$', unicode: true).hasMatch(text)) return '';
+  return text;
+}
+
+/// 弹幕 → 歌词行（歌词作者模式：保留与上一条不同的文本）
+List<LyricsLine> _danmakuToLines(List<DanmakuElem> list) {
+  final lines = <LyricsLine>[];
+  String? lastText;
+  for (final e in list) {
+    final text = _extractDanmakuText(e);
+    if (text.isEmpty || text == lastText) continue;
+    lastText = text;
+    lines.add(LyricsLine(Duration(milliseconds: e.progress), text));
+  }
+  return lines;
+}
+
+/// 弹幕 → 歌词行（无单一作者模式：同期冲突取更长文本）
+List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
+  final lines = <LyricsLine>[];
+  String? lastText;
+  var lastTime = -100000;
+  for (final e in sorted) {
+    final text = _extractDanmakuText(e);
+    if (text.isEmpty || text == lastText) continue;
+    if (e.progress - lastTime < 3000) {
+      // 同期窗口 ±3s：多条候选冲突 → 取更长文本（完整歌词句优先）
+      if (lines.isNotEmpty && text.length > lines.last.text.length) {
+        lines[lines.length - 1] = LyricsLine(lines.last.time, text);
+      }
+      continue;
+    }
+    lastText = text;
+    lastTime = e.progress;
+    lines.add(LyricsLine(Duration(milliseconds: e.progress), text));
+  }
+  return lines;
+}
+
+/// 从 B站弹幕识别歌词（顶置/底置/字幕池/高级弹幕）
+///
+/// 识别策略：
+/// 1. 候选 = 顶置(mode5) / 底置(mode4) / 字幕池(pool1) / 高级(mode7) 弹幕
+/// 2. 发布者聚类：同一 midHash 发 ≥5 条、时间跨度 ≥30s、相邻间隔
+///    中位数 1.5~20s → 判定为「歌词作者」，取其全部候选为歌词
+/// 3. 无单一作者 → 全部候选按时间排序，同期冲突取更长文本
+Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
+  if (cid <= 0) {
+    return LyricsResult(source: '弹幕歌词', error: '无弹幕数据');
+  }
+  try {
+    // 1. 拉取全部分段弹幕（每段 6 分钟）
+    final all = <DanmakuElem>[];
+    for (var i = 1; i <= 40; i++) {
+      final res = await DmGrpc.dmSegMobile(cid: cid, segmentIndex: i);
+      if (res case Success(:final response)) {
+        if (response.elems.isEmpty) break;
+        all.addAll(response.elems);
+      } else {
+        break;
+      }
+    }
+    if (all.isEmpty) {
+      return LyricsResult(source: '弹幕歌词', error: '无弹幕数据');
+    }
+
+    // 2. 候选过滤
+    final candidates = <DanmakuElem>[];
+    for (final e in all) {
+      if (e.mode == 4 || e.mode == 5 || e.mode == 7 || e.pool == 1) {
+        final text = _extractDanmakuText(e);
+        if (text.isNotEmpty && text.length <= 60) candidates.add(e);
+      }
+    }
+    if (candidates.isEmpty) {
+      return LyricsResult(source: '弹幕歌词', error: '无顶置/底置/高级弹幕');
+    }
+
+    // 3. 发布者聚类
+    final byUser = <String, List<DanmakuElem>>{};
+    for (final e in candidates) {
+      (byUser[e.midHash] ??= []).add(e);
+    }
+    for (final l in byUser.values) {
+      l.sort((a, b) => a.progress.compareTo(b.progress));
+    }
+
+    List<DanmakuElem>? best;
+    for (final entry in byUser.entries) {
+      final list = entry.value;
+      if (list.length < 5) continue; // 太少不构成歌词
+      final span = list.last.progress - list.first.progress;
+      if (span < 30000) continue; // 时间跨度太短
+      final gaps = <int>[];
+      for (var i = 1; i < list.length; i++) {
+        gaps.add(list[i].progress - list[i - 1].progress);
+      }
+      gaps.sort();
+      final med = gaps[gaps.length ~/ 2];
+      if (med < 1500 || med > 20000) continue; // 间隔不像歌词节奏
+      if (best == null || list.length > best.length) {
+        best = list;
+      }
+    }
+
+    // 4. 生成歌词行
+    List<LyricsLine> lines;
+    if (best != null && best.length >= 5) {
+      lines = _danmakuToLines(best);
+    } else {
+      final sorted = List.of(candidates)
+        ..sort((a, b) => a.progress.compareTo(b.progress));
+      lines = _danmakuToLinesDedup(sorted);
+    }
+    if (lines.isEmpty) {
+      return LyricsResult(source: '弹幕歌词', error: '未能识别出歌词');
+    }
+    return LyricsResult(
+      source: '弹幕歌词',
+      syncedLines: lines,
+      plainText: lines.map((l) => l.text).join('\n'),
+    );
+  } catch (e) {
+    return LyricsResult(source: '弹幕歌词', error: e.toString());
   }
 }

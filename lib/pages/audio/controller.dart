@@ -1163,6 +1163,9 @@ class AudioController extends GetxController
     // 同时取 B站 CC 字幕（不参与搜索，基于 aid+cid）
     _fetchBilibiliCc();
 
+    // 同时识别弹幕歌词（顶置/底置/高级弹幕）
+    _fetchDanmakuLyrics();
+
     // 搜索所有平台（用于显示候选列表 + 取歌词）
     searchAllPlatforms(title).then((searchResults) {
       lyricsSearchResults.addAll(searchResults);
@@ -1242,6 +1245,15 @@ class AudioController extends GetxController
         isLoadingLyrics.value = false;
       });
     });
+  }
+
+  /// 识别弹幕歌词（顶置/底置/高级弹幕，基于 cid，不参与搜索）
+  Future<void> _fetchDanmakuLyrics() async {
+    final cid = subId.firstOrNull?.toInt();
+    if (cid == null || cid <= 0) return;
+    final result = await fetchLyricsFromDanmaku(cid);
+    lyricsResults[LyricsSource.danmaku] = result;
+    update();
   }
 
   /// 取 B站 CC 字幕（基于 aid + cid）
