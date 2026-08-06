@@ -662,11 +662,9 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
           videoDetailCtr.plPlayerController.play(repeat: true);
           return true;
         }
-        if (playRepeat == PlayRepeat.autoPlayRelated &&
-            videoDetailCtr.plPlayerController.showRelatedVideo) {
-          return playRelated();
-        }
-        return false;
+        // 普通视频（单P/无合集/非播放全部）：下一曲 → 播放相关视频推荐
+        // 无论播放模式都生效（手动点"下一集"、系统媒体控制、键盘 []、播完自动切）
+        return playRelated();
       }
 
       final int currentIndex = episodes.indexWhere(
