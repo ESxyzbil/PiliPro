@@ -24,7 +24,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         // 版本名：U + 主版本号（3.0.0 → U3；之前 U2.1 是 U+主.次）
-        versionName = "U${flutter.versionName.split('.').first}"
+        versionName = "U${flutter.versionName.substringBefore('.')}"
     }
 
     packagingOptions.jniLibs.useLegacyPackaging = true
