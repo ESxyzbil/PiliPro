@@ -1593,13 +1593,30 @@ class AudioController extends GetxController
       if (sname.isNotEmpty) {
         if (sartist.isNotEmpty) keywords.add('$sname $sartist');
         keywords.add(sname);
+        // 有 B 站官方歌名（"发现《歌名》"）→ 只用歌名相关关键词，
+        // 不带泛标签（否则"歌手名/类别"标签会搜出一堆不相干的歌污染候选列表）
+        searchAllPlatformsMulti(keywords).then((searchResults) => _onSearchDone(
+          searchResults, tags, songInfo, title, seq));
+        return;
       }
     }
     for (final t in tags) {
       if (!keywords.contains(t)) keywords.add(t);
       if (keywords.length >= 5) break;
     }
-    searchAllPlatformsMulti(keywords).then((searchResults) {
+    searchAllPlatformsMulti(keywords).then((searchResults) => _onSearchDone(
+      searchResults, tags, songInfo, title, seq));
+  }
+
+  /// 搜索结果就绪后的统一处理（有/无官方歌名共用）
+  void _onSearchDone(
+    Map<LyricsSource, List<LyricsSearchItem>> searchResults,
+    List<String> tags,
+    (String, String)? songInfo,
+    String title,
+    int seq,
+  ) {
+    {
       if (seq != _lyricsSearchSeq) return; // 竞态：丢弃过期结果
       lyricsSearchResults.addAll(searchResults);
 
@@ -1740,7 +1757,7 @@ class AudioController extends GetxController
       }).catchError((e) {
         isLoadingLyrics.value = false;
       });
-    });
+    }
   }
 
   /// 识别弹幕歌词（顶置/底置/高级弹幕，基于 cid，不参与搜索）
