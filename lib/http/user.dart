@@ -347,6 +347,45 @@ abstract final class UserHttp {
     }
   }
 
+  /// 视频详情 Tags（/x/web-interface/view/detail）— 唯一带"发现《歌名》"
+  /// 音乐标签与 music_id 的接口（B 站官方歌曲标记）
+  static Future<LoadingState<List<VideoTagItem>?>> videoDetailTags({
+    required String bvid,
+  }) async {
+    final res = await Request().get(
+      Api.videoDetail,
+      queryParameters: {'bvid': bvid},
+    );
+    if (res.data['code'] == 0) {
+      return Success(
+        (res.data['data']?['Tags'] as List?)
+            ?.map((e) => VideoTagItem.fromJson(e))
+            .toList(),
+      );
+    } else {
+      return const Error(null);
+    }
+  }
+
+  /// 标签备用接口（/x/tag/archive/tags，无需登录，更抗风控）
+  static Future<LoadingState<List<VideoTagItem>?>> videoTagsV2({
+    required String bvid,
+  }) async {
+    final res = await Request().get(
+      Api.videoTagsV2,
+      queryParameters: {'bvid': bvid},
+    );
+    if (res.data['code'] == 0) {
+      return Success(
+        (res.data['data'] as List?)
+            ?.map((e) => VideoTagItem.fromJson(e))
+            .toList(),
+      );
+    } else {
+      return const Error(null);
+    }
+  }
+
   // 稍后再看列表
   static Future<LoadingState<MediaListData>> getMediaList({
     required Object type,

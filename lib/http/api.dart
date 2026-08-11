@@ -683,6 +683,11 @@ abstract final class Api {
 
   // static const String videoTags = '/x/tag/archive/tags';
   static const String videoTags = '/x/web-interface/view/detail/tag';
+  static const String videoTagsV2 = '/x/tag/archive/tags';
+
+  /// 完整视频详情（data.Tags 含"发现《歌名》"音乐标签与 music_id，
+  /// 是唯一能拿到官方歌曲标记的接口）
+  static const String videoDetail = '/x/web-interface/view/detail';
 
   static const String reportMember =
       '${HttpString.spaceBaseUrl}/ajax/report/add';

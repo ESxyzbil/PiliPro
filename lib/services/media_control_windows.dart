@@ -67,10 +67,12 @@ class MediaControlWindows {
     void Function()? onPrevious,
   }) {
     if (_enabled || !Platform.isWindows) return;
-    _onPlay = onPlay;
-    _onPause = onPause;
-    _onNext = onNext;
-    _onPrevious = onPrevious;
+    // 只覆盖非 null 回调：enable() 常被 audio_handler 首次调用（只传 play/pause），
+    // 若无条件赋值会把视频页已设的 next/prev 清空（SMTC 上下曲失效）
+    if (onPlay != null) _onPlay = onPlay;
+    if (onPause != null) _onPause = onPause;
+    if (onNext != null) _onNext = onNext;
+    if (onPrevious != null) _onPrevious = onPrevious;
     _enabled = true;
   }
 

@@ -900,7 +900,9 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     List<BottomControlType> userSpecifyItemLeft = [
       .playOrPause,
       .time,
-      if (!isNotFileSource || anySeason) ...[.pre, .next],
+      // 上下曲：直播不显示；普通视频/合集/本地文件都显示
+      // （普通单P视频：下一曲=相关视频推荐，上一曲=返回历史）
+      if (!plPlayerController.isLive) ...[.pre, .next],
     ];
 
     final flag =

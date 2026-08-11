@@ -377,6 +377,73 @@ Future<LyricsResult> _qishuiFetchById(String songId) async {
 //  统一搜索接口
 // ═══════════════════════════════════════════
 
+/// 从搜索结果中挑选与视频标题最匹配的一项（简单相似度）
+LyricsSearchItem pickBestLyricsItem(
+  List<LyricsSearchItem> items,
+  String videoTitle, {
+  List<String> tagNames = const [],
+  List<String> artistNames = const [],
+}) {
+  var best = items.first;
+  var bestScore =
+      titleSimilarityScore(best.title, videoTitle, tagNames, artistNames);
+  for (final item in items.skip(1)) {
+    final score =
+        titleSimilarityScore(item.title, videoTitle, tagNames, artistNames);
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+  return best;
+}
+
+/// 歌名与（视频标题 + 标签歌名）的最高相似度（0~1）。
+/// [artistNames]：已知歌手（B 站音乐详情原唱 / UP 主）——结果歌名与歌手
+/// 匹配时加权 0.15，用于同名歌曲里优先选择正确的一首。
+double titleSimilarityScore(
+  String a,
+  String videoTitle, [
+  List<String> tagNames = const [],
+  List<String> artistNames = const [],
+]) {
+  var best = _titleSimilarity(a, videoTitle);
+  for (final tag in tagNames) {
+    final s = _titleSimilarity(a, tag);
+    if (s > best) best = s;
+  }
+  if (best < 1.0) {
+    final norm = RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9]');
+    final sa = a.replaceAll(norm, '').toLowerCase();
+    for (final artist in artistNames) {
+      if (artist.isEmpty) continue;
+      final sb = artist.replaceAll(norm, '').toLowerCase();
+      if (sb.isEmpty) continue;
+      if (sa == sb || sa.contains(sb) || sb.contains(sa)) {
+        best = (best + 0.15).clamp(0.0, 1.0);
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+/// 歌名与视频标题的相似度（0~1）：去符号后全等=1，包含=0.9，字符集 Jaccard
+double _titleSimilarity(String a, String b) {
+  if (a.isEmpty || b.isEmpty) return 0;
+  final norm = RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9]');
+  final sa = a.replaceAll(norm, '').toLowerCase();
+  final sb = b.replaceAll(norm, '').toLowerCase();
+  if (sa.isEmpty || sb.isEmpty) return 0;
+  if (sa == sb) return 1;
+  if (sa.contains(sb) || sb.contains(sa)) return 0.9;
+  final setA = sa.split('').toSet();
+  final setB = sb.split('').toSet();
+  final inter = setA.intersection(setB).length;
+  final union = setA.union(setB).length;
+  return union == 0 ? 0 : inter / union;
+}
+
 /// 搜索所有平台，返回 {来源 → 搜索结果列表}
 Future<Map<LyricsSource, List<LyricsSearchItem>>> searchAllPlatforms(String keyword) async {
   final results = <LyricsSource, List<LyricsSearchItem>>{
@@ -385,6 +452,28 @@ Future<Map<LyricsSource, List<LyricsSearchItem>>> searchAllPlatforms(String keyw
     LyricsSource.douyin: await searchQishui(keyword),
   };
   return results;
+}
+
+/// 用多个关键词（标题 + 标签歌名候选）搜索所有平台，按平台合并去重。
+/// 关键词按顺序搜索：前面的关键词结果优先保留（标题在前，标签补充）。
+Future<Map<LyricsSource, List<LyricsSearchItem>>> searchAllPlatformsMulti(
+  List<String> keywords,
+) async {
+  final merged = <LyricsSource, List<LyricsSearchItem>>{};
+  final seen = <LyricsSource, Set<String>>{};
+  for (final kw in keywords) {
+    if (kw.trim().isEmpty) continue;
+    final res = await searchAllPlatforms(kw);
+    for (final entry in res.entries) {
+      final list = merged.putIfAbsent(entry.key, () => <LyricsSearchItem>[]);
+      final set = seen.putIfAbsent(entry.key, () => <String>{});
+      for (final item in entry.value) {
+        final key = '${item.title}|${item.artist}';
+        if (set.add(key)) list.add(item);
+      }
+    }
+  }
+  return merged;
 }
 
 /// 对单个搜索结果项取歌词
@@ -588,8 +677,16 @@ Future<LyricsResult> fetchBilibiliCc(int aid, int cid) async {
 String _extractDanmakuText(DanmakuElem e) {
   var text = e.content;
   if (e.mode == 7) {
-    // BBL 代码弹幕：去掉 [标签] 指令，保留可读文本
-    text = text.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    // 高级弹幕：content 是 BBL JSON 数组字符串
+    // ["x","y","1-0","0.12","文本",字号,颜色,...]，文本在第 5 个元素（index 4）
+    // 例：["0.326","0.656","1-0","0.12","别走 不要离开我",356,0,...]
+    final match = RegExp(r'^\[("[^"]*",){4}"([^"]*)"').firstMatch(text);
+    if (match != null && match.group(2)!.isNotEmpty) {
+      text = match.group(2)!;
+    } else {
+      // 非标准格式：去掉 [标签] 指令，保留可读文本
+      text = text.replaceAll(RegExp(r'\[[^\]]*\]'), '');
+    }
   }
   text = text.trim();
   if (text.isEmpty) return '';
@@ -652,6 +749,29 @@ bool _isDanmakuLyricAuthor(List<DanmakuElem> list) {
   return true;
 }
 
+/// 高级弹幕(mode7) 歌词作者：官方/字幕组的 BBL 歌词弹幕是动画形式
+/// （同句多帧重复、间隔 0ms、去重率极低），不适用普通顶/底置的节奏过滤。
+/// 只需：条数足够 + 去重文本 ≥6 + 时间跨度 ≥30s
+bool _isAdvancedDanmakuAuthor(List<DanmakuElem> list) {
+  if (list.length < 10) return false;
+  final texts = <String>{};
+  for (final e in list) {
+    final t = _extractDanmakuText(e);
+    if (t.isNotEmpty) texts.add(t);
+  }
+  if (texts.length < 6) return false;
+  final span = list.last.progress - list.first.progress;
+  return span >= 30000;
+}
+
+/// 歌词作者可信度分：条数为主，高级弹幕(mode7)/字幕池(pool1) 加权——
+/// 这两类是 UP 主/字幕组特意发的专业歌词信号，优先级高于普通顶/底置用户弹幕
+double _authorLyricScore(List<DanmakuElem> list) {
+  final mode7 = list.where((e) => e.mode == 7).length;
+  final pool1 = list.where((e) => e.pool == 1).length;
+  return list.length + mode7 + pool1 * 0.5;
+}
+
 /// 弹幕 → 歌词行（多作者合并：时间排序 + 相邻去重 + 同期冲突取更长文本）
 List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
   final lines = <LyricsLine>[];
@@ -679,11 +799,12 @@ List<LyricsLine> _danmakuToLinesDedup(List<DanmakuElem> sorted) {
 /// 识别策略：
 /// 1. 候选 = 顶置(mode5) / 底置(mode4) / 字幕池(pool1) / 高级(mode7) 弹幕
 /// 2. 发布者聚类：同一 midHash 发 ≥4 条、去重文本 ≥4（去重率≥0.3）、
-///    时间跨度 ≥15s、间隔中位数 2~15s、句号率≤0.25、均长≤25字、
+///    时间跨度 ≥15s、间隔中位数 2~15s、均长≤25字、
 ///    密度≥0.12条/秒、汉字占比≥0.5 → 判定为「歌词作者」
-/// 3. 取条数最多的歌词作者（B 站顶置歌词实际是单作者发一段；
-///    其他通过过滤的作者多为重复发歌词/讨论，混入会污染歌词）
-/// 4. 没有歌词节奏作者 → 报错（不把零散评论弹幕当歌词）
+/// 3. 主作者按「可信度分」排序：条数为主，高级弹幕(mode7)/字幕池(pool1)
+///    加权（这两类是 UP 主/字幕组发的专业歌词信号，优先于普通顶/底置弹幕）
+/// 4. 逐个作者尝试，取第一个能出 ≥6 行的
+/// 5. 没有歌词节奏作者 → 报错（不把零散评论弹幕当歌词）
 Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
   if (cid <= 0) {
     return LyricsResult(source: '弹幕歌词', error: '无弹幕数据');
@@ -732,28 +853,45 @@ Future<LyricsResult> fetchLyricsFromDanmaku(int cid) async {
     }
 
     // 4. 找所有「歌词节奏」作者（支持多人分段接力）
+    //    含 mode7 高级弹幕的作者走宽松过滤（BBL 动画歌词，节奏特征不同）
     final authors = <List<DanmakuElem>>[];
     for (final list in byUser.values) {
-      if (_isDanmakuLyricAuthor(list)) authors.add(list);
+      final hasAdvanced = list.any((e) => e.mode == 7);
+      if (hasAdvanced
+          ? _isAdvancedDanmakuAuthor(list)
+          : _isDanmakuLyricAuthor(list)) {
+        authors.add(list);
+      }
     }
     if (authors.isEmpty) {
       return LyricsResult(
           source: '弹幕歌词', error: '未识别到歌词弹幕（顶/底弹幕多为评论）');
     }
 
-    // 5. 取主歌词作者（条数最多、发得最全）——
-    //    B 站顶置歌词实际是单个作者发一段（多个"作者"多为重复发歌词或讨论），
-    //    区间内/外塞入其他作者弹幕都会混入讨论 → 只信主作者
-    authors.sort((a, b) => b.length.compareTo(a.length));
-    final main = authors.first;
-    final lines = _danmakuToLinesDedup(main);
-    if (lines.length < 6) {
+    // 5. 主歌词作者：按「可信度分」排序——条数为主，高级弹幕(mode7)/
+    //    字幕池(pool1) 加权（UP 主/字幕组发的专业歌词信号，优先于普通顶/底置弹幕）
+    //    逐个尝试，取第一个能出 ≥6 行的作者
+    authors.sort((a, b) {
+      final sa = _authorLyricScore(a);
+      final sb = _authorLyricScore(b);
+      if (sa != sb) return sb.compareTo(sa);
+      return b.length.compareTo(a.length);
+    });
+    List<LyricsLine>? bestLines;
+    for (final author in authors) {
+      final lines = _danmakuToLinesDedup(author);
+      if (lines.length >= 6) {
+        bestLines = lines;
+        break;
+      }
+    }
+    if (bestLines == null) {
       return LyricsResult(source: '弹幕歌词', error: '识别出的歌词过少');
     }
     return LyricsResult(
       source: '弹幕歌词',
-      syncedLines: lines,
-      plainText: lines.map((l) => l.text).join('\n'),
+      syncedLines: bestLines,
+      plainText: bestLines.map((l) => l.text).join('\n'),
     );
   } catch (e) {
     return LyricsResult(source: '弹幕歌词', error: e.toString());

@@ -1,3 +1,4 @@
+import 'dart:io' show File, FileMode, Platform;
 import 'dart:math' show min;
 
 import 'package:PiliPlus/common/assets.dart';
@@ -13,6 +14,7 @@ import 'package:PiliPlus/common/widgets/progress_bar/segment_progress_bar.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart';
 import 'package:PiliPlus/models/common/image_preview_type.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
+import 'package:PiliPlus/models/model_hot_video_item.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/pages/audio/controller.dart';
 import 'package:PiliPlus/pages/audio/lyrics_api.dart';
@@ -40,6 +42,7 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart' hide DraggableScrollableSheet;
@@ -67,6 +70,7 @@ class AudioPage extends StatefulWidget {
     String? cover,
     String? ownerName,
     int? ownerMid,
+    String? bvid,
     List<BiliDownloadEntryInfo>? offlineEntries,
   }) => Get.toNamed(
     '/audio',
@@ -84,6 +88,7 @@ class AudioPage extends StatefulWidget {
       'cover': ?cover,
       'ownerName': ?ownerName,
       'ownerMid': ?ownerMid,
+      'bvid': ?bvid,
       'offlineEntries': ?offlineEntries?.map((e) => e.toJson()).toList(),
     },
   );
@@ -301,7 +306,12 @@ class _AudioPageState extends State<AudioPage> {
   }
 
   void _showPlaylist() {
-    if (_controller.playlist case final playlist?) {
+    try {
+      _audioLog('_showPlaylist: playlist=${_controller.playlist?.length} '
+          'offline=${_controller.offlineEntries?.length} '
+          'related=${_controller.relatedVideos.length} '
+          'title="${_controller.audioTitle.value}"');
+      if (_controller.playlist case final playlist? when _controller.index != null) {
       final initialScrollOffset = 45.0 * _controller.index!;
       final scrollController = ScrollController(
         initialScrollOffset: initialScrollOffset,
@@ -615,11 +625,15 @@ class _AudioPageState extends State<AudioPage> {
           );
         },
       );
-    } else if (_controller.audioTitle.value.isNotEmpty) {
+    } else {
+      // 兜底：当前播放 + 推荐视频列表（普通视频听音频，无列表）
       showModalBottomSheet(
         context: context,
         builder: (context) {
           final cs = Theme.of(context).colorScheme;
+          final audioItem = _controller.audioItem.value;
+          final title = audioItem?.arc.title ?? _controller.audioTitle.value;
+          final cover = audioItem?.arc.cover ?? '';
           return Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -627,41 +641,122 @@ class _AudioPageState extends State<AudioPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('播放列表', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Icon(Icons.play_arrow_rounded, color: cs.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _controller.audioTitle.value,
+                const SizedBox(height: 12),
+                if (title.isNotEmpty)
+                  Row(
+                    children: [
+                      if (cover.isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: NetworkImgLayer(
+                            src: cover,
+                            width: 40,
+                            height: 40,
+                            cacheWidth: false,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_controller.audioArtist.value.isNotEmpty)
+                              Text(
+                                _controller.audioArtist.value,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: cs.outline,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text('当前播放', style: TextStyle(fontSize: 13, color: cs.outline)),
+                if (_controller.relatedVideos.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text('推荐视频',
+                    style: TextStyle(fontSize: 13, color: cs.outline),
+                  ),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _controller.relatedVideos.length,
+                      itemBuilder: (context, index) {
+                        final v = _controller.relatedVideos[index];
+                        return ListTile(
+                          dense: true,
+                          minTileHeight: 48,
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: NetworkImgLayer(
+                              src: v.cover ?? '',
+                              width: 72,
+                              height: 40,
+                              cacheWidth: false,
+                            ),
+                          ),
+                          title: Text(v.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: 14),
                           ),
-                          if (_controller.audioArtist.value.isNotEmpty)
-                            Text(
-                              _controller.audioArtist.value,
-                              style: TextStyle(fontSize: 12, color: cs.outline),
+                          subtitle: Text(v.owner.name ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: cs.outline),
+                          ),
+                          onTap: () {
+                            Get.back();
+                            _controller.playRelatedAt(index);
+                          },
+                          trailing: IconButton(
+                            tooltip: '下一首播放',
+                            icon: Icon(
+                              Icons.playlist_play,
+                              size: 20,
+                              color: cs.outline,
                             ),
-                        ],
-                      ),
+                            onPressed: () => _controller.addToNextUp(v),
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text('单曲目模式',
-                  style: TextStyle(fontSize: 13, color: cs.outline),
-                ),
+                  ),
+                ],
               ],
             ),
           );
         },
       );
     }
+    } catch (e, s) {
+      _audioLog('_showPlaylist ERROR: $e\n$s');
+      rethrow;
+    }
+  }
+
+  /// 音频页调试日志（Windows：%TEMP%\piliplus_audio.log）
+  static void _audioLog(String msg) {
+    if (!Platform.isWindows) return;
+    try {
+      final tmp = Platform.environment['TEMP'] ?? 'C:\\Windows\\Temp';
+      final f = File('$tmp\\piliplus_audio.log');
+      f.writeAsStringSync('[${DateTime.now()}] $msg\n', mode: FileMode.append);
+    } catch (_) {}
   }
 
   void _showPlaySettings() {
@@ -874,6 +969,76 @@ class _AudioPageState extends State<AudioPage> {
         );
       },
     );
+  }
+
+  /// 打开当前正在听的视频的播放页（标题点击 / 图标点击）
+  void _openCurrentVideo(String cover, DetailItem audioItem) {
+    var aid = _controller.oid.toInt();
+    final cid = _controller.subId.firstOrNull?.toInt() ?? 0;
+    var bvid = _controller.bvid;
+    // 保证 aid/bvid 匹配：切歌后 bvid 可能滞后（playIndex 等只更新 oid），
+    // 不匹配会让视频页 playurl 请求 -404 "视频不存在或已被删除"
+    if (aid > 0 && (bvid == null || bvid.isEmpty || _bv2avSafe(bvid) != aid)) {
+      bvid = IdUtils.av2bv(aid);
+    } else if (bvid != null && bvid.isNotEmpty) {
+      aid = _bv2avSafe(bvid);
+    }
+    if (aid <= 0 || bvid == null || bvid.isEmpty || cid <= 0) {
+      _audioLog('open video INVALID aid=$aid cid=$cid bvid=$bvid');
+      SmartDialog.showToast('视频信息不完整，无法打开');
+      return;
+    }
+    _audioLog(
+        'open video aid=$aid cid=$cid bvid=$bvid title=${audioItem.arc.title}');
+    _controller.player?.pause();
+    PageUtils.toVideoPage(
+      aid: aid,
+      bvid: bvid,
+      cid: cid,
+      cover: cover,
+      title: audioItem.arc.title,
+    );
+  }
+
+  int _bv2avSafe(String bvid) {
+    try {
+      return IdUtils.bv2av(bvid);
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /// 打开离线回退模式的当前视频播放页（标题点击）
+  void _openFallbackVideo(String title) {
+    var aid = _controller.oid.toInt();
+    final cid = _controller.subId.firstOrNull?.toInt() ?? 0;
+    var bvid = _controller.bvid;
+    // 保证 aid/bvid 匹配（防切歌后 bvid 滞后 → 视频不存在）
+    if (aid > 0 && (bvid == null || bvid.isEmpty || _bv2avSafe(bvid) != aid)) {
+      bvid = IdUtils.av2bv(aid);
+    } else if (bvid != null && bvid.isNotEmpty) {
+      aid = _bv2avSafe(bvid);
+    }
+    if (aid <= 0 || bvid == null || bvid.isEmpty || cid <= 0) {
+      _audioLog('open video (fallback) INVALID aid=$aid cid=$cid bvid=$bvid');
+      SmartDialog.showToast('视频信息不完整，无法打开');
+      return;
+    }
+    _audioLog('open video (fallback) aid=$aid cid=$cid bvid=$bvid');
+    _controller.player?.pause();
+    PageUtils.toVideoPage(
+      aid: aid,
+      bvid: bvid,
+      cid: cid,
+      cover: _controller.audioItem.value?.arc.cover ?? '',
+      title: title,
+    );
+  }
+
+  /// 播放推荐列表中的第 index 个视频（音频模式）
+  void _playRelatedAt(int index) {
+    _audioLog('_playRelatedAt index=$index');
+    _controller.playRelatedAt(index);
   }
 
   Widget _buildActions(DetailItem audioItem) {
@@ -1122,6 +1287,121 @@ class _AudioPageState extends State<AudioPage> {
     );
   }
 
+  /// 推荐视频列表（音频信息下方，可滚动）
+  Widget _buildRelatedList(ColorScheme colorScheme) {
+    return Obx(() {
+      final items = _controller.relatedVideos;
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          Text(
+            '推荐视频',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          for (var i = 0; i < items.length; i++)
+            _buildRelatedItem(colorScheme, items[i], i),
+        ],
+      );
+    });
+  }
+
+  Widget _buildRelatedItem(
+    ColorScheme colorScheme,
+    HotVideoItemModel item,
+    int index,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: GlassContainer(
+        kind: GlassKind.infoCard,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: () => _controller.playRelatedAt(index),
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: NetworkImgLayer(
+                    src: item.cover ?? '',
+                    width: 120,
+                    height: 68,
+                    cacheWidth: false,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13.5, height: 1.35),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.person_outline,
+                            size: 13,
+                            color: colorScheme.outline,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              item.owner.name ?? '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.outline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.play_circle_outline,
+                  color: colorScheme.primary.withValues(alpha: .6),
+                ),
+                const SizedBox(width: 2),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _controller.addToNextUp(item),
+                  child: Tooltip(
+                    message: '下一首播放',
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.playlist_play,
+                        size: 20,
+                        color: colorScheme.outline,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildInfo(ColorScheme colorScheme, bool isPortrait) {
     return Obx(() {
       final audioItem = _controller.audioItem.value;
@@ -1134,7 +1414,7 @@ class _AudioPageState extends State<AudioPage> {
                 child: ListView(
                   key: const PageStorageKey(_AudioPageState),
                   shrinkWrap: true,
-                  physics: const ClampingScrollPhysics(),
+                  physics: const BouncingScrollPhysics(),
                   children: [
                     Center(
                       child: GestureDetector(
@@ -1153,18 +1433,45 @@ class _AudioPageState extends State<AudioPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SelectableText(
-                      audioItem.arc.title,
-                      style: const TextStyle(height: 1.7, fontSize: 16),
-                      scrollPhysics: const NeverScrollableScrollPhysics(),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openCurrentVideo(cover, audioItem),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: SelectableText(
+                              audioItem.arc.title,
+                              // 点击跳转播放页；长按可选择复制
+                              onTap: () =>
+                                  _openCurrentVideo(cover, audioItem),
+                              maxLines: 2,
+                              style: const TextStyle(
+                                  height: 1.7, fontSize: 16),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.open_in_new,
+                            size: 16,
+                            color: colorScheme.outline,
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     if (audioItem.owner.hasName()) ...[
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () {
+                          final mid = _controller.currentOwnerMid > 0
+                              ? _controller.currentOwnerMid
+                              : audioItem.owner.mid.toInt();
+                          _audioLog('open owner mid=$mid '
+                              'currentOwnerMid=${_controller.currentOwnerMid} '
+                              'grpcMid=${audioItem.owner.mid}');
                           _controller.player?.pause();
-                          Get.toNamed('/member?mid=${audioItem.owner.mid}');
+                          Get.toNamed('/member?mid=$mid');
                         },
                         child: Row(
                           spacing: 6,
@@ -1224,6 +1531,7 @@ class _AudioPageState extends State<AudioPage> {
                         scrollPhysics: const NeverScrollableScrollPhysics(),
                       ),
                     ],
+                    _buildRelatedList(colorScheme),
                   ],
                 ),
               ),
@@ -1247,10 +1555,17 @@ class _AudioPageState extends State<AudioPage> {
               children: [
                 Icon(Icons.music_note, size: 80, color: colorScheme.primary.withValues(alpha: 0.4)),
                 const SizedBox(height: 16),
-                SelectableText(
-                  title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  textAlign: TextAlign.center,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openFallbackVideo(title),
+                  child: SelectableText(
+                    title,
+                    // 点击跳转播放页；长按可选择复制
+                    onTap: () => _openFallbackVideo(title),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w500),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
                 if (artist.isNotEmpty) ...[
                   const SizedBox(height: 8),

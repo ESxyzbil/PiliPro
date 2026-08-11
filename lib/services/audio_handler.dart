@@ -3,11 +3,13 @@ import 'dart:ui' show PlatformDispatcher;
 
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart' show DetailItem;
+import 'package:PiliPlus/models/model_hot_video_item.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/live/live_room_info_h5/data.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/episode.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/page.dart';
+import 'package:PiliPlus/pages/audio/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/services/media_control_windows.dart';
@@ -96,6 +98,9 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
   void setMediaItem(MediaItem newMediaItem) {
     if (!enableBackgroundPlay) return;
     if (!mediaItem.isClosed) mediaItem.add(newMediaItem);
+    // 媒体项变化 → 重置歌词原标题缓存（下次 updateLyrics 重新捕获）
+    _originalTitle = null;
+    _originalArtist = null;
   }
 
   String? _originalTitle;
@@ -241,8 +246,15 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     //   debugPrint('当前调用栈为：');
     //   debugPrint(StackTrace.current);
     // }
-    // 音频页（离线/在线）使用 media_kit Player，不是 PlPlayerController
-    if (data is! BiliDownloadEntryInfo && !PlPlayerController.instanceExists()) return;
+    // 音频页（离线/在线）使用 media_kit Player，不是 PlPlayerController；
+    // 音频页数据（DetailItem / HotVideoItemModel / BiliDownloadEntryInfo）不依赖
+    // PlPlayerController 实例，直接更新媒体通知。
+    if (data is! BiliDownloadEntryInfo &&
+        data is! DetailItem &&
+        data is! HotVideoItemModel &&
+        !PlPlayerController.instanceExists()) {
+      return;
+    }
     if (data == null) return;
 
     Uri getUri(String? cover) => Uri.parse(ImageUtils.safeThumbnailUrl(cover));
@@ -303,6 +315,15 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
           duration: Duration(seconds: arc.duration.toInt()),
           artUri: getUri(arc.cover),
         );
+      case HotVideoItemModel():
+        final dur = data.duration ?? 0;
+        mediaItem = MediaItem(
+          id: id,
+          title: data.title,
+          artist: data.owner.name ?? '',
+          duration: Duration(seconds: dur > 0 ? dur : 0),
+          artUri: getUri(data.cover),
+        );
       case BiliDownloadEntryInfo():
         final coverFile = File(
           path.join(data.entryDirPath, PathUtils.coverName),
@@ -322,7 +343,12 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
     }
 
     // if (kDebugMode) debugPrint("exist: ${PlPlayerController.instanceExists()}");
-    if (data is! BiliDownloadEntryInfo && !PlPlayerController.instanceExists()) return;
+    if (data is! BiliDownloadEntryInfo &&
+        data is! DetailItem &&
+        data is! HotVideoItemModel &&
+        !PlPlayerController.instanceExists()) {
+      return;
+    }
     _item.add(mediaItem);
     setMediaItem(mediaItem);
     // 重置原标题缓存，下次 updateLyrics 会重新捕获
@@ -374,6 +400,10 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
           smtcTitle = arc.title ?? '';
           smtcArtist = data.owner.name ?? '';
           smtcThumb = arc.cover ?? '';
+        case HotVideoItemModel():
+          smtcTitle = data.title;
+          smtcArtist = data.owner.name ?? '';
+          smtcThumb = data.cover ?? '';
         case BiliDownloadEntryInfo():
           smtcTitle = data.showTitle;
           smtcArtist = data.ownerName ?? '';
@@ -394,12 +424,14 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
           onPause: PlPlayerController.pauseIfExists,
         );
       } else if (data is VideoDetailData) {
-        // 视频页覆盖 play/pause
+        // 视频页覆盖 play/pause（音频页后台播放时不抢占 — SMTC 控制权归音频页）
         // 不碰 next/prev — 由视频页自身的 _setupSmtcNavigation() / didPopNext() 管理
-        smtc.updateCallbacks(
-          onPlay: PlPlayerController.playIfExists,
-          onPause: PlPlayerController.pauseIfExists,
-        );
+        if (!AudioController.isBackgroundPlaying) {
+          smtc.updateCallbacks(
+            onPlay: PlPlayerController.playIfExists,
+            onPause: PlPlayerController.pauseIfExists,
+          );
+        }
       }
       smtc.updateMetadata(
         title: smtcTitle,

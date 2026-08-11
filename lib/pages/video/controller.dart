@@ -1417,6 +1417,7 @@ class VideoDetailController extends GetxController
       start: playedTime,
       audioUrl: audioUrl,
       extraId: extraId,
+      bvid: bvid,
     );
   }
 

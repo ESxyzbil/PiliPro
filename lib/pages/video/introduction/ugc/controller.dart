@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
@@ -49,6 +50,12 @@ import 'package:get/get.dart';
 
 class UgcIntroController extends CommonIntroController with ReloadMixin {
   late ExpandableController expandableCtr;
+
+  /// 普通视频（无分P/合集/播放全部）的播放历史栈：nextPlay/playRelated 切走时
+  /// 记录当前视频，prevPlay 从栈顶「从哪来回哪去」（A→B→上一曲→A）
+  final List<BaseEpisodeItem> _episodeHistory = <BaseEpisodeItem>[];
+  /// prevPlay 回退播放时跳过 push，防止 A↔B 无限循环
+  bool _skipHistoryPush = false;
 
   final RxBool status = true.obs;
 
@@ -479,6 +486,31 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
 
       final String? cover = episode.cover;
 
+      // 「从哪来回哪去」：普通视频（无分P/合集/播放全部）切走前记录当前视频，
+      // 供 prevPlay 返回。栈顶去重 + _skipHistoryPush 防 A↔B 循环
+      if (!_skipHistoryPush) {
+        final videoDetail = this.videoDetail.value;
+        final hasList = (videoDetail.pages?.length ?? 0) > 1 ||
+            videoDetailCtr.isPlayAll ||
+            videoDetail.ugcSeason != null;
+        if (!hasList && this.bvid.isNotEmpty) {
+          final last = _episodeHistory.isEmpty ? null : _episodeHistory.last;
+          if (last == null ||
+              last.bvid != this.bvid ||
+              last.cid != this.cid.value) {
+            _episodeHistory.add(BaseEpisodeItem(
+              bvid: this.bvid,
+              cid: this.cid.value,
+              cover: videoDetailCtr.cover.value,
+            ));
+            if (_episodeHistory.length > 20) {
+              _episodeHistory.removeAt(0);
+            }
+          }
+        }
+      }
+      _skipHistoryPush = false;
+
       // 重新获取视频资源
       if (videoDetailCtr.isPlayAll) {
         if (videoDetailCtr.mediaList.indexWhere((item) => item.bvid == bvid) ==
@@ -573,10 +605,16 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
 
     final videoDetail = this.videoDetail.value;
 
+    _dbgLog(
+        'prevPlay enter: isPlayAll=${videoDetailCtr.isPlayAll} src=${videoDetailCtr.sourceType} pages=${videoDetail.pages?.length} season=${videoDetail.ugcSeason != null}');
+
     if (!skipPart && (videoDetail.pages?.length ?? 0) > 1) {
       isPart = true;
       episodes.addAll(videoDetail.pages!);
-    } else if (videoDetailCtr.isPlayAll) {
+    } else if (videoDetailCtr.isPlayAll &&
+        videoDetailCtr.sourceType != SourceType.archive) {
+      // UP 主投稿(archive)来源的普通单P视频不切投稿列表——
+      // 上下曲走相关视频/历史栈，而不是在 UP 投稿里跳
       episodes.addAll(videoDetailCtr.mediaList);
     } else if (videoDetail.ugcSeason != null) {
       final UgcSeason ugcSeason = videoDetail.ugcSeason!;
@@ -606,8 +644,17 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
           (videoDetailCtr.isPlayAll || videoDetail.ugcSeason != null)) {
         return prevPlay(true);
       }
-      if (playRepeat == PlayRepeat.listCycle) {
+      if (playRepeat == PlayRepeat.listCycle && episodes.isNotEmpty) {
         prevIndex = episodes.length - 1;
+      } else if (episodes.isEmpty && _episodeHistory.isNotEmpty) {
+        // 普通视频（无列表）：从哪来回哪去
+        final prev = _episodeHistory.removeLast();
+        if (prev.cid != null && prev.cid != this.cid.value) {
+          _skipHistoryPush = true;
+          onChangeEpisode(prev);
+          return true;
+        }
+        return false;
       } else {
         return false;
       }
@@ -632,18 +679,24 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
 
   /// 列表循环或者顺序播放时，自动播放下一个
   @override
+  /// 播放下一个
+  @override
   bool nextPlay([bool skipPart = false]) {
     try {
       final List<BaseEpisodeItem> episodes = <BaseEpisodeItem>[];
       bool isPart = false;
       final videoDetail = this.videoDetail.value;
+      _dbgLog(
+          'nextPlay enter: isPlayAll=${videoDetailCtr.isPlayAll} src=${videoDetailCtr.sourceType} pages=${videoDetail.pages?.length} season=${videoDetail.ugcSeason != null}');
 
       // part -> playall -> season
       if (!skipPart && (videoDetail.pages?.length ?? 0) > 1) {
         isPart = true;
         final List<Part> pages = videoDetail.pages!;
         episodes.addAll(pages);
-      } else if (videoDetailCtr.isPlayAll) {
+      } else if (videoDetailCtr.isPlayAll &&
+          videoDetailCtr.sourceType != SourceType.archive) {
+        // UP 主投稿(archive)来源的普通单P视频不切投稿列表
         episodes.addAll(videoDetailCtr.mediaList);
       } else if (videoDetail.ugcSeason != null) {
         final UgcSeason ugcSeason = videoDetail.ugcSeason!;
@@ -726,18 +779,28 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
     RelatedController relatedCtr;
     if (Get.isRegistered<RelatedController>(tag: heroTag)) {
       relatedCtr = Get.find<RelatedController>(tag: heroTag);
+      _dbgLog(
+          'playRelated: registered, bvid=${relatedCtr.bvid} state=${relatedCtr.loadingState.value.runtimeType}');
     } else {
-      relatedCtr = Get.put(RelatedController(autoQuery: false), tag: heroTag)
+      // 相关视频列表尚未加载：异步加载，完成后自动播放。
+      // 返回 true 表示「有下一步动作」，避免误报"已经是最后一集"
+      // 显式传当前 bvid（Get.arguments 可能为 null/旧值）
+      _dbgLog('playRelated: not registered, create with bvid=${this.bvid}');
+      Get.put(RelatedController(autoQuery: false, bvid: this.bvid),
+          tag: heroTag)
         ..queryData().whenComplete(playRelated);
-      return false;
+      return true;
     }
 
     if (relatedCtr.loadingState.value case Success(:final response)) {
+      // 下一曲 = 相关推荐列表首个
       final firstItem = response?.firstOrNull;
       if (firstItem == null) {
         SmartDialog.showToast('暂无相关视频，停止连播');
         return false;
       }
+      _dbgLog(
+          'playRelated: pick bvid=${firstItem.bvid} title=${firstItem.title} ownerMid=${firstItem.owner.mid}');
       onChangeEpisode(
         BaseEpisodeItem(
           aid: firstItem.aid,
@@ -749,7 +812,19 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
       return true;
     }
 
+    _dbgLog(
+        'playRelated: state=${relatedCtr.loadingState.value.runtimeType} → false');
     return false;
+  }
+
+  /// 调试日志：写 %TEMP%\piliplus_nav_debug.log（仅 Windows 生效）
+  void _dbgLog(String msg) {
+    if (!Platform.isWindows) return;
+    try {
+      final f = File(
+          '${Platform.environment['TEMP'] ?? 'C:\\Windows\\Temp'}\\piliplus_nav_debug.log');
+      f.writeAsStringSync('[${DateTime.now()}] $msg\n', mode: FileMode.append);
+    } catch (_) {}
   }
 
   // ai总结

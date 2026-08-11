@@ -19,6 +19,7 @@ import 'package:PiliPlus/models_new/video/video_detail/page.dart';
 import 'package:PiliPlus/models_new/video/video_detail/ugc_season.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
+import 'package:PiliPlus/pages/audio/controller.dart';
 import 'package:PiliPlus/pages/danmaku/view.dart';
 import 'package:PiliPlus/pages/episode_panel/view.dart';
 import 'package:PiliPlus/pages/video/ai_conclusion/view.dart';
@@ -182,6 +183,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   /// Called whenever the video player is initialized or re-shown.
   void _setupSmtcNavigation() {
     if (!Platform.isWindows) return;
+    // 音频页在后台播放时，SMTC 控制权归音频页，视频页不得抢占
+    if (AudioController.isBackgroundPlaying) return;
     try {
       final smtc = MediaControlWindows();
       smtc.setNavigationCallbacks(
@@ -416,8 +419,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
     addObserverMobile(this);
 
-    // 回到视频页时恢复 SMTC 回调
-    if (Platform.isWindows) {
+    // 回到视频页时恢复 SMTC 回调（音频页仍在后台播放时不抢占）
+    if (Platform.isWindows && !AudioController.isBackgroundPlaying) {
       final smtc = MediaControlWindows();
       smtc.restore(
         onPlay: playCallBack,
