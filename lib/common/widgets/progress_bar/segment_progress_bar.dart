@@ -15,8 +15,11 @@
  * along with PiliPlus.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import 'dart:math' show pi;
 import 'dart:ui' as ui;
 
+import 'package:PiliPlus/common/widgets/progress_bar/audio_video_progress_bar.dart'
+    show kProgressArcInsetRatio, kProgressArcShiftY;
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show listEquals;
@@ -98,6 +101,7 @@ class SegmentProgressBar extends BaseSegmentProgressBar<Segment> {
     super.key,
     super.height,
     required super.segments,
+    super.arcMode,
   });
 
   @override
@@ -105,6 +109,7 @@ class SegmentProgressBar extends BaseSegmentProgressBar<Segment> {
     return RenderProgressBar(
       height: height,
       segments: segments,
+      arcMode: arcMode,
     );
   }
 }
@@ -113,12 +118,19 @@ class RenderProgressBar extends BaseRenderProgressBar<Segment> {
   RenderProgressBar({
     required super.height,
     required super.segments,
+    super.arcMode,
   });
 
   @override
   void paint(PaintingContext context, Offset offset) {
     final size = this.size;
     final canvas = context.canvas;
+
+    if (arcMode) {
+      _paintArc(canvas, offset);
+      return;
+    }
+
     final paint = Paint()..style = PaintingStyle.fill;
 
     for (final segment in segments) {
@@ -140,6 +152,35 @@ class RenderProgressBar extends BaseRenderProgressBar<Segment> {
       }
     }
   }
+
+  /// Draws each [segments] entry as a stroke along the lower semicircular arc
+  /// (same geometry as the arc-mode main progress bar), so segment markers stay
+  /// on the arc instead of breaking it.
+  void _paintArc(Canvas canvas, Offset offset) {
+    final r = size.width / 2 - size.width * kProgressArcInsetRatio;
+    final rect = Rect.fromCircle(
+      center: Offset(size.width / 2, -kProgressArcShiftY),
+      radius: r,
+    );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = height;
+    if (offset != Offset.zero) {
+      canvas
+        ..save()
+        ..translate(offset.dx, offset.dy);
+    }
+    for (final segment in segments) {
+      paint.color = segment.color;
+      final startAngle = pi * (1 - segment.start);
+      final sweep = -pi * (segment.end - segment.start);
+      if (sweep.abs() > 0) {
+        canvas.drawArc(rect, startAngle, sweep, false, paint);
+      }
+    }
+    if (offset != Offset.zero) canvas.restore();
+  }
 }
 
 class ViewPointSegmentProgressBar
@@ -148,6 +189,7 @@ class ViewPointSegmentProgressBar
     super.key,
     super.height,
     required super.segments,
+    super.arcMode,
     this.onSeek,
   });
 
@@ -158,6 +200,7 @@ class ViewPointSegmentProgressBar
     return RenderViewPointProgressBar(
       height: height,
       segments: segments,
+      arcMode: arcMode,
       onSeek: onSeek,
     );
   }
@@ -170,6 +213,7 @@ class ViewPointSegmentProgressBar
     renderObject
       ..height = height
       ..segments = segments
+      ..arcMode = arcMode
       ..onSeek = onSeek;
   }
 }
@@ -179,6 +223,7 @@ class RenderViewPointProgressBar
   RenderViewPointProgressBar({
     required super.height,
     required super.segments,
+    super.arcMode,
     ValueSetter<Duration>? onSeek,
   }) : _onSeek = onSeek,
        _hitTestSelf = onSeek != null {
@@ -223,6 +268,12 @@ class RenderViewPointProgressBar
   void paint(PaintingContext context, Offset offset) {
     final size = this.size;
     final canvas = context.canvas;
+
+    if (arcMode) {
+      _paintArc(canvas, offset);
+      return;
+    }
+
     final paint = Paint()..style = PaintingStyle.fill;
 
     if (offset != .zero) {
@@ -285,6 +336,44 @@ class RenderViewPointProgressBar
     if (offset != .zero) canvas.restore();
   }
 
+  /// Arc-mode rendering: draws the base bar and segment boundary ticks along
+  /// the lower semicircular arc (same geometry as the arc-mode main progress
+  /// bar). Text labels are omitted on the arc.
+  void _paintArc(Canvas canvas, Offset offset) {
+    final r = size.width / 2 - size.width * kProgressArcInsetRatio;
+    final rect = Rect.fromCircle(
+      center: Offset(size.width / 2, -kProgressArcShiftY),
+      radius: r,
+    );
+    if (offset != Offset.zero) {
+      canvas
+        ..save()
+        ..translate(offset.dx, offset.dy);
+    }
+    canvas.drawArc(
+      rect,
+      pi,
+      -pi,
+      false,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = _barHeight
+        ..color = Colors.grey[600]!.withValues(alpha: 0.45),
+    );
+    final dividerPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = _dividerWidth
+      ..color = Colors.black.withValues(alpha: 0.5);
+    for (final segment in segments) {
+      final endAngle = pi * (1 - segment.end);
+      // short tick at each segment boundary
+      canvas.drawArc(rect, endAngle, 0.06, false, dividerPaint);
+    }
+    if (offset != Offset.zero) canvas.restore();
+  }
+
   ValueSetter<Duration>? _onSeek;
   set onSeek(ValueSetter<Duration>? value) {
     if (_onSeek == value) {
@@ -335,10 +424,15 @@ abstract class BaseSegmentProgressBar<T extends BaseSegment>
     super.key,
     this.height = 3.5,
     required this.segments,
+    this.arcMode = false,
   });
 
   final double height;
   final List<T> segments;
+
+  /// Whether to render the segment markers along a lower semicircular arc
+  /// instead of a straight line (used on circular screens).
+  final bool arcMode;
 
   @override
   void updateRenderObject(
@@ -347,7 +441,8 @@ abstract class BaseSegmentProgressBar<T extends BaseSegment>
   ) {
     renderObject
       ..height = height
-      ..segments = segments;
+      ..segments = segments
+      ..arcMode = arcMode;
   }
 }
 
@@ -355,7 +450,8 @@ class BaseRenderProgressBar<T extends BaseSegment> extends RenderBox {
   BaseRenderProgressBar({
     required this._height,
     required this._segments,
-  });
+    bool arcMode = false,
+  }) : _arcMode = arcMode;
 
   double _height;
   double get height => _height;
@@ -370,6 +466,14 @@ class BaseRenderProgressBar<T extends BaseSegment> extends RenderBox {
   set segments(List<T> value) {
     if (listEquals(_segments, value)) return;
     _segments = value;
+    markNeedsPaint();
+  }
+
+  bool get arcMode => _arcMode;
+  bool _arcMode;
+  set arcMode(bool value) {
+    if (_arcMode == value) return;
+    _arcMode = value;
     markNeedsPaint();
   }
 

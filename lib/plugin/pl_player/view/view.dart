@@ -63,6 +63,7 @@ import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:collection/collection.dart';
@@ -401,7 +402,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
     final isFullScreen = this.isFullScreen;
     final double widgetWidth = isLandscape && isFullScreen ? 42 : 35;
 
-    Widget progressWidget(
+    Widget _buildBottomControlWidget(
       BottomControlType bottomControl,
     ) => switch (bottomControl) {
       /// 播放暂停
@@ -919,17 +920,49 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       if (isNotFileSource && flag) .qa,
       if (!plPlayerController.isDesktopPip) .fullscreen,
     ];
+    final leftWidgets =
+        userSpecifyItemLeft.map(_buildBottomControlWidget).toList();
+    final rightWidgets =
+        userSpecifyItemRight.map(_buildBottomControlWidget).toList();
+    // 圆屏 + 全屏：控制按钮沿半圆弧分布（而非底部横排）
+    if (Pref.circularScreen && isFullScreen) {
+      return _buildArcBottomBar([...leftWidgets, ...rightWidgets]);
+    }
     return PlayerBar(
       children: [
-        Row(
-          mainAxisSize: .min,
-          children: userSpecifyItemLeft.map(progressWidget).toList(),
-        ),
-        Row(
-          mainAxisSize: .min,
-          children: userSpecifyItemRight.map(progressWidget).toList(),
-        ),
+        Row(mainAxisSize: .min, children: leftWidgets),
+        Row(mainAxisSize: .min, children: rightWidgets),
       ],
+    );
+  }
+
+  /// 圆屏 + 全屏时，将底部控制按钮沿下半圆弧分布（贴合圆屏下缘）。
+  Widget _buildArcBottomBar(List<Widget> buttons) {
+    if (buttons.isEmpty) return const SizedBox.shrink();
+    const boxSize = 44.0;
+    // 按钮半径略小于贴边的进度环（内缩 30px），保证按钮落在屏幕内、可点按
+    final r = maxWidth / 2 - 30;
+    final children = <Widget>[];
+    final n = buttons.length;
+    for (var i = 0; i < n; i++) {
+      final double theta =
+          n == 1 ? math.pi / 2 : math.pi * (1 - i / (n - 1));
+      final center =
+          Offset(maxWidth / 2 + r * math.cos(theta), r * math.sin(theta));
+      children.add(
+        Positioned(
+          left: center.dx - boxSize / 2,
+          top: center.dy - boxSize / 2,
+          width: boxSize,
+          height: boxSize,
+          child: Center(child: buttons[i]),
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      height: maxWidth / 2,
+      child: Stack(clipBehavior: Clip.none, children: children),
     );
   }
 
@@ -1727,6 +1760,8 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             child: Obx(
               () {
                 final showControls = plPlayerController.showControls.value;
+                // 圆屏适配 + 全屏时，进度条与分段条均按下半圆弧绘制
+                final bool arc = Pref.circularScreen && isFullScreen;
                 final bool offstage;
                 switch (plPlayerController.progressType) {
                   case .alwaysShow:
@@ -1769,27 +1804,57 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                           bufferedBarColor: bufferedBarColor,
                           thumbColor: primary,
                           thumbGlowColor: thumbGlowColor,
-                          barHeight: 3.5,
-                          thumbRadius: 2.5,
+                          barHeight: 10,
+                          thumbRadius: 4.5,
+                          // 圆屏适配 + 全屏时进度条绘制为下半弧（贴合圆屏下边缘）
+                          arcMode: arc,
                         );
                       }),
                       if (plPlayerController.enableBlock &&
                           videoDetailController.segmentProgressList.isNotEmpty)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0.75,
-                          child: SegmentProgressBar(
-                            segments: videoDetailController.segmentProgressList,
-                          ),
-                        ),
+                        arc
+                            ? Positioned.fill(
+                                child: SegmentProgressBar(
+                                  segments: videoDetailController
+                                      .segmentProgressList,
+                                  arcMode: true,
+                                ),
+                              )
+                            : Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 0.75,
+                                child: SegmentProgressBar(
+                                  segments: videoDetailController
+                                      .segmentProgressList,
+                                ),
+                              ),
                       if (plPlayerController.showViewPoints &&
                           videoDetailController.viewPointList.isNotEmpty &&
                           videoDetailController.showVP.value)
-                        Padding(
-                          padding: const .only(bottom: 4.25),
-                          child: ViewPointSegmentProgressBar(
-                            segments: videoDetailController.viewPointList,
+                        arc
+                            ? Positioned.fill(
+                                child: ViewPointSegmentProgressBar(
+                                  segments: videoDetailController.viewPointList,
+                                  arcMode: true,
+                                  onSeek: PlatformUtils.isMobile
+                                      ? (position) {
+                                          if (!plPlayerController
+                                              .controlsLock
+                                              .value) {
+                                            plPlayerController.seekTo(
+                                              position,
+                                              isSeek: false,
+                                            );
+                                          }
+                                        }
+                                      : null,
+                                ),
+                              )
+                            : Padding(
+                                padding: const .only(bottom: 4.25),
+                                child: ViewPointSegmentProgressBar(
+                                  segments: videoDetailController.viewPointList,
                             onSeek: PlatformUtils.isMobile
                                 ? (position) {
                                     if (!plPlayerController

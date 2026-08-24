@@ -12,6 +12,16 @@ import 'package:flutter/services.dart'
 
 /// https://github.com/suragch/audio_video_progress_bar
 
+/// The ratio (fraction of the bar width) by which the [ProgressBar.arcMode]
+/// semicircular arc is inset from the enclosing rectangle boundary. Set to 0
+/// so the arc is flush against the screen boundary on circular displays.
+const double kProgressArcInsetRatio = 0.0;
+
+/// How far (in logical pixels) to shift the [ProgressBar.arcMode] semicircular
+/// arc center upward from the widget's top edge. Keeps the arc from sitting
+/// too low on circular screens.
+const double kProgressArcShiftY = 2.0;
+
 /// A progress bar widget to show or set the location of the currently
 /// playing audio or video content.
 ///
@@ -43,6 +53,7 @@ class ProgressBar extends LeafRenderObjectWidget {
     required this.thumbGlowColor,
     this.thumbGlowRadius = 30.0,
     this.thumbCanPaintOutsideBar = true,
+    this.arcMode = false,
   });
 
   /// The elapsed playing time of the media.
@@ -170,6 +181,14 @@ class ProgressBar extends LeafRenderObjectWidget {
   /// is happening during this time, though.
   final bool thumbCanPaintOutsideBar;
 
+  /// When [arcMode] is `true` the progress bar is drawn as a lower
+  /// semicircular arc (the bottom rim of a circle) instead of a straight line.
+  ///
+  /// This is used on circular screens where the bottom edge of the display
+  /// is curved. The bar spans the full width and its height is set to
+  /// `width / 2` so that the arc matches the circular boundary.
+  final bool arcMode;
+
   @override
   RenderObject createRenderObject(BuildContext context) {
     return RenderProgressBar(
@@ -189,6 +208,7 @@ class ProgressBar extends LeafRenderObjectWidget {
       thumbGlowColor: thumbGlowColor,
       thumbGlowRadius: thumbGlowRadius,
       thumbCanPaintOutsideBar: thumbCanPaintOutsideBar,
+      arcMode: arcMode,
     );
   }
 
@@ -213,7 +233,8 @@ class ProgressBar extends LeafRenderObjectWidget {
       ..thumbColor = thumbColor
       ..thumbGlowColor = thumbGlowColor
       ..thumbGlowRadius = thumbGlowRadius
-      ..thumbCanPaintOutsideBar = thumbCanPaintOutsideBar;
+      ..thumbCanPaintOutsideBar = thumbCanPaintOutsideBar
+      ..arcMode = arcMode;
   }
 
   @override
@@ -336,6 +357,7 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
     required this._thumbGlowColor,
     double thumbGlowRadius = 30.0,
     this._thumbCanPaintOutsideBar = true,
+    this._arcMode = false,
   }) : _onDragStartUserCallback = onDragStart,
        _onDragUpdateUserCallback = onDragUpdate,
        _onDragEndUserCallback = onDragEnd,
@@ -430,6 +452,13 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
   // only one place to make changes.
   void _updateThumbPosition(Offset localPosition) {
     final dx = localPosition.dx;
+    if (_arcMode) {
+      final position = dx.clamp(0.0, size.width);
+      _thumbValue = position / size.width;
+      _progress = _currentThumbDuration();
+      markNeedsPaint();
+      return;
+    }
     // The paint used to draw the bar line draws half of the cap before the
     // start of the line (and after the end of the line). The cap radius is
     // equal to half of the line width, which in this case is the bar height.
@@ -616,6 +645,15 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
     markNeedsPaint();
   }
 
+  /// Whether to render as a lower semicircular arc instead of a straight line.
+  bool get arcMode => _arcMode;
+  bool _arcMode;
+  set arcMode(bool value) {
+    if (_arcMode == value) return;
+    _arcMode = value;
+    markNeedsLayout();
+  }
+
   // The smallest that this widget would ever want to be.
   static const _minDesiredWidth = 100.0;
 
@@ -626,14 +664,35 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
   double computeMaxIntrinsicWidth(double height) => _minDesiredWidth;
 
   @override
-  double computeMinIntrinsicHeight(double width) => _heightWhenNoLabels();
+  double computeMinIntrinsicHeight(double width) =>
+      _arcMode ? width / 2 : _heightWhenNoLabels();
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _heightWhenNoLabels();
+  double computeMaxIntrinsicHeight(double width) =>
+      _arcMode ? width / 2 : _heightWhenNoLabels();
 
   final bool _hitTestSelf;
   @override
-  bool hitTestSelf(Offset position) => _hitTestSelf;
+  bool hitTestSelf(Offset position) {
+    if (!_hitTestSelf) return false;
+    if (!_arcMode) return true;
+    return _isNearArc(position);
+  }
+
+  /// Extra touch padding around the semicircular arc (in logical pixels).
+  static const double _kArcHitPadding = 8.0;
+
+  /// Returns whether [p] (in local coordinates) lies near the lower
+  /// semicircular arc. Only the arc ring itself is interactive; touches inside
+  /// the semicircle or far outside the ring fall through to the layers below.
+  bool _isNearArc(Offset p) {
+    final center = Offset(size.width / 2, -kProgressArcShiftY);
+    final dist = (p - center).distance;
+    final r = _arcRadius(size);
+    final threshold = max(thumbRadius, barHeight) + _kArcHitPadding;
+    // 仅下半弧区域（圆心下方）且靠近弧线环带
+    return p.dy >= center.dy - threshold && (dist - r).abs() <= threshold;
+  }
 
   @override
   void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
@@ -651,7 +710,8 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
   @override
   Size computeDryLayout(BoxConstraints constraints) {
     final desiredWidth = constraints.maxWidth;
-    final desiredHeight = _heightWhenNoLabels();
+    final desiredHeight =
+        _arcMode ? constraints.maxWidth / 2 : _heightWhenNoLabels();
     return constraints.constrainDimensions(desiredWidth, desiredHeight);
   }
 
@@ -730,7 +790,19 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
     final baseBarPaint = Paint()
       ..color = color
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = _barHeight;
+      ..strokeWidth = _barHeight
+      ..style = PaintingStyle.stroke;
+    if (_arcMode) {
+      if (widthProportion <= 0) return;
+      canvas.drawArc(
+        _arcRect(availableSize),
+        pi,
+        -pi * widthProportion,
+        false,
+        baseBarPaint,
+      );
+      return;
+    }
     final capRadius = _barHeight / 2;
     final adjustedWidth = availableSize.width - barHeight;
     final dx = widthProportion * adjustedWidth + capRadius;
@@ -740,15 +812,43 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
     canvas.drawLine(startPoint, endPoint, baseBarPaint);
   }
 
+  /// The bounding rect of the lower semicircular arc used in [arcMode].
+  ///
+  /// The circle is centered just above the top-center of the widget with
+  /// radius equal to half the width, so the lower semicircle dips down toward
+  /// the widget's bottom center and its endpoints sit at the top-left /
+  /// top-right corners. The center is shifted up by [kProgressArcShiftY] so the
+  /// arc does not sit too low on the screen.
+  Rect _arcRect(Size s) {
+    final r = _arcRadius(s);
+    return Rect.fromCircle(
+      center: Offset(s.width / 2, -kProgressArcShiftY),
+      radius: r,
+    );
+  }
+
+  double _arcRadius(Size s) =>
+      s.width / 2 - s.width * kProgressArcInsetRatio;
+
   void _drawThumb(Canvas canvas, Size localSize) {
     final thumbPaint = Paint()..color = thumbColor;
-    final barCapRadius = _barHeight / 2;
-    final availableWidth = localSize.width - _barHeight;
-    var thumbDx = _thumbValue * availableWidth + barCapRadius;
-    if (!_thumbCanPaintOutsideBar) {
-      thumbDx = thumbDx.clamp(_thumbRadius, localSize.width - _thumbRadius);
+    final Offset center;
+    if (_arcMode) {
+      final theta = pi - pi * _thumbValue;
+      final r = _arcRadius(localSize);
+      center = Offset(
+        localSize.width / 2 + r * cos(theta),
+        -kProgressArcShiftY + r * sin(theta),
+      );
+    } else {
+      final barCapRadius = _barHeight / 2;
+      final availableWidth = localSize.width - _barHeight;
+      var thumbDx = _thumbValue * availableWidth + barCapRadius;
+      if (!_thumbCanPaintOutsideBar) {
+        thumbDx = thumbDx.clamp(_thumbRadius, localSize.width - _thumbRadius);
+      }
+      center = Offset(thumbDx, localSize.height / 2);
     }
-    final center = Offset(thumbDx, localSize.height / 2);
     if (_userIsDraggingThumb && _paintThumbGlow) {
       final thumbGlowPaint = Paint()..color = thumbGlowColor;
       canvas.drawCircle(center, thumbGlowRadius, thumbGlowPaint);
