@@ -623,6 +623,18 @@ List<SettingsModel> get extraSettings => [
       }
     },
   ),
+  NormalModel(
+    title: 'OCR 语言包',
+    subtitle: '选择下载识别语言包（本地 RapidOCR，仅 arm64 设备）',
+    leading: const Icon(Icons.language),
+    onTap: (context, setState) => Get.toNamed('/ocrLanguagePackSetting'),
+  ),
+  NormalModel(
+    title: 'ASR 语音识别语言包',
+    subtitle: '选择下载语音识别模型（本地 sherpa-onnx，流式）',
+    leading: const Icon(Icons.record_voice_over_outlined),
+    onTap: (context, setState) => Get.toNamed('/asrLanguagePackSetting'),
+  ),
 ];
 
 Future<void> audioNormalization(

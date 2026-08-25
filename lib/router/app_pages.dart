@@ -66,6 +66,9 @@ import 'package:PiliPlus/pages/setting/pages/font_setting.dart';
 import 'package:PiliPlus/pages/setting/pages/logs.dart';
 import 'package:PiliPlus/pages/setting/pages/play_speed_set.dart';
 import 'package:PiliPlus/pages/setting/pages/ppi_setting.dart';
+import 'package:PiliPlus/pages/setting/pages/ocr_language_pack_setting.dart';
+import 'package:PiliPlus/pages/setting/pages/asr_language_pack_setting.dart';
+import 'package:PiliPlus/pages/setting/pages/ocr_model_setting.dart';
 import 'package:PiliPlus/pages/setting/play_setting.dart';
 import 'package:PiliPlus/pages/setting/privacy_setting.dart';
 import 'package:PiliPlus/pages/setting/recommend_setting.dart';
@@ -144,6 +147,18 @@ class Routes {
     GetPage(name: '/fontSizeSetting', page: () => const FontSizeSelectPage()),
     // PPI 设置
     GetPage(name: '/ppiSetting', page: () => const PpiSettingPage()),
+    // OCR 歌词模型
+    GetPage(name: '/ocrModelSetting', page: () => const OcrModelSettingPage()),
+    // OCR 语言包
+    GetPage(
+      name: '/ocrLanguagePackSetting',
+      page: () => const OcrLanguagePackSettingPage(),
+    ),
+    // ASR 语言包
+    GetPage(
+      name: '/asrLanguagePackSetting',
+      page: () => const AsrLanguagePackSettingPage(),
+    ),
     // 字体设置
     GetPage(name: '/fontSetting', page: () => const FontSettingPage()),
     // 背景设置

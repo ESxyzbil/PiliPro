@@ -1,7 +1,8 @@
-import 'dart:async' show StreamSubscription, Timer;
+import 'dart:async' show Completer, StreamSubscription, Timer;
 import 'dart:convert' show ascii;
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 import 'dart:math' show max, min;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:PiliPlus/common/assets.dart';
@@ -30,6 +31,12 @@ import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/services/asr/asr_audio_bridge.dart';
+import 'package:PiliPlus/services/asr/asr_model_manager.dart';
+import 'package:PiliPlus/services/asr/asr_service.dart';
+import 'package:PiliPlus/services/asr/ocr_frame_bridge.dart';
+import 'package:PiliPlus/services/ocr/ocr_model_manager.dart';
+import 'package:PiliPlus/services/ocr/ocr_service.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
@@ -62,6 +69,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:native_device_orientation/native_device_orientation.dart';
 import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:window_manager/window_manager.dart';
@@ -452,6 +460,10 @@ class PlPlayerController with BlockConfigMixin {
     int newSecond = position.inSeconds;
     if (positionSeconds.value != newSecond) {
       positionSeconds.value = newSecond;
+    }
+    // 整段字幕按播放进度驱动浮层更新
+    if (asrFullReady) {
+      asrFullCursor.value = position.inMilliseconds;
     }
   }
 
@@ -1121,6 +1133,10 @@ class PlPlayerController with BlockConfigMixin {
     this.position = position;
     updatePositionSecond();
     _heartDuration = position.inSeconds;
+    // ASR 开启时 seek 需重对齐音频流
+    if (asrSubtitleEnabled.value) {
+      _restartAsrIfNeeded();
+    }
 
     Future<void> seek() async {
       if (isSeek) {
@@ -1195,6 +1211,10 @@ class PlPlayerController with BlockConfigMixin {
     audioSessionHandler?.setActive(true);
 
     playerStatus.value = PlayerStatus.playing;
+    // ASR 开启时恢复播放需重启音频流（暂停时已停）
+    if (asrSubtitleEnabled.value) {
+      _restartAsrIfNeeded();
+    }
     // screenManager.setOverlays(false);
   }
 
@@ -1202,6 +1222,10 @@ class PlPlayerController with BlockConfigMixin {
   Future<void> pause({bool notify = true, bool isInterrupt = false}) async {
     await _videoPlayerController?.pause();
     playerStatus.value = PlayerStatus.paused;
+    // 暂停时停掉 ASR 音频解码，避免超前于画面
+    if (asrSubtitleEnabled.value) {
+      _asrBridge.stop();
+    }
 
     // 主动暂停时让出音频焦点
     if (!isInterrupt) {
@@ -1665,11 +1689,713 @@ class PlPlayerController with BlockConfigMixin {
     if (kDebugMode) {
       debugPrint('dispose player');
     }
+    _stopAsr();
     _videoPlayerController?.dispose();
     _videoPlayerController = null;
     _videoController = null;
     _instance = null;
     videoPlayerServiceHandler?.clear();
+  }
+
+  /// ═══ OCR 字幕（视频页：单实例实时识别画面生成字幕）═══
+  /// 预识别（第二实例取未来帧）在本设备不可行：无渲染器 screenshot 恒 null，
+  /// 有渲染器必灰屏。故回到主播放器实时截图 + 后台 isolate 编码。
+  final RxBool ocrSubtitleEnabled = false.obs;
+  final RxString ocrSubtitleText = ''.obs;
+
+  /// 已生成的 OCR 字幕段（开始/结束/文本），时间基于播放进度
+  final List<({Duration start, Duration end, String text})> ocrSegments = [];
+
+  /// 切换 OCR 字幕（整段识别：一次解码视频逐帧识别，生成时间轴字幕）
+  Future<void> toggleOcrSubtitle() async {
+    if (ocrSubtitleEnabled.value) {
+      ocrSubtitleEnabled.value = false;
+      ocrSubtitleText.value = '';
+      ocrFullReady = false;
+      ocrFullSegments.clear();
+      _ocrFrameBridge.dispose();
+      return;
+    }
+    if (isLive) {
+      SmartDialog.showToast('直播暂不支持 OCR 字幕');
+      return;
+    }
+    final videoUrl = dataSource.videoSource;
+    if (videoUrl.isEmpty) {
+      SmartDialog.showToast('当前视频无视频源，OCR 整段不可用');
+      return;
+    }
+    if (!Get.isRegistered<OcrService>()) {
+      Get.put(OcrService(), permanent: true);
+    }
+    if (!Get.isRegistered<OcrModelManager>()) {
+      Get.put(OcrModelManager(), permanent: true);
+    }
+    if (!await OcrService.instance.isSupported()) {
+      SmartDialog.showToast('OCR 仅支持 arm64 设备');
+      return;
+    }
+    if (!await OcrModelManager.instance.isDownloaded()) {
+      SmartDialog.showToast('请先到 设置 → 其他 → OCR 歌词模型 下载模型');
+      return;
+    }
+    ocrSubtitleEnabled.value = true;
+    _runFullOcrRecognition(videoUrl);
+  }
+
+  /// ═══ OCR 整段识别（一次解码视频逐帧 OCR，生成时间轴字幕）═══
+  bool ocrFullReady = false;
+  final List<({Duration start, Duration end, String text})> ocrFullSegments = [];
+  bool _ocrFullRunning = false;
+  final OcrFrameBridge _ocrFrameBridge = OcrFrameBridge();
+
+  /// 工作台进度显示（OCR/ASR）
+  final RxString ocrFullProgress = ''.obs;
+  final RxString asrFullProgress = ''.obs;
+
+  /// 工作台识别日志（shell 风格逐行滚动）
+  final RxList<String> workbenchLogs = <String>[].obs;
+
+  void wlog(String msg) {
+    final t = DateTime.now();
+    final ts = '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}:'
+        '${t.second.toString().padLeft(2, '0')}';
+    workbenchLogs.add('[$ts] $msg');
+    if (workbenchLogs.length > 500) {
+      workbenchLogs.removeRange(0, workbenchLogs.length - 500);
+    }
+  }
+
+  /// 公开：触发 OCR 整段识别（工作台页面调用）
+  Future<void> runFullOcr() async {
+    if (_ocrFullRunning) return;
+    final url = dataSource.videoSource;
+    if (url.isEmpty) {
+      SmartDialog.showToast('当前视频无视频源，OCR 整段不可用');
+      return;
+    }
+    if (!Get.isRegistered<OcrService>()) {
+      Get.put(OcrService(), permanent: true);
+    }
+    if (!Get.isRegistered<OcrModelManager>()) {
+      Get.put(OcrModelManager(), permanent: true);
+    }
+    if (!await OcrService.instance.isSupported()) {
+      SmartDialog.showToast('OCR 仅支持 arm64 设备');
+      return;
+    }
+    if (!await OcrModelManager.instance.isDownloaded()) {
+      SmartDialog.showToast('请先到 设置 → 其他 → OCR 歌词模型 下载模型');
+      return;
+    }
+    ocrSubtitleEnabled.value = true;
+    await _runFullOcrRecognition(url);
+  }
+
+  /// 公开：触发 ASR 整段识别（工作台页面调用，独立于开关状态）
+  Future<void> runFullAsr() async {
+    if (_asrFullRunning) return;
+    if (isLive) {
+      SmartDialog.showToast('直播暂不支持 ASR 字幕');
+      return;
+    }
+    final audioUrl = dataSource.audioSource;
+    if (audioUrl == null || audioUrl.isEmpty) {
+      SmartDialog.showToast('当前视频无独立音轨，ASR 不可用');
+      return;
+    }
+    if (!Get.isRegistered<AsrService>()) {
+      Get.put(AsrService(), permanent: true);
+    }
+    if (!Get.isRegistered<AsrModelManager>()) {
+      Get.put(AsrModelManager(), permanent: true);
+    }
+    // 选择已下载的模型：离线(SenseVoice/Whisper)优先，否则流式
+    await AsrModelManager.instance.refreshStatus();
+    String? langCode;
+    for (final l in AsrModelManager.languages) {
+      if (AsrModelManager.instance.downloadedLangs.contains(l.code)) {
+        if (langCode == null) langCode = l.code;
+        if (l.isOffline) langCode = l.code;
+      }
+    }
+    if (langCode == null) {
+      SmartDialog.showToast('请先到 设置 → 其他 → ASR 语言包 下载模型');
+      return;
+    }
+    final lang = AsrModelManager.instance.langOf(langCode)!;
+    final modelDir = await AsrModelManager.instance.langDir(langCode);
+    if (AsrService.instance.isLoaded && _asrModelDir != modelDir) {
+      AsrService.instance.dispose();
+    }
+    _asrModelDir = modelDir;
+    _asrModelLang = lang;
+    final err = await AsrService.instance.init(lang, modelDir);
+    if (err != null) {
+      SmartDialog.showToast(err);
+      return;
+    }
+    asrSubtitleEnabled.value = true;
+    if (lang.isOffline) {
+      await _runFullRecognition(audioUrl, lang, modelDir);
+    } else {
+      _startAsrPipeline(audioUrl);
+    }
+  }
+
+  /// 公开：生成 SRT 字幕内容（按时间排序）
+  String buildSrtContent(List<({Duration start, Duration end, String text})> segs) {
+    final sorted = [...segs]..sort((a, b) => a.start.compareTo(b.start));
+    final buf = StringBuffer();
+    var i = 1;
+    for (final s in sorted) {
+      buf.writeln(i);
+      buf.writeln(
+        '${_fmtSrt(s.start)} --> ${_fmtSrt(s.end)}',
+      );
+      buf.writeln(s.text);
+      buf.writeln();
+      i++;
+    }
+    return buf.toString();
+  }
+
+  String _fmtSrt(Duration d) {
+    final h = d.inHours.toString().padLeft(2, '0');
+    final m = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    final ms = (d.inMilliseconds % 1000).toString().padLeft(3, '0');
+    return '$h:$m:$s,$ms';
+  }
+
+  Future<void> _runFullOcrRecognition(String audioUrl) async {
+    if (_ocrFullRunning) return;
+    _ocrFullRunning = true;
+    ocrFullReady = false;
+    ocrFullSegments.clear();
+    ocrSubtitleText.value = '正在提取视频帧…';
+    ocrFullProgress.value = '正在提取视频帧…';
+    wlog('OCR 整段识别开始');
+    wlog('  视频源: ${audioUrl.length > 90 ? audioUrl.substring(0, 90) + '…' : audioUrl}');
+    wlog('  取帧间隔: 1000ms, OCR: fast_paddle(560px)');
+    final tmp = await getTemporaryDirectory();
+    final frameDir =
+        '${tmp.path}/ocr_frames_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      final completer = Completer<String>();
+      _ocrFrameBridge.onDone = (dir, count) {
+        if (!completer.isCompleted) completer.complete('$dir|$count');
+      };
+      _ocrFrameBridge.onFailed = (e) {
+        if (!completer.isCompleted) completer.completeError(Exception(e));
+      };
+      _asrLog('[OCRFull] start frame extraction');
+      _ocrFrameBridge.start(url: audioUrl, outDir: frameDir, sampleEveryMs: 1000);
+      final res = await completer.future.timeout(const Duration(minutes: 5));
+      final parts = res.split('|');
+      final count = int.parse(parts[1]);
+      _asrLog('[OCRFull] frames extracted: $count');
+      wlog('  视频帧提取完成: $count 帧');
+      if (count == 0) {
+        ocrSubtitleText.value = '';
+        ocrFullProgress.value = '';
+        wlog('  错误: 未提取到视频帧');
+        SmartDialog.showToast('未提取到视频帧');
+        return;
+      }
+      ocrSubtitleText.value = '正在识别画面文字（$count 帧）…';
+      ocrFullProgress.value = '正在识别画面文字（$count 帧）…';
+      final dir = parts[0];
+      var lastText = '';
+      var segStart = Duration.zero;
+      var emptyCount = 0;
+      var textCount = 0;
+      for (var i = 0; i < count; i++) {
+        final f = File('$dir/f${i.toString().padLeft(5, '0')}.jpg');
+        if (!await f.exists()) {
+          if (i < 3) wlog('  帧 $i 文件不存在: $f');
+          continue;
+        }
+        final rawText = (await OcrService.instance.recognize(f.path))?.trim() ?? '';
+        final text = _filterOcrWatermark(rawText);
+        if (text.isEmpty) {
+          emptyCount++;
+        } else {
+          textCount++;
+          if (textCount <= 3 || i % 30 == 0) {
+            wlog('  帧 ${i * 1000 ~/ 1000}s: $text');
+          }
+        }
+        final t = Duration(milliseconds: i * 1000);
+        if (text.isNotEmpty && !_sameOcrText(lastText, text)) {
+          if (lastText.isNotEmpty) {
+            ocrFullSegments.add((start: segStart, end: t, text: lastText));
+          }
+          lastText = text;
+          segStart = t;
+        }
+        if (i % 20 == 19) {
+          ocrFullProgress.value = '正在识别画面文字 ${i + 1}/$count…';
+        }
+      }
+      if (lastText.isNotEmpty) {
+        ocrFullSegments.add((
+          start: segStart,
+          end: Duration(milliseconds: count * 1000),
+          text: lastText,
+        ));
+      }
+      ocrFullReady = true;
+      ocrSubtitleText.value = '';
+      ocrFullProgress.value = '识别完成：${ocrFullSegments.length} 段';
+      wlog('  识别完成: ${ocrFullSegments.length} 段 (有文字帧 $textCount, 空帧 $emptyCount)');
+      for (var i = 0; i < ocrFullSegments.length && i < 10; i++) {
+        wlog('  段$i [${_fmtSrt(ocrFullSegments[i].start)} - ${_fmtSrt(ocrFullSegments[i].end)}] ${ocrFullSegments[i].text}');
+      }
+      _asrLog('[OCRFull] done: ${ocrFullSegments.length} segments');
+      if (ocrFullSegments.isEmpty) {
+        SmartDialog.showToast('未识别到画面文字');
+      }
+      try {
+        Directory(dir).deleteSync(recursive: true);
+      } catch (_) {}
+    } catch (e) {
+      _asrLog('[OCRFull] error: $e');
+      ocrSubtitleText.value = '';
+      ocrFullProgress.value = 'OCR 失败：$e';
+      wlog('  OCR 失败: $e');
+      SmartDialog.showToast('整段 OCR 失败: $e');
+    } finally {
+      _ocrFullRunning = false;
+    }
+  }
+
+  /// 当前 OCR 整段时间轴段
+  ({Duration start, Duration end, String text})? get _currentOcrSegment {
+    if (!ocrFullReady || ocrFullSegments.isEmpty) return null;
+    final posMs = position.inMilliseconds;
+    for (final seg in ocrFullSegments) {
+      if (posMs >= seg.start.inMilliseconds &&
+          posMs < seg.end.inMilliseconds) {
+        return seg;
+      }
+    }
+    return null;
+  }
+
+  bool _sameOcrText(String a, String b) {
+    final na = a.replaceAll(RegExp(r'\s'), '');
+    final nb = b.replaceAll(RegExp(r'\s'), '');
+    if (na.isEmpty || nb.isEmpty) return na == nb; // 空串仅相等才相同（防 contains('')恒true）
+    return na == nb || na.contains(nb) || nb.contains(na);
+  }
+
+  /// ═══ B 站 UP 主水印过滤 ═══
+  /// fast_paddle_ocr 只返回文本不带坐标，无法按区域排除，
+  /// 故用「形态特征（即时） + 长稳静态（兜底）」两层启发式过滤水印行。
+  /// 一行连续跨 N 个不同文本结果仍存在 → 判定为静态水印/台标。
+  static const int _watermarkStableThreshold = 6;
+  final Map<String, int> _watermarkStableCount = {};
+  Set<String> _lastOcrLines = const {};
+
+  /// 过滤 OCR 结果中的水印行，返回过滤后的文本。
+  /// 长稳计数只在「文本发生变化」的帧更新：
+  /// 字幕行至多跨 1-2 次变化即消失，静态水印则逐次累加直至被剔除。
+  String _filterOcrWatermark(String text) {
+    if (text.isEmpty) return '';
+    final lines = text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (lines.isEmpty) return '';
+    final cur = lines.toSet();
+    if (!_sameLineSet(cur, _lastOcrLines)) {
+      _watermarkStableCount.removeWhere((k, v) => !cur.contains(k));
+      for (final l in cur) {
+        _watermarkStableCount[l] = (_watermarkStableCount[l] ?? 0) + 1;
+      }
+      _lastOcrLines = cur;
+    }
+    return cur
+        .where((l) =>
+            !_isWatermarkLine(l) &&
+            (_watermarkStableCount[l] ?? 0) < _watermarkStableThreshold)
+        .join('\n');
+  }
+
+  bool _sameLineSet(Set<String> a, Set<String> b) {
+    if (a.length != b.length) return false;
+    return a.containsAll(b);
+  }
+
+  /// 形态特征判定：B 站播放器水印（bilibili logo + 数字 ID）、
+  /// UP 主头像水印（@昵称）、防伪码、UID 行、台标
+  bool _isWatermarkLine(String line) {
+    // B 站水印主体：bilibili logo 文字（可带数字 ID，如 "bilibili 12345678"）。
+    // 仅当整行较短时判定为水印，避免误伤含 bilibili 的长句字幕。
+    final lower = line.toLowerCase();
+    if (lower.contains('bilibili') || line.contains('哔哩哔哩')) {
+      return line.length <= 16;
+    }
+    if (line == 'b站') return true;
+    // UP 主头像水印：头像 + @昵称
+    if (line.contains('@')) return true;
+    // 防伪码随机码：字母+数字混合，2-8 位（如 aB3x）
+    if (RegExp(r'^[A-Za-z0-9]{2,8}$').hasMatch(line) &&
+        RegExp(r'[A-Za-z]').hasMatch(line) &&
+        RegExp(r'[0-9]').hasMatch(line)) {
+      return true;
+    }
+    // UID 行：UID:123456 / uid：123456
+    if (RegExp(r'^UID[:：]?\s*\d+$', caseSensitive: false).hasMatch(line)) {
+      return true;
+    }
+    // 纯数字 5-10 位（B 站用户 ID）
+    if (RegExp(r'^\d{5,10}$').hasMatch(line)) return true;
+    return false;
+  }
+
+  /// ═══ ASR 语音字幕（流式识别：MediaCodec 音轨 PCM → sherpa-onnx）═══
+  /// ASR 为主、OCR 辅助：融合文本优先显示语音识别结果，
+  /// ASR 静默（无人声/纯画面文字）时回落到 OCR 画面文字。
+  /// 日志桥：release 下 Dart print 不输出到 logcat，经 asr_audio 通道转发 Kotlin Log.i
+  void _asrLog(String msg) {
+    try {
+      _asrBridge.log(msg);
+    } catch (_) {}
+  }
+
+  final RxBool asrSubtitleEnabled = false.obs;
+  final RxString asrSubtitleText = ''.obs;
+  final List<({Duration start, Duration end, String text})> asrSegments = [];
+  bool _asrLooping = false;
+  bool _asrDecoding = false;
+  int _emptyDecodeCount = 0;
+  String? _asrModelDir;
+  AsrLanguageInfo? _asrModelLang;
+  int _pcmBlockCount = 0;
+  int _asrTextCount = 0;
+  final AsrAudioBridge _asrBridge = AsrAudioBridge();
+
+  /// 融合字幕文本（ASR 整段 > OCR 整段 > 实时 ASR > 实时 OCR）
+  String get fusedSubtitleText {
+    if (asrFullReady) {
+      // 读取 asrFullCursor 建立 Rx 依赖，驱动浮层按播放进度刷新
+      asrFullCursor.value;
+      final seg = _currentAsrSegment;
+      if (seg != null) return seg.text;
+      return '';
+    }
+    if (ocrFullReady) {
+      asrFullCursor.value;
+      final seg = _currentOcrSegment;
+      if (seg != null) return seg.text;
+      return '';
+    }
+    final asr = asrSubtitleText.value.trim();
+    if (asr.isNotEmpty) return asr;
+    return ocrSubtitleText.value;
+  }
+
+  bool get subtitleEnabled =>
+      ocrSubtitleEnabled.value || asrSubtitleEnabled.value;
+
+  Future<void> toggleAsrSubtitle() async {
+    if (asrSubtitleEnabled.value) {
+      _stopAsr();
+      return;
+    }
+    if (isLive) {
+      SmartDialog.showToast('直播暂不支持 ASR 字幕');
+      return;
+    }
+    final audioUrl = dataSource.audioSource;
+    _asrLog('[ASR] toggle: audioSource=${audioUrl == null ? "null" : (audioUrl.isEmpty ? "empty" : "len=${audioUrl.length}")}');
+    if (audioUrl == null || audioUrl.isEmpty) {
+      SmartDialog.showToast('当前视频无独立音轨，ASR 不可用');
+      return;
+    }
+    if (!Get.isRegistered<AsrService>()) {
+      Get.put(AsrService(), permanent: true);
+    }
+    if (!Get.isRegistered<AsrModelManager>()) {
+      Get.put(AsrModelManager(), permanent: true);
+    }
+    // 选择已下载的模型：离线(SenseVoice/Whisper)优先（歌曲场景），否则流式
+    await AsrModelManager.instance.refreshStatus();
+    String? langCode;
+    for (final l in AsrModelManager.languages) {
+      if (AsrModelManager.instance.downloadedLangs.contains(l.code)) {
+        if (langCode == null) langCode = l.code;
+        if (l.isOffline) langCode = l.code;
+      }
+    }
+    _asrLog('[ASR] toggle: langCode=$langCode downloaded=${AsrModelManager.instance.downloadedLangs.toSet()}');
+    if (langCode == null) {
+      SmartDialog.showToast('请先到 设置 → 其他 → ASR 语言包 下载模型');
+      return;
+    }
+    final modelDir = await AsrModelManager.instance.langDir(langCode);
+    final lang = AsrModelManager.instance.langOf(langCode);
+    // 模型切换时释放旧模型
+    if (AsrService.instance.isLoaded && _asrModelDir != modelDir) {
+      AsrService.instance.dispose();
+    }
+    _asrModelDir = modelDir;
+    _asrModelLang = lang;
+    final err = await AsrService.instance.init(lang!, modelDir);
+    _asrLog('[ASR] toggle: init err=$err modelDir=$modelDir type=${lang.type}');
+    if (err != null) {
+      SmartDialog.showToast(err);
+      return;
+    }
+    asrSubtitleEnabled.value = true;
+    if (lang.isOffline) {
+      // 离线模型：整段识别生成时间轴字幕（播放同步显示）
+      _runFullRecognition(audioUrl, lang, modelDir);
+    } else {
+      _startAsrPipeline(audioUrl);
+    }
+  }
+
+  /// ═══ 整段识别（离线模型：生成时间轴字幕，播放同步）═══
+  bool asrFullReady = false;
+  final RxInt asrFullCursor = 0.obs; // 当前播放毫秒，驱动浮层更新
+  bool _asrFullRunning = false;
+
+  Future<void> _runFullRecognition(
+    String audioUrl,
+    AsrLanguageInfo lang,
+    String modelDir,
+  ) async {
+    if (_asrFullRunning) return;
+    _asrFullRunning = true;
+    asrFullReady = false;
+    asrSegments.clear();
+    asrSubtitleText.value = '正在识别整段音频…';
+    asrFullProgress.value = '正在解码整段音频…';
+    wlog('ASR 整段识别开始');
+    wlog('  模型: ${lang.label} (${lang.type})');
+    wlog('  模型目录: $modelDir');
+    wlog('  段长: 12000ms, 重叠: 2000ms');
+    final tmp = await getTemporaryDirectory();
+    final rawPath =
+        '${tmp.path}/asr_full_${DateTime.now().millisecondsSinceEpoch}.raw';
+    try {
+      final completer = Completer<String>();
+      _asrBridge.onAllDone = (p) {
+        if (!completer.isCompleted) completer.complete(p);
+      };
+      _asrBridge.onAllFailed = (e) {
+        if (!completer.isCompleted) completer.completeError(Exception(e));
+      };
+      _asrLog('[ASR] full: decodeAll start');
+      _asrBridge.decodeAll(url: audioUrl, outPath: rawPath);
+      final path = await completer.future.timeout(const Duration(minutes: 5));
+      _asrLog('[ASR] full: decoded $path');
+      wlog('  音轨解码完成');
+      asrSubtitleText.value = '解码完成，正在识别…';
+      asrFullProgress.value = '正在识别语音（SenseVoice/Whisper）…';
+      final segs = await recognizeFullAudio(
+        lang: lang,
+        modelDir: modelDir,
+        rawPath: path,
+        segmentMs: 12000,
+        overlapMs: 2000,
+      );
+      asrSegments.addAll(segs);
+      asrFullReady = true;
+      asrSubtitleText.value = '';
+      asrFullProgress.value = '识别完成：${segs.length} 段';
+      wlog('  识别完成: ${segs.length} 段');
+      for (var i = 0; i < segs.length && i < 10; i++) {
+        wlog('  段$i [${_fmtSrt(segs[i].start)} - ${_fmtSrt(segs[i].end)}] ${segs[i].text}');
+      }
+      _asrLog('[ASR] full done: ${segs.length} segments');
+      for (var i = 0; i < segs.length && i < 12; i++) {
+        _asrLog('[ASR] seg$i: ${segs[i].start.inMilliseconds}ms-${segs[i].end.inMilliseconds}ms ${segs[i].text}');
+      }
+      if (segs.isEmpty) {
+        SmartDialog.showToast('未识别到内容');
+      }
+    } catch (e) {
+      _asrLog('[ASR] full error: $e');
+      asrSubtitleText.value = '';
+      asrFullProgress.value = 'ASR 失败：$e';
+      wlog('  ASR 失败: $e');
+      SmartDialog.showToast('整段识别失败: $e');
+    } finally {
+      _asrFullRunning = false;
+      try {
+        final f = File(rawPath);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// 当前时间轴字幕段（整段识别完成后按播放进度取）
+  ({Duration start, Duration end, String text})? get _currentAsrSegment {
+    if (!asrFullReady || asrSegments.isEmpty) return null;
+    final posMs = position.inMilliseconds;
+    for (final seg in asrSegments) {
+      if (posMs >= seg.start.inMilliseconds &&
+          posMs < seg.end.inMilliseconds) {
+        return seg;
+      }
+    }
+    return null;
+  }
+
+  /// Whisper 分段识别缓冲（约 6 秒 @16k）
+  static const int _whisperSegmentSamples = 16000 * 6;
+  Float32List _whisperBuffer = Float32List(0);
+  bool _whisperRecognizing = false;
+
+  void _startAsrPipeline(String audioUrl) {
+    AsrService.instance.reset();
+    asrSubtitleText.value = '';
+    _pcmBlockCount = 0;
+    _asrTextCount = 0;
+    _whisperBuffer = Float32List(0);
+    _asrLog('[ASR] pipeline start, type=${_asrModelLang?.type}, audioUrl head=${audioUrl.length > 80 ? audioUrl.substring(0, 80) : audioUrl}');
+    _asrBridge.onPcm = (pcm) {
+      if (!asrSubtitleEnabled.value) return;
+      if (_pcmBlockCount < 3) {
+        final head = pcm.length >= 5 ? pcm.sublist(0, 5) : pcm;
+        _asrLog('[ASR] pcm block ${_pcmBlockCount + 1}: ${pcm.length} samples head=$head');
+      }
+      _pcmBlockCount++;
+      if (_asrModelLang?.isOffline == true) {
+        // Whisper/SenseVoice：缓冲到 6 秒后分段识别（识别期间继续缓冲）
+        final buf = Float32List(_whisperBuffer.length + pcm.length)
+          ..setAll(0, _whisperBuffer)
+          ..setAll(_whisperBuffer.length, pcm);
+        _whisperBuffer = buf;
+        if (_whisperBuffer.length >= _whisperSegmentSamples &&
+            !_whisperRecognizing) {
+          final seg = _whisperBuffer;
+          _whisperBuffer = Float32List(0);
+          _whisperRecognizing = true;
+          _recognizeWhisperSegment(seg);
+        }
+      } else {
+        AsrService.instance.acceptWaveform(pcm);
+      }
+    };
+    _asrBridge.onEnded = () {
+      // 音轨解码自然结束（播放到末尾）
+    };
+    _asrBridge.start(
+      url: audioUrl,
+      startMs: position.inMilliseconds,
+      note: 'modelDir=$_asrModelDir',
+    );
+    if (_asrModelLang?.isOffline != true) {
+      _asrLoop();
+    }
+  }
+
+  /// Whisper 离线分段识别（主 isolate，识别期间 UI 可能短暂卡顿）
+  Future<void> _recognizeWhisperSegment(Float32List seg) async {
+    try {
+      final sw = Stopwatch()..start();
+      final text =
+          (await AsrService.instance.recognizeSegment(seg))?.trim() ?? '';
+      sw.stop();
+      _asrLog('[ASR] whisper seg=${seg.length ~/ 16000}s '
+          'decode=${sw.elapsed.inMilliseconds}ms text=$text');
+      if (text.isNotEmpty) {
+        asrSubtitleText.value = text;
+        _asrTextCount++;
+      }
+    } catch (e) {
+      _asrLog('[ASR] whisper error: $e');
+    } finally {
+      _whisperRecognizing = false;
+    }
+  }
+
+  Future<void> _asrLoop() async {
+    if (_asrLooping) return;
+    _asrLooping = true;
+    var lastText = '';
+    var segStart = position;
+    try {
+      while (asrSubtitleEnabled.value) {
+        await Future.delayed(const Duration(milliseconds: 120));
+        if (!asrSubtitleEnabled.value || _asrDecoding) continue;
+        _asrDecoding = true;
+        try {
+          final text = AsrService.instance.decodeAndGetText().trim();
+          if (_asrTextCount < 3 && text.isNotEmpty) {
+            _asrLog('[ASR] text#${_asrTextCount + 1}: $text');
+          }
+          if (text.isNotEmpty) {
+            _asrTextCount++;
+            _emptyDecodeCount = 0;
+          } else {
+            _emptyDecodeCount++;
+            // 心跳：确认 decode 循环存活（每 ~12s 一次）
+            if (_emptyDecodeCount == 100) {
+              _asrLog('[ASR] decode alive, still empty (pcm=$_pcmBlockCount)');
+              _emptyDecodeCount = 0;
+            }
+          }
+          // 句末（静音检测）：定稿当前句入字幕段，开启新句
+          if (AsrService.instance.isEndpoint) {
+            final finalText = AsrService.instance.finalizeSegment().trim();
+            if (finalText.isNotEmpty && !_sameOcrText(lastText, finalText)) {
+              _addAsrSegment(segStart, position, finalText);
+            }
+            lastText = '';
+            segStart = position;
+          } else if (text.isNotEmpty) {
+            lastText = text;
+          }
+          asrSubtitleText.value = text;
+        } catch (e) {
+          _asrLog('[ASR] decode error: $e');
+        } finally {
+          _asrDecoding = false;
+        }
+      }
+    } finally {
+      _asrLooping = false;
+    }
+  }
+
+  void _addAsrSegment(Duration start, Duration end, String text) {
+    if (end <= start || text.isEmpty) return;
+    asrSegments.add((start: start, end: end, text: text));
+  }
+
+  void _stopAsr() {
+    asrSubtitleEnabled.value = false;
+    asrSubtitleText.value = '';
+    asrFullReady = false;
+    asrSegments.clear();
+    _whisperBuffer = Float32List(0);
+    _asrBridge.dispose();
+    // AsrService 可能从未注册（从未开启过 ASR），dispose 时需保护
+    if (Get.isRegistered<AsrService>()) {
+      AsrService.instance.reset();
+    }
+  }
+
+  /// seek/暂停恢复/倍速等需要重对齐时重启 ASR 音频流
+  Future<void> _restartAsrIfNeeded() async {
+    if (!asrSubtitleEnabled.value) return;
+    final audioUrl = dataSource.audioSource;
+    if (audioUrl == null || audioUrl.isEmpty) return;
+    AsrService.instance.reset();
+    asrSubtitleText.value = '';
+    _asrBridge.start(
+      url: audioUrl,
+      startMs: position.inMilliseconds,
+      note: 'modelDir=$_asrModelDir',
+    );
   }
 
   static void updatePlayCount() {

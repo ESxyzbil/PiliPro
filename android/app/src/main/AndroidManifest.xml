@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.piliplus">
 
     <queries>
@@ -219,7 +220,8 @@
 
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
-            android:theme="@style/Ucrop.CropTheme" />
+            android:theme="@style/Ucrop.CropTheme"
+            tools:replace="android:theme" />
 
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
@@ -250,6 +252,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16 Live Updates（实时更新）所需的非运行时权限 -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!--
       Media access permissions.
       Android 13 or higher.

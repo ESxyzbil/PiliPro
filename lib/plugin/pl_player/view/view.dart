@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:PiliPlus/common/assets.dart';
+import 'package:PiliPlus/common/build_flags.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/cropped_image.dart';
@@ -50,6 +51,7 @@ import 'package:PiliPlus/plugin/pl_player/widgets/common_btn.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/forward_seek.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/mpv_convert_webp.dart';
 import 'package:PiliPlus/plugin/pl_player/widgets/play_pause_btn.dart';
+import 'package:PiliPlus/plugin/pl_player/widgets/subtitle_workbench_page.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
@@ -764,6 +766,21 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
         },
       ),
 
+      /// 字幕工作台（OCR/ASR 整段识别结果展示、整合、导出）
+      BottomControlType.subtitleWorkbench => ComBtn(
+        tooltip: '字幕工作台',
+        width: widgetWidth,
+        height: 30,
+        icon: const Icon(
+          Icons.subtitles_outlined,
+          size: 22,
+          color: Colors.white,
+        ),
+        onTap: () => Get.to(
+          () => SubtitleWorkbenchPage(controller: plPlayerController),
+        ),
+      ),
+
       /// 播放速度
       BottomControlType.speed => Obx(
         () => PopupMenuButton<double>(
@@ -916,6 +933,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
       if (flag) .fit,
       if (isNotFileSource) .aiTranslate,
       .subtitle,
+      if (Platform.isAndroid &&
+          !plPlayerController.isLive &&
+          (kEnableOcr || kEnableAsr))
+        .subtitleWorkbench,
       .speed,
       if (isNotFileSource && flag) .qa,
       if (!plPlayerController.isDesktopPip) .fullscreen,
@@ -1970,6 +1991,42 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                 ),
               ),
             ),
+
+          // OCR/ASR 字幕浮层（ASR 为主、OCR 辅助的融合文本）
+          Obx(() {
+            final text = plPlayerController.fusedSubtitleText;
+            final on = plPlayerController.subtitleEnabled;
+            if (!on || text.isEmpty) return const SizedBox.shrink();
+            return Positioned(
+              left: 0,
+              right: 0,
+              bottom: 64,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      text,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
         ],
 
         Obx(() {
