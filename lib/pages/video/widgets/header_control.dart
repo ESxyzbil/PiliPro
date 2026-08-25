@@ -408,6 +408,15 @@ class HeaderControlState extends State<HeaderControl>
                     ),
                     title: const Text('离线缓存', style: titleStyle),
                   ),
+                ListTile(
+                  dense: true,
+                  onTap: () {
+                    Get.back();
+                    videoDetailCtr.saveVideoToLocal();
+                  },
+                  leading: const Icon(Icons.save_alt, size: 20),
+                  title: const Text('保存到本地', style: titleStyle),
+                ),
                 if (widget.videoDetailCtr.cover.value.isNotEmpty)
                   ListTile(
                     dense: true,

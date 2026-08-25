@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
 import 'dart:math' show min;
 import 'dart:ui';
 
@@ -69,6 +69,7 @@ import 'package:collection/collection.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
@@ -1424,71 +1425,57 @@ class VideoDetailController extends GetxController
     );
   }
 
-  /// 将当前视频保存到本地（每次弹出目录选择）：
-  /// 在线 → 下载当前视频流；已缓存 → 复制缓存文件
+  /// 将当前视频保存到本地（每次弹出系统保存对话框，SAF 可写任意目录）：
+  /// 在线 → 下载当前视频流；已缓存 → 读取缓存文件
+  /// 扩展名统一 .m4s（B站 DASH 标准，视频/音频一致，避免 URL/源文件推断出 .segment 等）
   Future<void> saveVideoToLocal() async {
-    final dir = await FilePicker.getDirectoryPath();
-    if (dir == null || dir.isEmpty) return;
     final ds = plPlayerController.dataSource;
     final baseName = _safeFileName(
       '${isFileSource ? entry.showTitle : bvid}_${cid.value}',
     );
-    SmartDialog.showLoading(msg: '保存中...');
     try {
+      // 先收集要保存的文件（源路径 → 保存文件名）
+      final files = <(String, String)>[];
       if (isFileSource) {
-        // 已缓存：复制缓存文件到所选目录
-        await _copyToDir(ds.videoSource, '$dir/$baseName${_extOf(ds.videoSource)}');
-        final audio = ds.audioSource;
-        if (audio != null) {
-          await _copyToDir(audio, '$dir/${baseName}_audio${_extOf(audio)}');
+        files.add((ds.videoSource, '$baseName.m4s'));
+        if (ds.audioSource case final audio?) {
+          files.add((audio, '${baseName}_audio.m4s'));
         }
       } else {
-        // 在线：下载视频流（B站 DASH 为 video.m4s；mp4 直链为 mp4）
-        await Request.http11Dio.download(
-          ds.videoSource.http2https,
-          '$dir/$baseName${_extOfUrl(ds.videoSource)}',
-        );
-        final audio = ds.audioSource;
-        if (audio != null) {
-          await Request.http11Dio.download(
-            audio.http2https,
-            '$dir/${baseName}_audio.m4s',
-          );
+        // 在线：先下载到应用临时目录（app 专属，可写），再走 SAF 保存
+        final tmpDir = await getTemporaryDirectory();
+        final tmpV = '${tmpDir.path}/$baseName.m4s';
+        await Request.http11Dio.download(ds.videoSource.http2https, tmpV);
+        files.add((tmpV, '$baseName.m4s'));
+        if (ds.audioSource case final audio?) {
+          final tmpA = '${tmpDir.path}/${baseName}_audio.m4s';
+          await Request.http11Dio.download(audio.http2https, tmpA);
+          files.add((tmpA, '${baseName}_audio.m4s'));
         }
       }
-      SmartDialog.showToast('已保存到 $dir');
+      // 逐个弹系统保存对话框（SAF）：Android 由原生通过 ContentResolver 写入，
+      // 桌面端返回路径后自行写入
+      for (final (src, name) in files) {
+        final bytes = await File(src).readAsBytes();
+        final savePath = await FilePicker.saveFile(fileName: name, bytes: bytes);
+        if (savePath == null) {
+          SmartDialog.showToast('已取消保存');
+          return;
+        }
+        if (!Platform.isAndroid) {
+          await File(savePath).writeAsBytes(bytes);
+        }
+      }
+      SmartDialog.showToast('保存成功');
     } catch (e) {
       if (kDebugMode) debugPrint('save video error: $e');
       SmartDialog.showToast('保存失败：$e');
-    } finally {
-      SmartDialog.dismiss();
     }
-  }
-
-  Future<void> _copyToDir(String src, String dst) async {
-    final file = File(src);
-    if (!file.existsSync()) {
-      throw Exception('文件不存在：$src');
-    }
-    await file.copy(dst);
   }
 
   String _safeFileName(String name) {
     final cleaned = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
     return cleaned.isEmpty ? 'video' : cleaned;
-  }
-
-  String _extOf(String path) {
-    final i = path.lastIndexOf('.');
-    return i < 0 ? '.m4s' : path.substring(i);
-  }
-
-  String _extOfUrl(String url) {
-    try {
-      final p = Uri.parse(url).path;
-      if (p.endsWith('.mp4')) return '.mp4';
-    } catch (_) {}
-    return '.m4s';
   }
 
   Future<void> onDownload(BuildContext context) async {
