@@ -20,6 +20,7 @@ import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -141,13 +142,11 @@ class DetailItem extends StatelessWidget {
               });
             }
           } else {
-            final curDownload = downloadService.curDownload.value;
-            if (curDownload != null &&
-                curDownload.cid == cid &&
-                curDownload.status.isDownloading) {
+            if (downloadService.isActive(cid)) {
               downloadService.cancelDownload(
                 isDelete: false,
                 downloadNext: false,
+                entry: entry,
               );
             } else {
               downloadService.startDownload(entry);
@@ -356,10 +355,12 @@ class DetailItem extends StatelessWidget {
                             ? RepaintBoundary(
                                 child: Obx(
                                   () {
-                                    final curDownload =
-                                        downloadService.curDownload.value;
-                                    if (curDownload != null) {
-                                      final status = curDownload.status;
+                                    final active = downloadService.activeList
+                                        .firstWhereOrNull(
+                                          (e) => e.cid == entry.cid,
+                                        );
+                                    if (active != null) {
+                                      final status = active.status;
                                       final color =
                                           status != DownloadStatus.pause
                                           ? theme.colorScheme.primary
@@ -371,12 +372,12 @@ class DetailItem extends StatelessWidget {
                                                     DownloadStatus
                                                         .downloading ||
                                                 status == DownloadStatus.pause
-                                            ? '${CacheManager.formatSize(curDownload.downloadedBytes)}/${CacheManager.formatSize(curDownload.totalBytes)}'
+                                            ? '${CacheManager.formatSize(active.downloadedBytes)}/${CacheManager.formatSize(active.totalBytes)}'
                                             : '',
-                                        progress: curDownload.totalBytes == 0
+                                        progress: active.totalBytes == 0
                                             ? 0
-                                            : curDownload.downloadedBytes /
-                                                  curDownload.totalBytes,
+                                            : active.downloadedBytes /
+                                                  active.totalBytes,
                                         color: color,
                                         highlightColor: theme.highlightColor,
                                       );

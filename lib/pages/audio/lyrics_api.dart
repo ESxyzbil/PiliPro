@@ -13,7 +13,8 @@ enum LyricsSource {
   kugou('酷狗音乐', '🐶'),
   douyin('汽水音乐', '💧'),
   danmaku('弹幕歌词', '🎯'),
-  bilibili_cc('B站CC字幕', '📄');
+  bilibili_cc('B站CC字幕', '📄'),
+  ocr('OCR歌词', '🔍');
 
   final String label;
   final String icon;
@@ -489,6 +490,8 @@ Future<LyricsResult> fetchLyricsForItem(LyricsSource source, LyricsSearchItem it
       return Future.value(LyricsResult(source: source.label, error: '弹幕歌词不支持此方式获取'));
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
+    case LyricsSource.ocr:
+      return Future.value(LyricsResult(source: source.label, error: 'OCR歌词不支持此方式获取'));
   }
 }
 
@@ -505,6 +508,8 @@ Future<LyricsResult> searchAndPickFirst(LyricsSource source, String keyword) {
       return Future.value(LyricsResult(source: source.label, error: '弹幕歌词不支持此方式获取'));
     case LyricsSource.bilibili_cc:
       return Future.value(LyricsResult(source: source.label, error: 'B站CC字幕不支持此方式获取'));
+    case LyricsSource.ocr:
+      return Future.value(LyricsResult(source: source.label, error: 'OCR歌词不支持此方式获取'));
   }
 }
 

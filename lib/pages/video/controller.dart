@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'dart:math' show min;
 import 'dart:ui';
 
@@ -56,6 +57,7 @@ import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
+import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -65,6 +67,7 @@ import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:collection/collection.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -1419,6 +1422,73 @@ class VideoDetailController extends GetxController
       extraId: extraId,
       bvid: bvid,
     );
+  }
+
+  /// 将当前视频保存到本地（每次弹出目录选择）：
+  /// 在线 → 下载当前视频流；已缓存 → 复制缓存文件
+  Future<void> saveVideoToLocal() async {
+    final dir = await FilePicker.getDirectoryPath();
+    if (dir == null || dir.isEmpty) return;
+    final ds = plPlayerController.dataSource;
+    final baseName = _safeFileName(
+      '${isFileSource ? entry.showTitle : bvid}_${cid.value}',
+    );
+    SmartDialog.showLoading(msg: '保存中...');
+    try {
+      if (isFileSource) {
+        // 已缓存：复制缓存文件到所选目录
+        await _copyToDir(ds.videoSource, '$dir/$baseName${_extOf(ds.videoSource)}');
+        final audio = ds.audioSource;
+        if (audio != null) {
+          await _copyToDir(audio, '$dir/${baseName}_audio${_extOf(audio)}');
+        }
+      } else {
+        // 在线：下载视频流（B站 DASH 为 video.m4s；mp4 直链为 mp4）
+        await Request.http11Dio.download(
+          ds.videoSource.http2https,
+          '$dir/$baseName${_extOfUrl(ds.videoSource)}',
+        );
+        final audio = ds.audioSource;
+        if (audio != null) {
+          await Request.http11Dio.download(
+            audio.http2https,
+            '$dir/${baseName}_audio.m4s',
+          );
+        }
+      }
+      SmartDialog.showToast('已保存到 $dir');
+    } catch (e) {
+      if (kDebugMode) debugPrint('save video error: $e');
+      SmartDialog.showToast('保存失败：$e');
+    } finally {
+      SmartDialog.dismiss();
+    }
+  }
+
+  Future<void> _copyToDir(String src, String dst) async {
+    final file = File(src);
+    if (!file.existsSync()) {
+      throw Exception('文件不存在：$src');
+    }
+    await file.copy(dst);
+  }
+
+  String _safeFileName(String name) {
+    final cleaned = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    return cleaned.isEmpty ? 'video' : cleaned;
+  }
+
+  String _extOf(String path) {
+    final i = path.lastIndexOf('.');
+    return i < 0 ? '.m4s' : path.substring(i);
+  }
+
+  String _extOfUrl(String url) {
+    try {
+      final p = Uri.parse(url).path;
+      if (p.endsWith('.mp4')) return '.mp4';
+    } catch (_) {}
+    return '.m4s';
   }
 
   Future<void> onDownload(BuildContext context) async {

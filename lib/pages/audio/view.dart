@@ -1616,6 +1616,11 @@ class _AudioPageState extends State<AudioPage> {
                   _controller.switchLyricsSource(source);
                   return;
                 }
+                if (source == LyricsSource.ocr) {
+                  // OCR歌词：直接识别当前封面（不出列表）
+                  _controller.fetchOcrLyrics();
+                  return;
+                }
                 if (isSelected) {
                   // 点当前平台 → 展开候选歌曲列表
                   _showSourceSongList(source, colorScheme);
@@ -1839,6 +1844,7 @@ class _AudioPageState extends State<AudioPage> {
                                     await searchQishui(keyword, page: 1),
                                   LyricsSource.danmaku => [],
                                   LyricsSource.bilibili_cc => [],
+                                  LyricsSource.ocr => [],
                                 };
                               } catch (_) {
                                 results = [];
@@ -2027,6 +2033,7 @@ class _AudioPageState extends State<AudioPage> {
         LyricsSource.douyin => await searchQishui(keyword, page: page),
         LyricsSource.danmaku => [],
         LyricsSource.bilibili_cc => [],
+        LyricsSource.ocr => [],
       };
     } catch (_) {
       return [];

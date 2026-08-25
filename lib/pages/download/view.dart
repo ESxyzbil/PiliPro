@@ -120,39 +120,44 @@ class _DownloadPageState extends State<DownloadPage> {
             child: CustomScrollView(
               slivers: [
                 Obx(() {
-                  final entry =
-                      _downloadService.waitDownloadQueue.firstWhereOrNull(
-                        (e) => e.cid == _downloadService.curCid,
-                      ) ??
-                      _downloadService.waitDownloadQueue.firstOrNull;
-                  if (entry != null) {
-                    return SliverMainAxisGroup(
-                      slivers: [
-                        SliverPadding(
-                          padding: const EdgeInsets.only(left: 12, bottom: 7),
-                          sliver: SliverToBoxAdapter(
-                            child: Text(
-                              '正在缓存 (${_downloadService.waitDownloadQueue.length})',
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(
-                          child: SizedBox(
-                            height: 100,
-                            child: DetailItem(
-                              entry: entry,
-                              progress: _progress,
-                              downloadService: _downloadService,
-                              showTitle: true,
-                              isCurr: true,
-                              controller: _controller,
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
+                  final active = _downloadService.activeList;
+                  final queueLen = _downloadService.waitDownloadQueue.length;
+                  if (active.isEmpty && queueLen == 0) {
+                    return const SliverToBoxAdapter();
                   }
-                  return const SliverToBoxAdapter();
+                  final items = active.isNotEmpty
+                      ? active
+                      : [_downloadService.waitDownloadQueue.firstOrNull!];
+                  return SliverMainAxisGroup(
+                    slivers: [
+                      SliverPadding(
+                        padding: const EdgeInsets.only(left: 12, bottom: 7),
+                        sliver: SliverToBoxAdapter(
+                          child: Text('正在缓存 ($queueLen)'),
+                        ),
+                      ),
+                      SliverGrid.builder(
+                        gridDelegate:
+                            SliverGridDelegateWithMaxCrossAxisExtent(
+                              mainAxisSpacing: 2,
+                              mainAxisExtent: 100,
+                              maxCrossAxisExtent: Grid.smallCardWidth * 2,
+                            ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final entry = items[index];
+                          return DetailItem(
+                            entry: entry,
+                            progress: _progress,
+                            downloadService: _downloadService,
+                            showTitle: true,
+                            isCurr: _downloadService.isActive(entry.cid),
+                            controller: _controller,
+                          );
+                        },
+                      ),
+                    ],
+                  );
                 }),
                 Obx(() {
                   if (_controller.pages.isNotEmpty) {

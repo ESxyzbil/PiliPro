@@ -16,6 +16,8 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
 
     private val shortcutChannel = "com.example.piliplus/shortcuts"
+    private lateinit var liveUpdateManager: LiveUpdateManager
+    private val liveUpdateChannel = "com.example.piliplus/live_update"
     private val asrAudioChannel = "com.example.piliplus/asr_audio"
     private val asrAudioEventsChannel = "com.example.piliplus/asr_audio_events"
     private var asrAudioBridge: AsrAudioBridge? = null
@@ -27,6 +29,32 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        liveUpdateManager = LiveUpdateManager(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            liveUpdateChannel
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "updateMusic" -> {
+                    val args = call.arguments as Map<*, *>
+                    liveUpdateManager.updateMusic(
+                        songTitle = args["songTitle"] as? String ?: "",
+                        currentLyric = args["currentLyric"] as? String ?: "",
+                        nextLyric = args["nextLyric"] as? String ?: "",
+                        progress = args["progress"] as? Int ?: 0,
+                        maxProgress = args["maxProgress"] as? Int ?: 100,
+                        isPlaying = args["isPlaying"] as? Boolean ?: false
+                    )
+                    result.success(true)
+                }
+                "endMusic" -> {
+                    liveUpdateManager.endMusic()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // 缓存下载进度通知
         downloadProgressManager = DownloadProgressManager(this)

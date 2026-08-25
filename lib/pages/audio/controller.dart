@@ -1,13 +1,17 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 
+import 'package:dio/dio.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/grpc/audio.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/audio/lyrics_api.dart';
 import 'package:PiliPlus/pages/audio/lyrics_memory.dart';
+import 'package:PiliPlus/services/ocr/ocr_model_manager.dart';
+import 'package:PiliPlus/services/ocr/ocr_service.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:audio_service/audio_service.dart' show MediaItem;
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart'
@@ -37,7 +41,6 @@ import 'package:PiliPlus/pages/main_reply/view.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show kMaxVolume;
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
-import 'package:PiliPlus/services/live_update_channel.dart';
 import 'package:PiliPlus/services/desktop_lyrics_service.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/triple_mixin.dart';
@@ -1856,7 +1859,6 @@ class AudioController extends GetxController
             ? result.syncedLines![idx + 1].text
             : null;
         videoPlayerServiceHandler?.updateLyrics(text, nextLyrics: nextText);
-        _pushToLiveUpdate(text, nextText);
         DesktopLyricsService.setLyrics(
           currentLine: text,
           nextLine: nextText ?? '',
@@ -1866,23 +1868,78 @@ class AudioController extends GetxController
     }
   }
 
-  /// 推送歌词到 ColorOS 流体云胶囊（独立于媒体通知）
-  void _pushToLiveUpdate(String currentLyric, String? nextLyric) {
-    final media = videoPlayerServiceHandler?.mediaItem.value;
-    LiveUpdateChannel.updateMusic(
-      songTitle: media?.title ?? '',
-      currentLyric: currentLyric,
-      nextLyric: nextLyric ?? '',
-      progress: position.value.inMilliseconds ~/ 1000,
-      maxProgress: (media?.duration?.inMilliseconds ?? 1) ~/ 1000,
-      isPlaying: isPlaying(),
-    );
-  }
-
   /// 切换歌词来源
   void switchLyricsSource(LyricsSource source) {
     selectedSource.value = source;
     updateLyricsLine();
+  }
+
+  /// OCR 歌词：识别当前曲目封面图（需 arm64 设备 + 已下载模型）
+  Future<void> fetchOcrLyrics() async {
+    if (!Get.isRegistered<OcrService>()) {
+      Get.put(OcrService(), permanent: true);
+    }
+    if (!Get.isRegistered<OcrModelManager>()) {
+      Get.put(OcrModelManager(), permanent: true);
+    }
+    isLoadingLyrics.value = true;
+    selectedSource.value = LyricsSource.ocr;
+    try {
+      if (!await OcrService.instance.isSupported()) {
+        lyricsResults[LyricsSource.ocr] = LyricsResult(
+          source: LyricsSource.ocr.label,
+          error: 'OCR 仅支持 arm64 设备',
+        );
+        update();
+        return;
+      }
+      final mgr = OcrModelManager.instance;
+      if (!await mgr.isDownloaded()) {
+        lyricsResults[LyricsSource.ocr] = LyricsResult(
+          source: LyricsSource.ocr.label,
+          error: 'OCR 模型未下载，请到 设置 → 布局 → OCR 歌词模型 下载',
+        );
+        update();
+        return;
+      }
+      final coverUrl = videoPlayerServiceHandler?.mediaItem.value?.artUri
+              ?.toString() ??
+          _fallbackCover;
+      if (coverUrl == null || coverUrl.isEmpty) {
+        lyricsResults[LyricsSource.ocr] = LyricsResult(
+          source: LyricsSource.ocr.label,
+          error: '当前曲目无封面图，无法 OCR',
+        );
+        update();
+        return;
+      }
+      // 下载封面到临时文件
+      final tmp = await getTemporaryDirectory();
+      final imgPath =
+          '${tmp.path}/ocr_cover_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await Dio().download(coverUrl, imgPath);
+      final text = await OcrService.instance.recognize(imgPath);
+      if (text == null || text.trim().isEmpty) {
+        lyricsResults[LyricsSource.ocr] = LyricsResult(
+          source: LyricsSource.ocr.label,
+          error: '未识别到文字',
+        );
+      } else {
+        lyricsResults[LyricsSource.ocr] = LyricsResult(
+          source: LyricsSource.ocr.label,
+          plainText: text.trim(),
+        );
+      }
+      updateLyricsLine();
+    } catch (e) {
+      lyricsResults[LyricsSource.ocr] = LyricsResult(
+        source: LyricsSource.ocr.label,
+        error: 'OCR 失败: $e',
+      );
+    } finally {
+      isLoadingLyrics.value = false;
+      update();
+    }
   }
 
   /// 切换 CC 字幕的记忆锁定

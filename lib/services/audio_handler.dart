@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show File, FileMode, Platform;
 import 'dart:ui' show PlatformDispatcher;
 
@@ -10,15 +11,21 @@ import 'package:PiliPlus/models_new/pgc/pgc_info_model/episode.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/page.dart';
 import 'package:PiliPlus/pages/audio/controller.dart';
+import 'package:PiliPlus/pages/common/common_intro_controller.dart';
+import 'package:PiliPlus/pages/video/introduction/ugc/widgets/triple_mixin.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
 import 'package:PiliPlus/services/media_control_windows.dart';
+import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:collection/collection.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:get/get.dart';
 import 'package:path/path.dart' as path;
 
 Future<VideoPlayerServiceHandler> initAudioService() {
@@ -40,6 +47,7 @@ Future<VideoPlayerServiceHandler> initAudioService() {
 class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
   static final List<MediaItem> _item = [];
   bool enableBackgroundPlay = Pref.enableBackgroundPlay;
+  MediaFavController? _mediaFavCtr;
 
   Future<void>? Function()? onPlay;
   Future<void>? Function()? onPause;
@@ -92,6 +100,52 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
       if (currentIndex > 0) {
         setMediaItem(_item[currentIndex - 1]);
       }
+    }
+  }
+
+  /// 媒体通知收藏按钮点击：弹出收藏夹选择（复用视频页收藏面板）
+  @override
+  Future<dynamic> customAction(String name, [Map<String, dynamic>? extras]) async {
+    if (name == 'fav') {
+      _handleFav();
+    }
+    return super.customAction(name, extras);
+  }
+
+  void _handleFav() {
+    if (!Accounts.main.isLogin) {
+      SmartDialog.showToast('账号未登录');
+      return;
+    }
+    final cur = mediaItem.value;
+    final rid = cur?.extras?['rid'];
+    final rtype = cur?.extras?['rtype'];
+    if (rid == null || rtype is! int || Get.context == null) {
+      SmartDialog.showToast('当前条目不支持收藏');
+      return;
+    }
+    final ctr = _mediaFavCtr ??= MediaFavController(ridType: (rid, rtype));
+    ctr.ridType = (rid, rtype);
+    unawaited(ctr.queryVideoInFolder());
+    PageUtils.showFavBottomSheet(context: Get.context!, ctr: ctr);
+  }
+
+  /// 根据条目类型计算收藏所需 rid/rtype（不支持收藏的类型返回 null）
+  static Map<String, dynamic>? _favExtras(Object data) {
+    switch (data) {
+      case VideoDetailData():
+        return data.aid == null ? null : {'rid': data.aid!, 'rtype': 2};
+      case EpisodeItem():
+        return data.id == null ? null : {'rid': data.id!, 'rtype': 24};
+      case HotVideoItemModel():
+        return data.aid == null ? null : {'rid': data.aid!, 'rtype': 2};
+      case BiliDownloadEntryInfo():
+        if (data.ep case final ep?) {
+          return {'rid': ep.episodeId, 'rtype': 24};
+        }
+        return {'rid': data.avid, 'rtype': 2};
+      default:
+        return null;
     }
   }
 
@@ -198,6 +252,14 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
               action: MediaAction.skipToNext,
             ),
           ],
+          // 收藏：仅当前条目可收藏（mediaItem 带 rid/rtype）时在通知上显示
+          if (mediaItem.value?.extras case {'rid': Object(), 'rtype': int()}) ...[
+            MediaControl.custom(
+              androidIcon: 'drawable/ic_player_fav',
+              label: '收藏',
+              name: 'fav',
+            ),
+          ],
         ],
         playing: playing,
         systemActions: const {
@@ -271,6 +333,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
             artist: data.owner?.name,
             duration: Duration(seconds: current?.duration ?? 0),
             artUri: getUri(data.pic),
+            extras: _favExtras(data),
           );
         } else {
           mediaItem = MediaItem(
@@ -279,6 +342,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
             artist: data.owner?.name,
             duration: Duration(seconds: data.duration ?? 0),
             artUri: getUri(data.pic),
+            extras: _favExtras(data),
           );
         }
       case EpisodeItem():
@@ -290,6 +354,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
               ? Duration(seconds: data.duration ?? 0)
               : Duration(milliseconds: data.duration ?? 0),
           artUri: getUri(data.cover),
+          extras: _favExtras(data),
         );
       case RoomInfoH5Data():
         mediaItem = MediaItem(
@@ -323,6 +388,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
           artist: data.owner.name ?? '',
           duration: Duration(seconds: dur > 0 ? dur : 0),
           artUri: getUri(data.cover),
+          extras: _favExtras(data),
         );
       case BiliDownloadEntryInfo():
         final coverFile = File(
@@ -337,6 +403,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
           artist: data.ownerName,
           duration: Duration(milliseconds: data.totalTimeMilli),
           artUri: uri,
+          extras: _favExtras(data),
         );
       default:
         return;
@@ -543,4 +610,35 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
       ),
     );
   }
+}
+
+/// 媒体通知收藏按钮使用的轻量收藏容器：
+/// 复用 FavMixin/FavPanel（收藏夹选择面板），不依赖视频页 controller。
+class MediaFavController extends GetxController
+    with GetSingleTickerProviderStateMixin, TripleMixin, FavMixin {
+  MediaFavController({required this.ridType});
+
+  /// 当前条目的收藏参数 (rid, type)：UGC 视频=aid/2，PGC=epId/24
+  (Object, int) ridType;
+
+  @override
+  bool get isLogin => Accounts.main.isLogin;
+
+  @override
+  int get copyright => 0;
+
+  @override
+  void onPayCoin(int coin, bool coinWithLike) {}
+
+  @override
+  Future<void> actionTriple() async {}
+
+  @override
+  void actionLikeVideo() {}
+
+  @override
+  (Object, int) get getFavRidType => ridType;
+
+  @override
+  void updateFavCount(int count) {}
 }
