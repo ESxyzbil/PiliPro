@@ -35,6 +35,11 @@ class LyricsOverlay {
   void Show();
   void Hide();
 
+  // Rebuild the overlay window from scratch (fresh surface) and
+  // re-render the current lyrics. Used by the "reload" UI button and
+  // to recover from display/session/DWM changes.
+  void Reload();
+
   // Update lyrics content.
   // current_line: the active lyric line
   // next_line: the upcoming line (can be empty for single-line mode)

@@ -61,6 +61,7 @@ import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
@@ -74,7 +75,10 @@ import 'package:get/get.dart';
 import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 
 class VideoDetailPageV extends StatefulWidget {
-  const VideoDetailPageV({super.key});
+  const VideoDetailPageV({super.key, this.arguments});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时页面回退读取路由参数 Get.arguments
+  final Map? arguments;
 
   @override
   State<VideoDetailPageV> createState() => _VideoDetailPageVState();
@@ -82,7 +86,7 @@ class VideoDetailPageV extends StatefulWidget {
 
 class _VideoDetailPageVState extends State<VideoDetailPageV>
     with RouteAware, RouteAwareMixin, WidgetsBindingObserver {
-  final heroTag = Get.arguments['heroTag'];
+  late final heroTag = (widget.arguments ?? Get.arguments)['heroTag'];
 
   late final VideoDetailController videoDetailController;
   late final VideoReplyController _videoReplyController;
@@ -137,7 +141,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     super.initState();
 
     PlPlayerController.setPlayCallBack(playCallBack);
-    videoDetailController = Get.put(VideoDetailController(), tag: heroTag);
+    videoDetailController = Get.put(
+      VideoDetailController(arguments: widget.arguments),
+      tag: heroTag,
+    );
 
     if (videoDetailController.removeSafeArea) {
       hideSystemBar();
@@ -155,11 +162,20 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     }
 
     if (videoDetailController.isFileSource) {
-      localIntroController = Get.put(LocalIntroController(), tag: heroTag);
+      localIntroController = Get.put(
+        LocalIntroController(arguments: widget.arguments),
+        tag: heroTag,
+      );
     } else if (videoDetailController.isUgc) {
-      ugcIntroController = Get.put(UgcIntroController(), tag: heroTag);
+      ugcIntroController = Get.put(
+        UgcIntroController(arguments: widget.arguments),
+        tag: heroTag,
+      );
     } else {
-      pgcIntroController = Get.put(PgcIntroController(), tag: heroTag);
+      pgcIntroController = Get.put(
+        PgcIntroController(arguments: widget.arguments),
+        tag: heroTag,
+      );
     }
 
     videoSourceInit();
@@ -415,6 +431,11 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       return;
     }
 
+    // 桌面端标签页模式：仅当前选中的视频标签恢复播放，隐藏标签保持暂停
+    if (TabHostController.instance?.isActiveVideoTab(heroTag) == false) {
+      return;
+    }
+
     isShowing = true;
 
     addObserverMobile(this);
@@ -637,7 +658,14 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                                                     .colorScheme
                                                     .onSurface,
                                               ),
-                                              onPressed: Get.back,
+                                              onPressed: () {
+                                                // 桌面端标签页模式：关闭当前标签
+                                                if (TabHostController
+                                                    .handleBack()) {
+                                                  return;
+                                                }
+                                                Get.back();
+                                              },
                                             ),
                                           ),
                                           SizedBox(
@@ -652,9 +680,17 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                                                     .colorScheme
                                                     .onSurface,
                                               ),
-                                              onPressed: videoDetailController
-                                                  .plPlayerController
-                                                  .onCloseAll,
+                                              onPressed: () {
+                                                // 桌面端标签页模式：关闭全部标签
+                                                if (TabHostController.handleBack(
+                                                  closeAll: true,
+                                                )) {
+                                                  return;
+                                                }
+                                                videoDetailController
+                                                    .plPlayerController
+                                                    .onCloseAll();
+                                              },
                                             ),
                                           ),
                                         ],
@@ -1182,7 +1218,13 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                           ),
                         ],
                       ),
-                      onPressed: Get.back,
+                      onPressed: () {
+                        // 桌面端标签页模式：关闭当前标签
+                        if (TabHostController.handleBack()) {
+                          return;
+                        }
+                        Get.back();
+                      },
                     ),
                   ),
                   SizedBox(
@@ -1201,8 +1243,13 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                           ),
                         ],
                       ),
-                      onPressed:
-                          videoDetailController.plPlayerController.onCloseAll,
+                      onPressed: () {
+                        // 桌面端标签页模式：关闭全部标签
+                        if (TabHostController.handleBack(closeAll: true)) {
+                          return;
+                        }
+                        videoDetailController.plPlayerController.onCloseAll();
+                      },
                     ),
                   ),
                 ],
@@ -1292,12 +1339,24 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     bool isPipMode = false,
   }) => popScope(
     key: videoDetailController.videoPlayerKey,
-    canPop:
-        !isFullScreen &&
-        !videoDetailController.plPlayerController.isDesktopPip &&
-        (videoDetailController.horizontalScreen || isPortrait),
-    onPopInvokedWithResult:
-        videoDetailController.plPlayerController.onPopInvokedWithResult,
+    // 标签模式启用时恒 false：阻止系统返回 pop 根路由（否则可能直接退出应用），
+    // 返回统一走 onPopInvokedWithResult → handleBack 关标签/回上一级。
+    // 注意：不能用 TabHostController.instance != null 判断（手机竖屏也注册了
+    // controller），否则竖屏时 canPop 恒 false，Android 预测性返回动画被禁用。
+    canPop: TabHostController.tabsEnabled
+        ? false
+        : !isFullScreen &&
+            !videoDetailController.plPlayerController.isDesktopPip &&
+            (videoDetailController.horizontalScreen || isPortrait),
+    onPopInvokedWithResult: (didPop, result) {
+      // 桌面端标签页模式：系统返回先关闭当前标签/恢复来源，
+      // 避免 onPopInvokedWithResult 里的 Get.back() pop 根路由失败而退出应用
+      if (!didPop && TabHostController.handleBack()) {
+        return;
+      }
+      videoDetailController.plPlayerController
+          .onPopInvokedWithResult(didPop, result);
+    },
     child: Obx(
       () =>
           !videoDetailController.videoState.value ||

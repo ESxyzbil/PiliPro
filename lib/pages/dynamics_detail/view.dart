@@ -26,7 +26,10 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
 
 class DynamicDetailPage extends StatefulWidget {
-  const DynamicDetailPage({super.key});
+  const DynamicDetailPage({super.key, this.item});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final DynamicItemModel? item;
 
   @override
   State<DynamicDetailPage> createState() => _DynamicDetailPageState();
@@ -34,9 +37,11 @@ class DynamicDetailPage extends StatefulWidget {
 
 class _DynamicDetailPageState extends CommonDynPageState<DynamicDetailPage> {
   @override
-  final DynamicDetailController controller = Get.putOrFind(
-    DynamicDetailController.new,
-    tag: (Get.arguments['item'] as DynamicItemModel).idStr.toString(),
+  late final DynamicDetailController controller = Get.putOrFind(
+    () => DynamicDetailController(item: widget.item),
+    tag: (widget.item ?? (Get.arguments?['item'] as DynamicItemModel?))
+        ?.idStr
+        .toString(),
   );
 
   @override

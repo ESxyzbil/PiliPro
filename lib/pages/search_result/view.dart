@@ -12,7 +12,19 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class SearchResultPage extends StatefulWidget {
-  const SearchResultPage({super.key});
+  const SearchResultPage({
+    super.key,
+    this.keyword,
+    this.tag,
+    this.fromSearch,
+    this.initIndex,
+  });
+
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数
+  final String? keyword;
+  final String? tag;
+  final bool? fromSearch;
+  final int? initIndex;
 
   @override
   State<SearchResultPage> createState() => _SearchResultPageState();
@@ -23,27 +35,28 @@ class _SearchResultPageState extends State<SearchResultPage>
   late SearchResultController _searchResultController;
   late TabController _tabController;
   final String _tag = DateTime.now().millisecondsSinceEpoch.toString();
-  final bool _isFromSearch = Get.arguments?['fromSearch'] ?? false;
+  late final bool _isFromSearch =
+      widget.fromSearch ?? (Get.arguments?['fromSearch'] ?? false);
   SSearchController? sSearchController;
 
   @override
   void initState() {
     super.initState();
     _searchResultController = Get.put(
-      SearchResultController(),
+      SearchResultController(keywordParam: widget.keyword),
       tag: _tag,
     );
 
     _tabController = TabController(
       vsync: this,
-      initialIndex: Get.arguments?['initIndex'] ?? 0,
+      initialIndex: widget.initIndex ?? (Get.arguments?['initIndex'] ?? 0),
       length: SearchType.values.length,
     );
 
     if (_isFromSearch) {
       try {
         sSearchController = Get.find<SSearchController>(
-          tag: Get.parameters['tag'],
+          tag: widget.tag ?? Get.parameters['tag'],
         );
         _tabController.addListener(listener);
       } catch (_) {}

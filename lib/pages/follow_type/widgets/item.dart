@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/models_new/follow/list.dart';
@@ -23,7 +24,7 @@ class FollowTypeItem extends StatelessWidget {
     return SizedBox(
       height: 66,
       child: InkWell(
-        onTap: onTap ?? () => Get.toNamed('/member?mid=${item.mid}'),
+        onTap: onTap ?? () => PageUtils.toMemberPage(mid: item.mid),
         onLongPress: onLongPress,
         onSecondaryTap: onSecondaryTap,
         child: Padding(

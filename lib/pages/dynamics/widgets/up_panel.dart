@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/assets.dart';
+﻿import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models/common/dynamic/up_panel_position.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
@@ -147,7 +147,7 @@ class _UpPanelState extends State<UpPanel> {
     final isCurrent = isLive || currentMid == data.mid || currentMid == -1;
 
     final isAll = data.mid == -1;
-    void toMemberPage() => Get.toNamed('/member?mid=${data.mid}');
+    void toMemberPage() => PageUtils.toMemberPage(mid: data.mid);
 
     Widget avatar;
     if (isAll) {

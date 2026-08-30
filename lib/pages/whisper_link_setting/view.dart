@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/msg/im_user_infos/datum.dart';
@@ -123,7 +124,7 @@ class _WhisperLinkSettingPageState extends State<WhisperLinkSettingPage> {
                     builder: (context) {
                       final ImUserInfosData item = response.first;
                       return ListTile(
-                        onTap: () => Get.toNamed('/member?mid=${item.mid}'),
+                        onTap: () => PageUtils.toMemberPage(mid: item.mid),
                         leading: PendantAvatar(
                           item.face,
                           size: 42,

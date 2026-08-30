@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -34,14 +35,10 @@ class MemberFavItem extends StatelessWidget {
           }
 
           if (item.type == 0 || item.type == 11) {
-            final isDeleted = await Get.toNamed(
-              '/favDetail',
-              parameters: {
-                'mediaId': item.id.toString(),
-                'heroTag': Utils.makeHeroTag(item.id),
-              },
+            PageUtils.toFavDetailPage(
+              mediaId: item.id.toString(),
+              heroTag: Utils.makeHeroTag(item.id),
             );
-            onDelete?.call(isDeleted);
           } else {
             SubDetailPage.toSubDetailPage(
               item.id!,

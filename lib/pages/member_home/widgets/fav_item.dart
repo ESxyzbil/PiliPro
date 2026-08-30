@@ -1,4 +1,5 @@
-import 'package:PiliPlus/common/style.dart';
+﻿import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models_new/space/space_fav/list.dart';
@@ -22,12 +23,9 @@ class MemberFavItem extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () {
-          Get.toNamed(
-            '/favDetail',
-            parameters: {
-              'mediaId': item.mediaId.toString(),
-              'heroTag': Utils.makeHeroTag(item.mediaId),
-            },
+          PageUtils.toFavDetailPage(
+            mediaId: item.mediaId.toString(),
+            heroTag: Utils.makeHeroTag(item.mediaId),
           );
         },
         onLongPress: onLongPress,

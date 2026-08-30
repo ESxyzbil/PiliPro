@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/skeleton/video_card_v.dart';
+﻿import 'package:PiliPlus/common/skeleton/video_card_v.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
 import 'package:PiliPlus/common/widgets/button/more_btn.dart';
@@ -351,11 +351,11 @@ class _LivePageState extends State<LivePage>
                       onTap: () => PageUtils.toLiveRoom(item.roomid),
                       onLongPress: () {
                         Feedback.forLongPress(context);
-                        Get.toNamed('/member?mid=${item.uid}');
+                        PageUtils.toMemberPage(mid: item.uid);
                       },
                       onSecondaryTap: PlatformUtils.isMobile
                           ? null
-                          : () => Get.toNamed('/member?mid=${item.uid}'),
+                          : () => PageUtils.toMemberPage(mid: item.uid),
                       child: Column(
                         mainAxisSize: .min,
                         children: [

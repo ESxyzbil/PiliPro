@@ -13,7 +13,10 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
 class FavPage extends StatefulWidget {
-  const FavPage({super.key});
+  const FavPage({super.key, this.initialIndex});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final int? initialIndex;
 
   @override
   State<FavPage> createState() => _FavPageState();
@@ -31,7 +34,8 @@ class _FavPageState extends State<FavPage> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    int initialIndex = Get.arguments is int ? Get.arguments as int : 0;
+    int initialIndex =
+        widget.initialIndex ?? (Get.arguments is int ? Get.arguments as int : 0);
     _showVideoFavMenu = (initialIndex == 0).obs;
     _tabController = TabController(
       length: FavTabType.values.length,

@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/assets.dart';
+﻿import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/models_new/live/live_medal_wall/data.dart';
@@ -75,7 +75,7 @@ class MedalWall extends StatelessWidget {
                   if (isLiving) {
                     PiliScheme.routePushFromUrl(item.link!);
                   } else {
-                    PageUtils.toDupNamed('/member?mid=${uinfoMedal.ruid}');
+                    PageUtils.toMemberPage(mid: uinfoMedal.ruid);
                   }
                 },
                 visualDensity: .comfortable,
@@ -88,9 +88,7 @@ class MedalWall extends StatelessWidget {
                     _ => null,
                   },
                   onTap: isLiving
-                      ? () => PageUtils.toDupNamed(
-                          '/member?mid=${uinfoMedal.ruid}',
-                        )
+                      ? () => PageUtils.toMemberPage(mid: uinfoMedal.ruid)
                       : null,
                 ),
                 title: Row(

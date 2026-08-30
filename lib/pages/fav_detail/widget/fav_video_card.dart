@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/style.dart';
+﻿import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
@@ -64,7 +64,7 @@ class FavVideoCardH extends StatelessWidget {
             ? () => ctr!.onSelect(item)
             : () {
                 if (!const [0, 16].contains(item.attr)) {
-                  Get.toNamed('/member?mid=${item.upper?.mid}');
+                  PageUtils.toMemberPage(mid: item.upper?.mid);
                   return;
                 }
 

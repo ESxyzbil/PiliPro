@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/style.dart';
+﻿import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/progress_bar/video_progress_indicator.dart';
@@ -53,14 +53,11 @@ class HistoryItem extends StatelessWidget {
             ? () => ctr.onSelect(item)
             : () async {
                 if (business?.contains('article') == true) {
-                  PageUtils.toDupNamed(
-                    '/articlePage',
-                    parameters: {
-                      'id': business == 'article-list'
-                          ? '${item.history.cid}'
-                          : '${item.history.oid}',
-                      'type': 'read',
-                    },
+                  PageUtils.toArticlePage(
+                    id: business == 'article-list'
+                        ? '${item.history.cid}'
+                        : '${item.history.oid}',
+                    type: 'read',
                   );
                 } else if (business == 'live') {
                   if (item.liveStatus == 1) {
@@ -209,7 +206,7 @@ class HistoryItem extends StatelessWidget {
                   if (item.authorMid != null &&
                       item.authorName?.isNotEmpty == true)
                     PopupMenuItem(
-                      onTap: () => Get.toNamed('/member?mid=${item.authorMid}'),
+                      onTap: () => PageUtils.toMemberPage(mid: item.authorMid),
                       height: 38,
                       child: Row(
                         children: [

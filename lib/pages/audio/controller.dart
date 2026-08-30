@@ -8,6 +8,7 @@ import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/grpc/audio.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/audio/lyrics_api.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/pages/audio/lyrics_memory.dart';
 import 'package:PiliPlus/services/ocr/ocr_model_manager.dart';
 import 'package:PiliPlus/services/ocr/ocr_service.dart';
@@ -77,8 +78,18 @@ class AudioController extends GetxController
         FavMixin,
         BlockConfigMixin,
         BlockMixin {
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final Map? arguments;
+
+  AudioController({this.arguments});
+
   late Int64 id;
   late Int64 oid;
+
+  /// 标签页标识用的 oid（创建时的 oid，固定不变）。
+  /// 标签 id 基于它生成（'audio_$tabOid'）；oid 在切歌/换分P 时会更新，
+  /// 不能拿更新后的 oid 去匹配标签（否则标题更新找不到标签）。
+  late Int64 tabOid;
   late List<Int64> subId;
   late int itemType;
   Int64? extraId;
@@ -172,6 +183,9 @@ class AudioController extends GetxController
   /// 音频页在播时，视频页不得抢占 SMTC 回调（否则系统媒体按钮失效）
   static bool isBackgroundPlaying = false;
 
+  /// 播放状态（响应式，供标签栏等 Obx 监听图标切换）
+  final RxBool playingState = false.obs;
+
   void _initMediaControl() {
     if (!PlatformUtils.isDesktop) return;
     // 如果被视频页先 enable 了（_enabled=true），用 updateCallbacks 覆盖
@@ -225,8 +239,9 @@ class AudioController extends GetxController
   void onInit() {
     super.onInit();
     DesktopLyricsService.show();
-    final args = Get.arguments;
+    final args = arguments ?? Get.arguments;
     oid = Int64(args['oid']);
+    tabOid = Int64(args['oid']);
     final id = args['id'];
     this.id = id != null ? Int64(id) : oid;
     subId = (args['subId'] as List<int>?)?.map(Int64.new).toList() ?? [oid];
@@ -338,6 +353,13 @@ class AudioController extends GetxController
     audioItem.value = item;
     audioTitle.value = item.arc.title;
     audioArtist.value = item.owner.name;
+    // 同步更新音频标签标题（切歌/连播时；用固定 tabOid 只更新自己的
+    // 音频标签，多音频标签并存时互不影响）
+    TabHostController.instance?.updateCurrentTabTitle(
+      item.arc.title,
+      isAudio: true,
+      audioOid: tabOid.toInt(),
+    );
     currentOwnerMid = item.owner.mid.toInt();
     hasLike.value = item.stat.hasLike_7;
     coinNum.value = item.stat.hasCoin_8 ? 2 : 0;
@@ -543,6 +565,7 @@ class AudioController extends GetxController
       stream.duration.listen(duration.call),
       stream.playing.listen((playing) {
         isBackgroundPlaying = playing;
+        playingState.value = playing;
         final PlayerStatus playerStatus;
         if (playing) {
           _endOfStreamTriggered = false;

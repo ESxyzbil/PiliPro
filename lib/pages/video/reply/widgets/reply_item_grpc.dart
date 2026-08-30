@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
@@ -148,7 +148,7 @@ class ReplyItemGrpc extends StatelessWidget {
     Widget header = GestureDetector(
       onTap: () {
         feedBack();
-        Get.toNamed('/member?mid=${replyItem.mid}');
+        PageUtils.toMemberPage(mid: replyItem.mid);
       },
       child: ExtraHitTestWidget(
         width: 46,
@@ -608,9 +608,7 @@ class ReplyItemGrpc extends StatelessWidget {
                             recognizer: NoDeadlineTapGestureRecognizer()
                               ..onTap = () {
                                 feedBack();
-                                Get.toNamed(
-                                  '/member?mid=${childReply.member.mid}',
-                                );
+                                PageUtils.toMemberPage(mid: childReply.member.mid);
                               },
                           ),
                           if (childReply.mid == upMid) ...[
@@ -759,12 +757,9 @@ class ReplyItemGrpc extends StatelessWidget {
                   String? cvid =
                       match?.group(1) ?? match?.group(2) ?? match?.group(3);
                   if (cvid != null) {
-                    Get.toNamed(
-                      '/articlePage',
-                      parameters: {
-                        'id': cvid,
-                        'type': 'read',
-                      },
+                    PageUtils.toArticlePage(
+                      id: cvid,
+                      type: 'read',
                     );
                     return;
                   }
@@ -772,10 +767,7 @@ class ReplyItemGrpc extends StatelessWidget {
                 }
               } else {
                 if (url.extra.isWordSearch) {
-                  Get.toNamed(
-                    '/searchResult',
-                    parameters: {'keyword': url.title},
-                  );
+                  PageUtils.toSearchResultPage(keyword: url.title);
                 } else {
                   PageUtils.handleWebview(matchStr);
                 }
@@ -824,7 +816,7 @@ class ReplyItemGrpc extends StatelessWidget {
               style: TextStyle(color: theme.colorScheme.primary),
               recognizer: NoDeadlineTapGestureRecognizer()
                 ..onTap = () =>
-                    Get.toNamed('/member?mid=${content.atNameToMid[name]}'),
+                    PageUtils.toMemberPage(mid: content.atNameToMid[name]),
             ),
           );
         } else if (_voteRegExp.hasMatch(matchStr)) {
@@ -890,10 +882,7 @@ class ReplyItemGrpc extends StatelessWidget {
                 style: TextStyle(color: theme.colorScheme.primary),
                 recognizer: NoDeadlineTapGestureRecognizer()
                   ..onTap = () {
-                    Get.toNamed(
-                      '/searchResult',
-                      parameters: {'keyword': topic},
-                    );
+                    PageUtils.toSearchResultPage(keyword: topic);
                   },
               ),
             );
@@ -939,12 +928,9 @@ class ReplyItemGrpc extends StatelessWidget {
         recognizer = NoDeadlineTapGestureRecognizer()
           ..onTap = () => hasClickUrl
               ? PiliScheme.routePushFromUrl(content.richText.note.clickUrl)
-              : Get.toNamed(
-                  '/articlePage',
-                  parameters: {
-                    'id': content.richText.opus.opusId.toString(),
-                    'type': 'opus',
-                  },
+              : PageUtils.toArticlePage(
+                  id: content.richText.opus.opusId.toString(),
+                  type: 'opus',
                 );
       } else {
         color = theme.colorScheme.secondary;

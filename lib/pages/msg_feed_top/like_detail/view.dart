@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/skeleton/msg_feed_top.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -111,7 +112,7 @@ class _LikeDetailPageState extends State<LikeDetailPage> {
 
   Widget _buildItem(ThemeData theme, MsgLikeDetailItem item) {
     return ListTile(
-      onTap: () => Get.toNamed('/member?mid=${item.user!.mid}'),
+      onTap: () => PageUtils.toMemberPage(mid: item.user!.mid),
       leading: NetworkImgLayer(
         width: 45,
         height: 45,

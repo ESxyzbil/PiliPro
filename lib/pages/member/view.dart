@@ -48,7 +48,10 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
 
 class MemberPage extends StatefulWidget {
-  const MemberPage({super.key});
+  const MemberPage({super.key, this.mid});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.parameters['mid']
+  final String? mid;
 
   @override
   State<MemberPage> createState() => _MemberPageState();
@@ -65,7 +68,7 @@ class _MemberPageState extends State<MemberPage> {
   @override
   void initState() {
     super.initState();
-    _mid = int.tryParse(Get.parameters['mid']!) ?? -1;
+    _mid = int.tryParse(widget.mid ?? Get.parameters['mid']!) ?? -1;
     _heroTag = Utils.makeHeroTag(_mid);
     _userController = Get.put(
       MemberController(mid: _mid),

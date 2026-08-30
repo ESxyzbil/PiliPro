@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/skeleton/msg_feed_top.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
@@ -116,7 +117,7 @@ class _AtMePageState extends State<AtMePage> {
                       onLongPress: onLongPress,
                       onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
                       leading: GestureDetector(
-                        onTap: () => Get.toNamed('/member?mid=${item.user?.mid}'),
+                        onTap: () => PageUtils.toMemberPage(mid: item.user?.mid),
                         child: NetworkImgLayer(
                           width: 45,
                           height: 45,

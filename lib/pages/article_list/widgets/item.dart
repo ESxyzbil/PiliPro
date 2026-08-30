@@ -3,8 +3,8 @@ import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
 import 'package:PiliPlus/models/common/stat_type.dart';
 import 'package:PiliPlus/models_new/article/article_list/article.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class ArticleListItem extends StatelessWidget {
   const ArticleListItem({
@@ -22,12 +22,9 @@ class ArticleListItem extends StatelessWidget {
       child: InkWell(
         onTap: () {
           final dynIdStr = item.dynIdStr;
-          Get.toNamed(
-            '/articlePage',
-            parameters: {
-              'id': dynIdStr ?? item.id!.toString(),
-              'type': dynIdStr != null ? 'opus' : 'read',
-            },
+          PageUtils.toArticlePage(
+            id: dynIdStr ?? item.id!.toString(),
+            type: dynIdStr != null ? 'opus' : 'read',
           );
         },
         child: Padding(

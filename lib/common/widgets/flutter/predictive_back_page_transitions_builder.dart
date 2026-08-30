@@ -1,4 +1,4 @@
-﻿// Copyright 2014 The Flutter Authors. All rights reserved.
+// Copyright 2014 The Flutter Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -15,12 +15,10 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import 'package:PiliPlus/common/widgets/flutter/build_page_transition.dart';
 import 'package:PiliPlus/common/widgets/flutter/fade_previous_page_transitions_builder.dart';
 import 'package:PiliPlus/common/widgets/glass.dart'
     show glassRevealActive, glassRevealProgress;
-import 'package:get/get.dart' show Get, Transition;
-import 'package:get/get_navigation/src/extension_navigation.dart';
-import 'package:get/get_navigation/src/routes/default_transitions.dart';
 import 'package:get/get_navigation/src/routes/get_transition_mixin.dart'
     show GetPageRouteTransitionMixin;
 
@@ -224,83 +222,15 @@ class PiliPredictiveBackPageTransitionsBuilder extends PageTransitionsBuilder {
               Animation<double> secondaryAnimation,
               Widget child,
             ) {
-              final Transition? t = Get.defaultTransition;
-              // 进入/退出分离：GetX transition 的进入动画在 0-60%
-              // （视觉 240ms）内完成，pop 时 reverseCurve（线性）全程
-              // （400ms）。native/fallbackBuilder 走 FadePrevious（内部
-              // 已自带 Interval(0.6)），这里不再二次包装。
-              final Animation<double> entrance =
-                  (t == null || t == Transition.native)
-                      ? animation
-                      : CurvedAnimation(
-                          parent: animation,
-                          curve: const Interval(
-                              0.0, 0.6, curve: Curves.easeOutCubic),
-                          reverseCurve: Curves.linear,
-                        );
-              switch (t) {
-                case Transition.noTransition:
-                  return NoTransition.buildTransitions(context, Curves.easeOut,
-                      Alignment.center, entrance, secondaryAnimation, child);
-                case Transition.fade:
-                case Transition.fadeIn:
-                  return FadeInTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.cupertino:
-                case Transition.cupertinoDialog:
-                  return CupertinoPageTransitionsBuilder().buildTransitions(
-                      route, context, entrance, secondaryAnimation, child);
-                case Transition.leftToRight:
-                  return SlideRightTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.downToUp:
-                  return SlideTopTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.upToDown:
-                  return SlideDownTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.rightToLeft:
-                  return SlideLeftTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.zoom:
-                case Transition.topLevel:
-                  // 自定义缩放（无 scrim，避免官方 ZoomPageTransitionsBuilder
-                  // 的半透明白色遮罩层）。下层页渐显由外层 AnimatedBuilder
-                  // 的 opacity = max(oldFade, 1-sec) 驱动（pop 动画中随
-                  // secondaryAnimation 同步渐显），这里只做本页自己的
-                  // 渐显 + 缩放。
-                  return FadeTransition(
-                    opacity: CurvedAnimation(
-                        parent: entrance, curve: Curves.easeInOut),
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.9, end: 1.0).animate(
-                          CurvedAnimation(
-                              parent: entrance, curve: Curves.easeInOut)),
-                      child: child,
-                    ),
-                  );
-                case Transition.circularReveal:
-                  return CircularRevealTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.rightToLeftWithFade:
-                  return RightToLeftFadeTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.leftToRightWithFade:
-                  return LeftToRightFadeTransition.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.size:
-                  return SizeTransitions.buildTransitions(
-                      context, entrance, secondaryAnimation, child);
-                case Transition.native:
-                  // 官方 PredictiveBackPageTransitionsBuilder 在 material src，
-                  // 不引入避免耦合；native 回落为默认自定义淡入淡出。
-                  return fallbackBuilder.buildTransitions(
-                      route, context, animation, secondaryAnimation, child);
-                default:
-                  return fallbackBuilder.buildTransitions(
-                    route, context, animation, secondaryAnimation, child,
-                  );
-              }
+              // 复用项目统一的过渡动画实现（与标签页切换一致）
+              return buildPiliPageTransition(
+                route: route,
+                context: context,
+                animation: animation,
+                secondaryAnimation: secondaryAnimation,
+                child: child,
+                fallbackBuilder: fallbackBuilder,
+              );
             }
 
             // 非手势（当前页之外的 route / pop 完成后）：

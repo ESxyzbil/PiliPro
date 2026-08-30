@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:PiliPlus/pages/setting/models/model.dart';
+import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +33,30 @@ List<SettingsModel> get layoutSettings => [
         onChanged: (value) {
           Get.appUpdate();
         },
+      ),
+    ),
+  ],
+  if (PlatformUtils.isDesktop) ...[
+    SplitModel(
+      normalModel: const NormalModel.split(
+        title: '桌面端多页面标签',
+        subtitle: '侧边标签栏打开视频/专栏，可多开切换、关闭',
+        leading: Icon(Icons.tab_outlined),
+      ),
+      switchModel: SwitchModel.split(
+        setKey: SettingBoxKey.desktopTabs,
+        defaultVal: true,
+      ),
+    ),
+    SplitModel(
+      normalModel: const NormalModel.split(
+        title: '切走标签自动转音频',
+        subtitle: '切走正在播放的视频标签时，以音频模式继续播',
+        leading: Icon(Icons.headphones_outlined),
+      ),
+      switchModel: SwitchModel.split(
+        setKey: SettingBoxKey.tabAutoAudio,
+        defaultVal: true,
       ),
     ),
   ],

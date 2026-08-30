@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/search.dart';
 import 'package:PiliPlus/models/search/suggest.dart';
@@ -180,16 +181,11 @@ class SSearchController extends GetxController
     }
 
     searchFocusNode.unfocus();
-    await Get.toNamed(
-      '/searchResult',
-      parameters: {
-        'tag': tag,
-        'keyword': controller.text,
-      },
-      arguments: {
-        'initIndex': initIndex,
-        'fromSearch': true,
-      },
+    PageUtils.toSearchResultPage(
+      keyword: controller.text,
+      tag: tag,
+      initIndex: initIndex,
+      fromSearch: true,
     );
     searchFocusNode.requestFocus();
     if (PlatformUtils.isDesktop) {

@@ -1,3 +1,4 @@
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -2539,7 +2540,9 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
                   MdiIcons.accountOutline,
                   color: Colors.white,
                 ),
-                onTap: () => Get.toNamed('/member?mid=${extra.mid}'),
+                onTap: () {
+                  PageUtils.toMemberPage(mid: extra.mid);
+                },
               ),
               _dmActionItem(
                 const Icon(

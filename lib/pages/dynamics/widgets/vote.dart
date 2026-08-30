@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:PiliPlus/common/widgets/avatars.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
@@ -171,7 +171,7 @@ class _VotePanelState extends State<VotePanel> {
                                   (e) => ListTile(
                                     dense: true,
                                     onTap: () =>
-                                        Get.toNamed('/member?mid=${e.mid}'),
+                                        PageUtils.toMemberPage(mid: e.mid),
                                     leading: NetworkImgLayer(
                                       src: e.face,
                                       width: 40,

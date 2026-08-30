@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/models_new/follow/list.dart';
 import 'package:PiliPlus/pages/share/view.dart' show UserModel;
@@ -61,7 +62,7 @@ class FollowItem extends StatelessWidget {
             );
           } else {
             feedBack();
-            Get.toNamed('/member?mid=${item.mid}');
+            PageUtils.toMemberPage(mid: item.mid);
           }
         },
         child: Padding(

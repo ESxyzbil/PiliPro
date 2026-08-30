@@ -796,6 +796,14 @@ abstract final class Pref {
   static bool get useSideBar =>
       _setting.get(SettingBoxKey.useSideBar, defaultValue: false);
 
+  /// 桌面端多页面标签页（方案 C：侧边标签栏），默认开启
+  static bool get desktopTabs =>
+      _setting.get(SettingBoxKey.desktopTabs, defaultValue: true);
+
+  /// 切走正在播放的视频标签时自动转音频模式继续播
+  static bool get tabAutoAudio =>
+      _setting.get(SettingBoxKey.tabAutoAudio, defaultValue: true);
+
   static bool get dynamicsShowAllFollowedUp => _setting.get(
     SettingBoxKey.dynamicsShowAllFollowedUp,
     defaultValue: false,

@@ -108,12 +108,9 @@ class _MyReplyState extends State<MyReply> with DynMixin {
           null,
         );
       case 12:
-        PageUtils.toDupNamed(
-          '/articlePage',
-          parameters: {
-            'id': replyInfo.oid.toString(),
-            'type': 'read',
-          },
+        PageUtils.toArticlePage(
+          id: replyInfo.oid.toString(),
+          type: 'read',
         );
       case _:
         PageUtils.pushDynFromId(

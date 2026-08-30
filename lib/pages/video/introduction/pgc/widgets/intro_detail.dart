@@ -1,4 +1,5 @@
-import 'package:PiliPlus/common/widgets/flutter/page/tabs.dart';
+﻿import 'package:PiliPlus/common/widgets/flutter/page/tabs.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/keep_alive_wrapper.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart';
 import 'package:PiliPlus/common/widgets/selectable_text.dart';
@@ -198,10 +199,7 @@ class _IntroDetailState extends State<PgcIntroPanel>
                   (item) => SearchText(
                     fontSize: 13,
                     text: item.tagName!,
-                    onTap: (tagName) => Get.toNamed(
-                      '/searchResult',
-                      parameters: {'keyword': tagName},
-                    ),
+                    onTap: (tagName) => PageUtils.toSearchResultPage(keyword: tagName),
                     onLongPress: Utils.copyText,
                   ),
                 )

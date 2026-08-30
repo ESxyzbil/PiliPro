@@ -1,4 +1,4 @@
-import 'dart:io' show Platform, Process;
+﻿import 'dart:io' show Platform, Process;
 
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/pages/common/multi_select/base.dart'
@@ -128,7 +128,7 @@ class BiliDownloadEntryInfo with MultiSelectData {
               '访问${ownerName != null ? '：$ownerName' : '用户主页'}',
               style: const TextStyle(fontSize: 13),
             ),
-            onTap: () => Get.toNamed('/member?mid=$mid'),
+            onTap: () => PageUtils.toMemberPage(mid: mid),
           ),
       ],
     ),

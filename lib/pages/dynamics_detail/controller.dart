@@ -8,6 +8,11 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
 class DynamicDetailController extends CommonDynController {
+  DynamicDetailController({this.item});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final DynamicItemModel? item;
+
   @override
   late int oid;
   @override
@@ -20,7 +25,7 @@ class DynamicDetailController extends CommonDynController {
   @override
   void onInit() {
     super.onInit();
-    dynItem = Get.arguments['item'];
+    dynItem = item ?? Get.arguments?['item'];
     final commentType = dynItem.basic?.commentType;
     final commentIdStr = dynItem.basic?.commentIdStr;
     if (commentType != null &&

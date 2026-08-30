@@ -1,4 +1,5 @@
-import 'package:PiliPlus/common/style.dart';
+﻿import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -40,12 +41,9 @@ class SubItem extends StatelessWidget {
             return;
           }
           if (item.type == 11) {
-            Get.toNamed(
-              '/favDetail',
-              parameters: {
-                'mediaId': item.id!.toString(),
-                'heroTag': heroTag,
-              },
+            PageUtils.toFavDetailPage(
+              mediaId: item.id!.toString(),
+              heroTag: heroTag,
             );
           } else {
             SubDetailPage.toSubDetailPage(

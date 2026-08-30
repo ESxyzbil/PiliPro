@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'dart:convert';
 
 import 'package:PiliPlus/common/widgets/dialog/export_import.dart';
@@ -98,9 +99,7 @@ class _SearchPageState extends State<SearchPage> {
             ? IconButton(
                 tooltip: 'UID搜索用户',
                 icon: const Icon(Icons.person_outline, size: 22),
-                onPressed: () => Get.toNamed(
-                  '/member?mid=${_searchController.controller.text}',
-                ),
+                onPressed: () => PageUtils.toMemberPage(mid: _searchController.controller.text),
               )
             : const SizedBox.shrink(),
       ),

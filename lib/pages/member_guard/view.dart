@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -93,7 +94,7 @@ class _MemberGuardState extends State<MemberGuard> {
                     return ListTile(
                       safeArea: false,
                       visualDensity: .comfortable,
-                      onTap: () => Get.toNamed('/member?mid=${item.uid}'),
+                      onTap: () => PageUtils.toMemberPage(mid: item.uid),
                       leading: _avatar(item.face, 32, item.guardLevel),
                       title: Text(
                         item.username,
@@ -114,7 +115,7 @@ class _MemberGuardState extends State<MemberGuard> {
   Widget _buildTopItem(GuardItem item, double size) {
     final child = GestureDetector(
       behavior: .opaque,
-      onTap: () => Get.toNamed('/member?mid=${item.uid}'),
+      onTap: () => PageUtils.toMemberPage(mid: item.uid),
       child: Padding(
         padding: const .symmetric(vertical: 10.0),
         child: Column(

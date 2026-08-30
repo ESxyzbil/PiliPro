@@ -19,6 +19,7 @@ import 'package:PiliPlus/models_new/video/video_ai_conclusion/model_result.dart'
 import 'package:PiliPlus/models_new/video/video_detail/dimension.dart';
 import 'package:PiliPlus/models_new/video/video_detail/episode.dart';
 import 'package:PiliPlus/models_new/video/video_detail/page.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/models_new/video/video_detail/section.dart';
 import 'package:PiliPlus/models_new/video/video_detail/staff.dart';
 import 'package:PiliPlus/models_new/video/video_detail/stat_detail.dart';
@@ -49,6 +50,8 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
 class UgcIntroController extends CommonIntroController with ReloadMixin {
+  UgcIntroController({super.arguments});
+
   late ExpandableController expandableCtr;
 
   /// 普通视频（无分P/合集/播放全部）的播放历史栈：nextPlay/playRelated 切走时
@@ -91,7 +94,8 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
       });
     }
 
-    videoDetail.value.title = Get.arguments['title'] ?? '';
+    videoDetail.value.title =
+        arguments?['title'] ?? Get.arguments?['title'] ?? '';
   }
 
   // 获取视频简介&分p
@@ -537,6 +541,15 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
         ..aid = aid
         ..cid.value = cid
         ..queryVideoUrl();
+
+      // 连播换源：同步更新对应视频标签标题（heroTag 匹配，避免误更新别的标签）
+      final String? epTitle = episode.title;
+      if (epTitle != null && epTitle.isNotEmpty) {
+        TabHostController.instance?.updateCurrentTabTitle(
+          epTitle,
+          videoHeroTag: heroTag,
+        );
+      }
 
       if (this.bvid != bvid) {
         reload = true;

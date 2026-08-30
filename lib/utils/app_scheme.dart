@@ -1,4 +1,4 @@
-// ignore_for_file: constant_identifier_names
+﻿// ignore_for_file: constant_identifier_names
 
 import 'dart:async' show StreamSubscription;
 
@@ -126,7 +126,7 @@ abstract final class PiliScheme {
                 RequestUtils.showUserRealName(mid);
                 return true;
               }
-              PageUtils.toDupNamed('/member?mid=$mid', off: off);
+              PageUtils.toMemberPage(mid: mid, off: off);
               return true;
             }
             return false;
@@ -200,25 +200,18 @@ abstract final class PiliScheme {
           case 'search':
             final keyword = uri.queryParameters['keyword'];
             if (keyword != null) {
-              PageUtils.toDupNamed(
-                '/searchResult',
-                parameters: {'keyword': keyword},
-                off: off,
-              );
+              PageUtils.toSearchResultPage(keyword: keyword, off: off);
               return true;
             }
-            Get.toNamed('/search');
+            PageUtils.toSearchPage();
             return true;
           case 'article':
             // bilibili://article/40679479?jump_opus=1&jump_opus_type=1&opus_type=article&h5awaken=random
             String? id = uriDigitRegExp.firstMatch(path)?.group(1);
             if (id != null) {
-              PageUtils.toDupNamed(
-                '/articlePage',
-                parameters: {
-                  'id': id,
-                  'type': 'read',
-                },
+              PageUtils.toArticlePage(
+                id: id,
+                type: 'read',
                 off: off,
               );
               return true;
@@ -266,12 +259,9 @@ abstract final class PiliScheme {
               caseSensitive: false,
             ).matchAsPrefix(path)?.group(1);
             if (cvid != null) {
-              PageUtils.toDupNamed(
-                '/articlePage',
-                parameters: {
-                  'id': cvid,
-                  'type': 'read',
-                },
+              PageUtils.toArticlePage(
+                id: cvid,
+                type: 'read',
                 off: off,
               );
               return true;
@@ -306,14 +296,7 @@ abstract final class PiliScheme {
           case 'medialist':
             String? mediaId = uriDigitRegExp.firstMatch(path)?.group(1);
             if (mediaId != null) {
-              PageUtils.toDupNamed(
-                '/favDetail',
-                parameters: {
-                  'mediaId': mediaId,
-                  'heroTag': Utils.makeHeroTag(mediaId),
-                },
-                off: off,
-              );
+              PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId), off: off);
               return true;
             }
             return false;
@@ -360,7 +343,7 @@ abstract final class PiliScheme {
                   if (kDebugMode) debugPrint('favorite jump: $e');
                 }
               }
-              Get.toNamed('/fav', arguments: index);
+              PageUtils.toFavPage(initialIndex: index);
               return true;
             }
             return false;
@@ -389,33 +372,24 @@ abstract final class PiliScheme {
             if (path.startsWith('/playlist/')) {
               final mediaId = uriDigitRegExp.firstMatch(path)?.group(1);
               if (mediaId != null) {
-                Get.toNamed(
-                  '/favDetail',
-                  parameters: {
-                    'mediaId': mediaId,
-                    'heroTag': Utils.makeHeroTag(mediaId),
-                  },
-                );
+                PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId));
                 return true;
               }
             }
             return false;
           case 'favorite':
-            Get.toNamed('/fav');
+            PageUtils.toFavPage();
             return true;
           case 'fav':
             // bilibili://fav/detail/12345678
             if (path.startsWith('/detail/')) {
               final id = path.split('/').last;
               if (id.isNotEmpty) {
-                Get.toNamed('/favDetail', parameters: {
-                  'mediaId': id,
-                  'heroTag': Utils.makeHeroTag(id),
-                });
+                PageUtils.toFavDetailPage(mediaId: id, heroTag: Utils.makeHeroTag(id));
                 return true;
               }
             }
-            Get.toNamed('/fav');
+            PageUtils.toFavPage();
             return true;
           case 'download':
             Get.toNamed('/download');
@@ -541,7 +515,7 @@ abstract final class PiliScheme {
             FollowedPage.toFollowedPage(mid: mid);
             break;
           default:
-            PageUtils.toDupNamed('/member?mid=$mid', off: off);
+            PageUtils.toMemberPage(mid: mid, off: off);
         }
       }
 
@@ -578,11 +552,7 @@ abstract final class PiliScheme {
     } else if (host.contains(bilibili_search)) {
       String? keyword = uri.queryParameters['keyword'];
       if (keyword != null) {
-        PageUtils.toDupNamed(
-          '/searchResult',
-          parameters: {'keyword': keyword},
-          off: off,
-        );
+        PageUtils.toSearchResultPage(keyword: keyword, off: off);
         return true;
       }
       launchURL();
@@ -618,12 +588,9 @@ abstract final class PiliScheme {
       case 'note' || 'note-app':
         String? id = uri.queryParameters['cvid'];
         if (id != null) {
-          PageUtils.toDupNamed(
-            '/articlePage',
-            parameters: {
-              'id': id,
-              'type': 'read',
-            },
+          PageUtils.toArticlePage(
+            id: id,
+            type: 'read',
             off: off,
           );
           return true;
@@ -733,12 +700,9 @@ abstract final class PiliScheme {
           caseSensitive: false,
         ).firstMatch(path)?.group(1);
         if (id != null) {
-          PageUtils.toDupNamed(
-            '/articlePage',
-            parameters: {
-              'id': id,
-              'type': 'read',
-            },
+          PageUtils.toArticlePage(
+            id: id,
+            type: 'read',
             off: off,
           );
           return true;
@@ -749,10 +713,7 @@ abstract final class PiliScheme {
         // if (kDebugMode) debugPrint('个人空间');
         String? mid = uriDigitRegExp.firstMatch(path)?.group(1);
         if (mid != null) {
-          PageUtils.toDupNamed(
-            '/member?mid=$mid',
-            off: off,
-          );
+          PageUtils.toMemberPage(mid: mid, off: off);
           return true;
         }
         launchURL();
@@ -760,14 +721,7 @@ abstract final class PiliScheme {
       case 'medialist':
         String? mediaId = RegExp(r'/ml(\d+)').firstMatch(path)?.group(1);
         if (mediaId != null) {
-          PageUtils.toDupNamed(
-            '/favDetail',
-            parameters: {
-              'mediaId': mediaId,
-              'heroTag': Utils.makeHeroTag(mediaId),
-            },
-            off: off,
-          );
+          PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId), off: off);
           return true;
         }
         launchURL();

@@ -21,8 +21,8 @@ static constexpr int kFontSize = 28;
 static constexpr int kSubFontSize = 20;
 static constexpr int kMargin = 40;
 static constexpr int kLineGap = 8;
-static constexpr UINT_PTR kTimerId = 1001;
-static constexpr int kTimerIntervalMs = 33;  // ~30fps
+static constexpr UINT_PTR kKeepAliveTimerId = 1001;
+static constexpr int kKeepAliveIntervalMs = 1000;  // 1s keepalive: recover from display/DWM changes
 // Layout modes
 static constexpr int kLayoutCurrentAbove = 0;
 static constexpr int kLayoutSingleLine = 2;
@@ -108,68 +108,15 @@ class LyricsOverlay::Impl {
     parent_hwnd_ = parent_hwnd;
     messenger_ = messenger;
 
-    // Register window class
-    const wchar_t kClassName[] = L"PiliPlusLyricsOverlay";
-    WNDCLASS wc = {};
-    wc.lpfnWndProc = WindowProc;
-    wc.hInstance = GetModuleHandle(nullptr);
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = kClassName;
-    RegisterClass(&wc);
-
-    // Get primary monitor dimensions for default positioning
-    RECT work_area = {0};
-    SystemParametersInfo(SPI_GETWORKAREA, 0, &work_area, 0);
-    int screen_w = work_area.right - work_area.left;
-    // int screen_h = work_area.bottom - work_area.top;
-
-    int win_w = kDefaultWidth;
-    int win_h = kDefaultHeight;
-    // Use stored position if available, else center horizontally + above taskbar
-    int win_x = pos_x_ >= 0 ? pos_x_ : (screen_w - win_w) / 2;
-    int win_y = pos_y_ >= 0 ? pos_y_ : work_area.bottom - win_h - 60;
-
-    // Create layered window
-    hwnd_ = CreateWindowEx(
-        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-        kClassName, L"PiliPlus Lyrics",
-        WS_POPUP,  // no caption, no border
-        win_x, win_y, win_w, win_h,
-        nullptr,  // no parent
-        nullptr, GetModuleHandle(nullptr), this);
-
-    if (!hwnd_) return;
-
-    // Store this pointer in window user data
-    SetWindowLongPtr(hwnd_, GWLP_USERDATA,
-                     reinterpret_cast<LONG_PTR>(this));
-
-    // Use a timer for animation/repaint
-    // For WS_EX_LAYERED windows, we drive rendering via timer + UpdateLayeredWindow,
-    // NOT via WM_PAINT/BeginPaint.
-    SetTimer(hwnd_, kTimerId, kTimerIntervalMs, nullptr);
-    animation_phase_ = 0;
-
-    // Push initial transparent frame via UpdateLayeredWindow
-    PushFrame();
-
-    // Register MethodChannel
-    method_channel_ = std::make_unique<
-        flutter::MethodChannel<flutter::EncodableValue>>(
-        messenger_, "desktop_lyrics",
-        &flutter::StandardMethodCodec::GetInstance());
-
-    method_channel_->SetMethodCallHandler(
-        [this](const flutter::MethodCall<flutter::EncodableValue>& call,
-               std::unique_ptr<
-                   flutter::MethodResult<flutter::EncodableValue>> result) {
-          HandleMethodCall(call, std::move(result));
-        });
+    RegisterWindowClass();
+    EnsureChannel();
+    EnsureWindow();
 
     initialized_ = true;
   }
 
   void Show() {
+    EnsureWindow();
     if (!hwnd_) return;
     visible_ = true;
     OutputDebugStringA("[Lyrics] Show called\n");
@@ -178,10 +125,22 @@ class LyricsOverlay::Impl {
   }
 
   void Hide() {
-    if (!hwnd_) return;
     visible_ = false;
     OutputDebugStringA("[Lyrics] Hide called\n");
-    ShowWindow(hwnd_, SW_HIDE);
+    if (hwnd_ && IsWindow(hwnd_)) ShowWindow(hwnd_, SW_HIDE);
+  }
+
+  /// Manual reload: rebuild the overlay window from scratch (fresh
+  /// surface) and re-render the current lyrics. Exposed to the Dart
+  /// side as the "reload" MethodChannel method.
+  void Reload() {
+    if (hwnd_ && IsWindow(hwnd_)) {
+      KillTimer(hwnd_, kKeepAliveTimerId);
+      DestroyWindow(hwnd_);  // triggers WM_DESTROY -> HandleDestroy
+    }
+    hwnd_ = nullptr;
+    EnsureWindow();
+    if (hwnd_ && visible_) PushFrame();
   }
 
   void SetLyrics(const std::string& current_line,
@@ -194,13 +153,15 @@ class LyricsOverlay::Impl {
     lyrics_current_ = current_line;
     lyrics_next_ = next_line;
     progress_ = std::clamp(progress, 0.0, 1.0);
+    EnsureWindow();
     Invalidate();
   }
 
   void SetPosition(int x, int y) {
-    if (!hwnd_) return;
     pos_x_ = x;
     pos_y_ = y;
+    EnsureWindow();
+    if (!hwnd_) return;
     SetWindowPos(hwnd_, nullptr, x, y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
   }
@@ -208,23 +169,27 @@ class LyricsOverlay::Impl {
   void SetFontSize(int size) {
     font_size_ = std::max(12, std::min(72, size));
     sub_font_size_ = std::max(10, font_size_ - 8);
+    EnsureWindow();
     Invalidate();
   }
 
   void SetOpacity(int percent) {
     opacity_ = std::clamp(percent, 0, 100);
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetFontFamily(const std::string& family) {
     if (!family.empty()) font_family_name_ = family;
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetWindowWidth(int width) {
     if (width < 200) width = 200;
     if (width > 3840) width = 3840;
     window_width_ = width;
+    EnsureWindow();
     if (hwnd_) {
       RECT r;
       GetWindowRect(hwnd_, &r);
@@ -232,41 +197,47 @@ class LyricsOverlay::Impl {
       SetWindowPos(hwnd_, nullptr, r.left, r.top, width, cy,
                    SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    if (visible_) PushFrame();
+    Invalidate();
   }
 
   void SetLayoutMode(int mode) {
     layout_mode_ = mode;
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetTextColor(int r, int g, int b) {
     text_color_r_ = std::clamp(r, 0, 255);
     text_color_g_ = std::clamp(g, 0, 255);
     text_color_b_ = std::clamp(b, 0, 255);
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetNextTextColor(int r, int g, int b) {
     next_text_color_r_ = std::clamp(r, 0, 255);
     next_text_color_g_ = std::clamp(g, 0, 255);
     next_text_color_b_ = std::clamp(b, 0, 255);
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetStrokeEnabled(bool enabled) {
     stroke_enabled_ = enabled;
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetStrokeColor(int r, int g, int b) {
     stroke_color_r_ = std::clamp(r, 0, 255);
     stroke_color_g_ = std::clamp(g, 0, 255);
     stroke_color_b_ = std::clamp(b, 0, 255);
-    if (visible_) PushFrame();
+    EnsureWindow();
+    Invalidate();
   }
 
   void SetDraggable(bool draggable) {
+    EnsureWindow();
     if (!hwnd_) return;
     LONG style = GetWindowLong(hwnd_, GWL_EXSTYLE);
     if (draggable) {
@@ -279,16 +250,110 @@ class LyricsOverlay::Impl {
   }
 
   void Cleanup() {
-    if (hwnd_) {
-      KillTimer(hwnd_, kTimerId);
+    if (hwnd_ && IsWindow(hwnd_)) {
+      KillTimer(hwnd_, kKeepAliveTimerId);
       DestroyWindow(hwnd_);
-      hwnd_ = nullptr;
     }
+    hwnd_ = nullptr;
     method_channel_.reset();
     initialized_ = false;
   }
 
  private:
+  // ---- Window lifecycle ----
+
+  /// Register the overlay window class (idempotent; a second
+  /// RegisterClass with the same name simply fails with
+  /// ERROR_CLASS_ALREADY_EXISTS, which is fine).
+  void RegisterWindowClass() {
+    const wchar_t kClassName[] = L"PiliPlusLyricsOverlay";
+    WNDCLASS wc = {};
+    wc.lpfnWndProc = WindowProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = kClassName;
+    RegisterClass(&wc);
+  }
+
+  /// Register the MethodChannel handler (idempotent).
+  void EnsureChannel() {
+    if (method_channel_ || !messenger_) return;
+    method_channel_ = std::make_unique<
+        flutter::MethodChannel<flutter::EncodableValue>>(
+        messenger_, "desktop_lyrics",
+        &flutter::StandardMethodCodec::GetInstance());
+    method_channel_->SetMethodCallHandler(
+        [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+               std::unique_ptr<
+                   flutter::MethodResult<flutter::EncodableValue>> result) {
+          HandleMethodCall(call, std::move(result));
+        });
+  }
+
+  /// (Re)create the overlay window if it was destroyed for any reason
+  /// (DWM restart, display/session change, etc.). The overlay is
+  /// self-healing: any later show / setLyrics / settings call brings a
+  /// dead window back, instead of silently failing forever.
+  void EnsureWindow() {
+    if (hwnd_ && IsWindow(hwnd_)) return;
+    CreateOverlayWindow();
+    if (hwnd_ && visible_) {
+      ShowWindow(hwnd_, SW_SHOWNA);
+      PushFrame();
+    }
+  }
+
+  void CreateOverlayWindow() {
+    if (hwnd_ && IsWindow(hwnd_)) return;
+
+    // Get primary monitor dimensions for default positioning
+    RECT work_area = {0};
+    SystemParametersInfo(SPI_GETWORKAREA, 0, &work_area, 0);
+    int screen_w = work_area.right - work_area.left;
+
+    int win_w = window_width_;
+    int win_h = window_height_;
+    // Use stored position if available, else center horizontally + above taskbar
+    int win_x = pos_x_ >= 0 ? pos_x_ : (screen_w - win_w) / 2;
+    int win_y = pos_y_ >= 0 ? pos_y_ : work_area.bottom - win_h - 60;
+
+    // Create layered window
+    hwnd_ = CreateWindowEx(
+        WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        L"PiliPlusLyricsOverlay", L"PiliPlus Lyrics",
+        WS_POPUP,  // no caption, no border
+        win_x, win_y, win_w, win_h,
+        nullptr,  // no parent
+        nullptr, GetModuleHandle(nullptr), this);
+
+    if (!hwnd_) return;
+
+    // Store this pointer in window user data
+    SetWindowLongPtr(hwnd_, GWLP_USERDATA,
+                     reinterpret_cast<LONG_PTR>(this));
+
+    // 1s keepalive: periodically re-push the frame so the layered
+    // surface recovers from display/session/DWM events. Repaints are
+    // otherwise driven on demand by Invalidate().
+    SetTimer(hwnd_, kKeepAliveTimerId, kKeepAliveIntervalMs, nullptr);
+  }
+
+  /// Called when the overlay window is destroyed (WM_DESTROY).
+  /// Keeps all state (lyrics, settings, visibility) so the window can
+  /// be transparently recreated by EnsureWindow().
+  void HandleDestroy() {
+    if (hwnd_) {
+      KillTimer(hwnd_, kKeepAliveTimerId);
+      hwnd_ = nullptr;
+    }
+  }
+
+  /// Display / power / setting changed: refresh the layered surface.
+  void OnSystemEvent() {
+    EnsureWindow();
+    if (hwnd_ && visible_) PushFrame();
+  }
+
   // ---- Fields ----
   bool initialized_ = false;
   bool visible_ = false;
@@ -318,7 +383,6 @@ class LyricsOverlay::Impl {
   int next_text_color_r_ = 255, next_text_color_g_ = 255, next_text_color_b_ = 255;
   int stroke_color_r_ = 0, stroke_color_g_ = 0, stroke_color_b_ = 0;
   std::string font_family_name_ = "Microsoft YaHei";
-  int animation_phase_ = 0;
 
   // ---- Painting ----
 
@@ -636,14 +700,30 @@ class LyricsOverlay::Impl {
       case WM_ERASEBKGND:
         return 1;  // No background erasing needed
       case WM_TIMER:
-        impl->animation_phase_++;
-        // Periodically re-push in case of display changes
-        if (impl->visible_) {
-          impl->PushFrame();
+        if (wparam == kKeepAliveTimerId) {
+          // Periodically re-push in case of display changes
+          if (impl->visible_ && impl->hwnd_) {
+            impl->PushFrame();
+          }
         }
         return 0;
+      case WM_DISPLAYCHANGE:
+      case WM_SETTINGCHANGE:
+        // Display configuration / system settings changed: refresh the
+        // layered surface (and recreate the window if it was lost).
+        impl->OnSystemEvent();
+        return 0;
+      case WM_POWERBROADCAST:
+        // Screen sleep/wake cycles are a common cause of layered
+        // windows vanishing; refresh when the system resumes.
+        if (wparam == PBT_APMRESUMEAUTOMATIC ||
+            wparam == PBT_APMRESUMESUSPEND) {
+          impl->OnSystemEvent();
+          return 0;
+        }
+        break;
       case WM_DESTROY:
-        impl->Cleanup();
+        impl->HandleDestroy();
         return 0;
     }
     return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -662,6 +742,10 @@ class LyricsOverlay::Impl {
       result->Success(flutter::EncodableValue(true));
     } else if (method == "hide") {
       Hide();
+      result->Success(flutter::EncodableValue(true));
+    } else if (method == "reload") {
+      OutputDebugStringA("[Lyrics] HandleMethodCall: reload\n");
+      Reload();
       result->Success(flutter::EncodableValue(true));
     } else if (method == "setLyrics") {
       OutputDebugStringA("[Lyrics] HandleMethodCall: setLyrics\n");
@@ -880,6 +964,7 @@ void LyricsOverlay::Init(flutter::BinaryMessenger* messenger,
 }
 void LyricsOverlay::Show() { impl_->Show(); }
 void LyricsOverlay::Hide() { impl_->Hide(); }
+void LyricsOverlay::Reload() { impl_->Reload(); }
 void LyricsOverlay::SetLyrics(const std::string& current_line,
                                const std::string& next_line,
                                double progress) {

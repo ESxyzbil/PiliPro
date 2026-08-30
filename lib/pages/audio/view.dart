@@ -22,6 +22,7 @@ import 'package:PiliPlus/pages/audio/lyrics_memory.dart';
 import 'package:PiliPlus/pages/audio/volume_button.dart';
 import 'package:PiliPlus/pages/setting/models/play_settings.dart'
     show showPlayerVolumeDialog;
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/action_item.dart';
 import 'package:PiliPlus/pages/video/widgets/header_control.dart'
     show HeaderControlState;
@@ -51,7 +52,10 @@ import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 
 class AudioPage extends StatefulWidget {
-  const AudioPage({super.key});
+  const AudioPage({super.key, this.arguments});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时页面回退读取路由参数 Get.arguments
+  final Map? arguments;
 
   @override
   State<AudioPage> createState() => _AudioPageState();
@@ -72,9 +76,9 @@ class AudioPage extends StatefulWidget {
     int? ownerMid,
     String? bvid,
     List<BiliDownloadEntryInfo>? offlineEntries,
-  }) => Get.toNamed(
-    '/audio',
-    arguments: {
+    bool replaceCurrent = false,
+  }) {
+    final args = {
       'id': ?id,
       'oid': oid,
       'subId': ?subId,
@@ -90,8 +94,17 @@ class AudioPage extends StatefulWidget {
       'ownerMid': ?ownerMid,
       'bvid': ?bvid,
       'offlineEntries': ?offlineEntries?.map((e) => e.toJson()).toList(),
-    },
-  );
+    };
+    // 多页面标签页：音频页也开成标签（手机端始终——竖屏标签栏隐藏、
+    // 内容全屏，横竖屏切换零重载；若当前在二级路由先退回主界面）
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && TabHostController.tabsEnabled) {
+      TabHostController.ensureMainVisible();
+      tabHost.openAudio(args, replaceCurrent: replaceCurrent);
+      return;
+    }
+    Get.toNamed('/audio', arguments: args);
+  }
 }
 
 extension _ListOrderExt on ListOrder {
@@ -101,11 +114,35 @@ extension _ListOrderExt on ListOrder {
 class _AudioPageState extends State<AudioPage> {
   late final _controller = _initController();
 
+  /// 音频页 controller 按 oid 独立注册（标签页模式：多个音频标签并存时
+  /// 各用各的实例，互不覆盖；非标签模式保持单例行为）。
+  /// 注意：不能用无 tag 的全局单例 + force delete——两个音频页标签并存时
+  /// 后开的会销毁先开的 controller，导致旧标签标题被覆盖/无法播放/时长消失。
   AudioController _initController() {
+    final tag = _audioTag;
+    if (tag != null) {
+      final existing = Get.isRegistered<AudioController>(tag: tag)
+          ? Get.find<AudioController>(tag: tag)
+          : null;
+      if (existing != null) {
+        return existing;
+      }
+      return Get.put(AudioController(arguments: widget.arguments), tag: tag);
+    }
     if (Get.isRegistered<AudioController>()) {
       Get.delete<AudioController>(force: true);
     }
-    return Get.put(AudioController());
+    return Get.put(AudioController(arguments: widget.arguments));
+  }
+
+  /// 标签模式下按 oid 生成独立注册 tag；非标签模式返回 null（全局单例）
+  String? get _audioTag {
+    final args = widget.arguments ?? Get.arguments;
+    final oid = args?['oid'];
+    if (oid == null) return null;
+    final tabHost = TabHostController.instance;
+    if (tabHost == null) return null;
+    return 'audio_$oid';
   }
   final _lyricsScrollCtr = ScrollController();
   int _lastScrolledLine = -1;
@@ -120,7 +157,12 @@ class _AudioPageState extends State<AudioPage> {
   @override
   void dispose() {
     _lyricsScrollCtr.dispose();
-    if (Get.isRegistered<AudioController>()) {
+    final tag = _audioTag;
+    if (tag != null) {
+      if (Get.isRegistered<AudioController>(tag: tag)) {
+        Get.delete<AudioController>(tag: tag, force: true);
+      }
+    } else if (Get.isRegistered<AudioController>()) {
       Get.delete<AudioController>(force: true);
     }
     super.dispose();
@@ -185,12 +227,27 @@ class _AudioPageState extends State<AudioPage> {
               ),
             icon: const Icon(Icons.schedule, size: 22),
           ),
-          if (DesktopLyricsService.isSupported)
+          if (DesktopLyricsService.isSupported) ...[
             IconButton(
               tooltip: '桌面歌词',
               onPressed: () => Get.toNamed('/desktopLyrics'),
               icon: const Icon(Icons.music_note, size: 22),
             ),
+            IconButton(
+              tooltip: '重载桌面歌词',
+              onPressed: () {
+                DesktopLyricsService.reload();
+                _controller.updateLyricsLine();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('桌面歌词已重载'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.refresh, size: 22),
+            ),
+          ],
           if (_controller.isUgc)
             IconButton(
               tooltip: '更多',
@@ -1471,7 +1528,7 @@ class _AudioPageState extends State<AudioPage> {
                               'currentOwnerMid=${_controller.currentOwnerMid} '
                               'grpcMid=${audioItem.owner.mid}');
                           _controller.player?.pause();
-                          Get.toNamed('/member?mid=$mid');
+                          PageUtils.toMemberPage(mid: mid);
                         },
                         child: Row(
                           spacing: 6,

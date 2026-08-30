@@ -16,8 +16,15 @@ import 'package:PiliPlus/models_new/video/video_detail/dimension.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
 import 'package:PiliPlus/pages/contact/view.dart';
+import 'package:PiliPlus/pages/dynamics_detail/view.dart';
+import 'package:PiliPlus/pages/fav/view.dart';
+import 'package:PiliPlus/pages/fav_detail/view.dart';
 import 'package:PiliPlus/pages/fav_panel/view.dart';
+import 'package:PiliPlus/pages/member/view.dart';
+import 'package:PiliPlus/pages/search/view.dart';
+import 'package:PiliPlus/pages/search_result/view.dart';
 import 'package:PiliPlus/pages/share/view.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
@@ -124,12 +131,9 @@ abstract final class PageUtils {
     SmartDialog.dismiss();
     if (res case Success(:final response)) {
       if (response.basic?.commentType == 12) {
-        toDupNamed(
-          '/articlePage',
-          parameters: {
-            'id': id!,
-            'type': 'opus',
-          },
+        toArticlePage(
+          id: id!,
+          type: 'opus',
           off: off,
         );
       } else {
@@ -229,16 +233,26 @@ abstract final class PageUtils {
 
     void push() {
       if (item.basic?.commentType == 12) {
-        toDupNamed(
-          '/articlePage',
-          parameters: {
-            'id': item.idStr,
-            'type': 'opus',
-          },
+        toArticlePage(
+          id: item.idStr,
+          type: 'opus',
         );
       } else {
         if (item.linkFolded) {
           pushDynFromId(id: item.idStr);
+          return;
+        }
+        // 标签模式：动态详情也开标签（而非全屏路由）
+        final tabHost = TabHostController.instance;
+        if (tabHost != null && _tabsEnabled) {
+          _popToMainIfNeeded();
+          tabHost.openPage(
+            id: 'dyn_${item.idStr}',
+            title: '动态',
+            icon: const Icon(Icons.dynamic_feed_outlined, size: 16),
+            childBuilder: (key) =>
+                DynamicDetailPage(key: key, item: item),
+          );
           return;
         }
         toDupNamed(
@@ -295,6 +309,7 @@ abstract final class PageUtils {
               bvid: bvid,
               cid: cid,
               cover: cover,
+              title: archive.title,
               dimension: res!.dimension,
             );
           }
@@ -305,12 +320,9 @@ abstract final class PageUtils {
 
       /// 专栏文章查看
       case 'DYNAMIC_TYPE_ARTICLE':
-        toDupNamed(
-          '/articlePage',
-          parameters: {
-            'id': item.idStr,
-            'type': 'opus',
-          },
+        toArticlePage(
+          id: item.idStr,
+          type: 'opus',
         );
         break;
 
@@ -567,6 +579,7 @@ abstract final class PageUtils {
     bool off = false,
     bool isVertical = false,
     Dimension? dimension,
+    bool replaceCurrent = false,
   }) {
     final arguments = {
       'aid': aid ?? IdUtils.bv2av(bvid!),
@@ -589,13 +602,187 @@ abstract final class PageUtils {
         arguments: arguments,
         preventDuplicates: false,
       );
-    } else {
-      return Get.toNamed(
-        '/videoV',
-        arguments: arguments,
-        preventDuplicates: false,
-      );
     }
+    // 桌面端多页面标签页：默认在标签页中打开（而非压栈）
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openVideo(arguments, replaceCurrent: replaceCurrent);
+      return null;
+    }
+    return Get.toNamed(
+      '/videoV',
+      arguments: arguments,
+      preventDuplicates: false,
+    );
+  }
+
+  /// 标签页功能是否启用：桌面端始终；手机端**始终**（竖屏也走标签——
+  /// 竖屏标签栏隐藏、标签内容全屏显示，横竖屏切换只是标签栏显隐，
+  /// 页面/播放状态不销毁重建，避免"转化"时重载）。
+  static bool get _tabsEnabled =>
+      (PlatformUtils.isDesktop || PlatformUtils.isMobile) &&
+      Pref.desktopTabs;
+
+  /// 标签页打开前：若当前有二级路由覆盖主界面（如搜索/收藏/动态详情），
+  /// 先退回主界面（否则标签开在 MainApp 里被当前路由挡住，看起来
+  /// "页面留在原地、必须手动返回才进入"）。
+  static void _popToMainIfNeeded() => TabHostController.ensureMainVisible();
+
+  /// 打开搜索页；桌面端标签页模式下开成标签
+  static void toSearchPage() {
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'page_search',
+        title: '搜索',
+        icon: const Icon(Icons.search, size: 16),
+        childBuilder: (key) => SearchPage(key: key),
+      );
+      return;
+    }
+    Get.toNamed('/search');
+  }
+
+  /// 打开收藏夹；桌面端标签页模式下开成标签
+  static void toFavPage({int initialIndex = 0}) {
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'page_fav_$initialIndex',
+        title: '收藏夹',
+        icon: const Icon(Icons.star_outline, size: 16),
+        childBuilder: (key) => FavPage(key: key, initialIndex: initialIndex),
+      );
+      return;
+    }
+    Get.toNamed('/fav', arguments: initialIndex);
+  }
+
+  /// 打开搜索结果页；桌面端标签页模式下开成标签
+  static void toSearchResultPage({
+    required String keyword,
+    String? tag,
+    int initIndex = 0,
+    bool fromSearch = false,
+    bool off = false,
+  }) {
+    if (off) {
+      toDupNamed(
+        '/searchResult',
+        parameters: {'tag': ?tag, 'keyword': keyword},
+        off: true,
+      );
+      return;
+    }
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'search_result_$keyword',
+        title: '搜索：$keyword',
+        icon: const Icon(Icons.search, size: 16),
+        childBuilder: (key) => SearchResultPage(
+          key: key,
+          keyword: keyword,
+          tag: tag,
+          initIndex: initIndex,
+          fromSearch: fromSearch,
+        ),
+      );
+      return;
+    }
+    Get.toNamed(
+      '/searchResult',
+      parameters: {'tag': ?tag, 'keyword': keyword},
+      arguments: {'initIndex': initIndex, 'fromSearch': fromSearch},
+    );
+  }
+
+  /// 打开收藏夹详情；桌面端标签页模式下开成标签
+  static void toFavDetailPage({
+    required String mediaId,
+    String? heroTag,
+    bool off = false,
+  }) {
+    if (off) {
+      toDupNamed(
+        '/favDetail',
+        parameters: {'heroTag': ?heroTag, 'mediaId': mediaId},
+        off: true,
+      );
+      return;
+    }
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'fav_detail_$mediaId',
+        title: '收藏夹',
+        icon: const Icon(Icons.star_outline, size: 16),
+        childBuilder: (key) => FavDetailPage(
+          key: key,
+          mediaId: mediaId,
+          heroTag: heroTag,
+        ),
+      );
+      return;
+    }
+    Get.toNamed(
+      '/favDetail',
+      parameters: {'heroTag': ?heroTag, 'mediaId': mediaId},
+    );
+  }
+
+  /// 打开用户主页；桌面端标签页模式下开成标签
+  static void toMemberPage({Object? mid, bool off = false}) {
+    if (mid == null) return;
+    final midStr = mid.toString();
+    if (midStr.isEmpty) return;
+    if (off) {
+      toDupNamed('/member?mid=$midStr', off: true);
+      return;
+    }
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'member_$midStr',
+        title: '用户空间',
+        icon: const Icon(Icons.person_outline, size: 16),
+        childBuilder: (key) => MemberPage(key: key, mid: midStr),
+      );
+      return;
+    }
+    toDupNamed('/member?mid=$midStr');
+  }
+
+  /// 打开专栏/文章页；桌面端标签页模式下在标签页中打开
+  static void toArticlePage({
+    required String id,
+    required String type,
+    bool off = false,
+  }) {
+    if (off) {
+      toDupNamed(
+        '/articlePage',
+        parameters: {'id': id, 'type': type},
+        off: true,
+      );
+      return;
+    }
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openArticle(id: id, type: type);
+      return;
+    }
+    toDupNamed(
+      '/articlePage',
+      parameters: {'id': id, 'type': type},
+    );
   }
 
   static final _pgcRegex = RegExp(r'(ep|ss)(\d+)');

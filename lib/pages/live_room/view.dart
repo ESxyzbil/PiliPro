@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 
@@ -565,7 +565,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () =>
-                      Get.toNamed('/member?mid=${roomInfoH5.roomInfo?.uid}'),
+                      PageUtils.toMemberPage(mid: roomInfoH5.roomInfo?.uid),
                   child: Row(
                     spacing: 10,
                     mainAxisSize: .min,

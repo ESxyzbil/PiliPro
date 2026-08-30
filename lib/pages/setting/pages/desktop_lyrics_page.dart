@@ -172,6 +172,18 @@ class _DesktopLyricsPageState extends State<DesktopLyricsPage> {
       appBar: AppBar(
         title: const Text('桌面歌词'),
         actions: [
+          TextButton(
+            onPressed: () {
+              DesktopLyricsService.reload();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('桌面歌词窗口已重载'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            child: const Text('重载'),
+          ),
           TextButton(onPressed: _reset, child: const Text('重置')),
           const SizedBox(width: 8),
         ],

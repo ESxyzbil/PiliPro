@@ -14,6 +14,7 @@ import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
@@ -105,8 +106,26 @@ Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
 
+/// 全局系统返回拦截：GetX nav2 的 popRoute 不检查 PopScope，
+/// 根路由 pop 失败会直接退出应用。注册为最早的 WidgetsBinding observer，
+/// 标签模式先关标签/恢复来源并返回 true，阻断 GetX 的退出路径。
+class GlobalBackInterceptor with WidgetsBindingObserver {
+  @override
+  // ignore: deprecated_member_use
+  Future<bool> didPopRoute() async {
+    if (TabHostController.handleBack()) {
+      return true;
+    }
+    return false;
+  }
+}
+
 void main() async {
   ScaledWidgetsFlutterBinding.ensureInitialized();
+  // 全局系统返回拦截：GetX nav2 不检查 PopScope，根路由 pop 失败会直接
+  // 退出应用。在 WidgetsApp 注册之前加入 observer，handlePopRoute 先通知
+  // 本拦截器——标签模式先关标签/恢复来源并返回 true，阻断 GetX 退出路径。
+  WidgetsBinding.instance.addObserver(GlobalBackInterceptor());
   // 主页（根路由）返回手势消费：让 ColorOS 等系统播放「返回桌面」预测性跟手动画
   WidgetsBinding.instance.addObserver(RootBackGestureObserver());
   MediaKit.ensureInitialized();
@@ -242,6 +261,11 @@ class MyApp extends StatelessWidget {
   static void _onBack() {
     if (SmartDialog.checkExist()) {
       SmartDialog.dismiss();
+      return;
+    }
+
+    // 标签模式：先关标签/恢复来源（不退出应用）
+    if (TabHostController.handleBack()) {
       return;
     }
 

@@ -19,6 +19,11 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
 class ArticleController extends CommonDynController {
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.parameters
+  final Map<String, String>? parameters;
+
+  ArticleController({this.parameters});
+
   late String id;
   late String type;
 
@@ -53,7 +58,7 @@ class ArticleController extends CommonDynController {
   @override
   void onInit() {
     super.onInit();
-    final params = Get.parameters;
+    final params = parameters ?? Get.parameters;
     id = params['id']!;
     type = params['type']!;
 

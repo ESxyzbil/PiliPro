@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+﻿import 'dart:io' show Platform;
 
 import 'package:PiliPlus/common/widgets/gesture/tap_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -82,7 +82,7 @@ TextSpan? richNode(
                 text: ' ${i.text}',
                 style: style,
                 recognizer: NoDeadlineTapGestureRecognizer()
-                  ..onTap = () => Get.toNamed('/member?mid=${i.rid}'),
+                  ..onTap = () => PageUtils.toMemberPage(mid: i.rid),
               ),
             );
             break;
@@ -93,15 +93,12 @@ TextSpan? richNode(
                 text: i.origText,
                 style: style,
                 recognizer: NoDeadlineTapGestureRecognizer()
-                  ..onTap = () => Get.toNamed(
-                    '/searchResult',
-                    parameters: {
-                      'keyword': i.origText!.substring(
+                  ..onTap = () => PageUtils.toSearchResultPage(
+                      keyword: i.origText!.substring(
                         1,
                         i.origText!.length - 1,
                       ),
-                    },
-                  ),
+                    ),
               ),
             );
             break;

@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/assets.dart';
+﻿import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
@@ -134,9 +134,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
                                         introController.horizontalMemberPage) {
                                       widget.onShowMemberPage(mid);
                                     } else {
-                                      Get.toNamed(
-                                        '/member?mid=$mid&from_view_aid=${videoDetailCtr.aid}',
-                                      );
+                                      PageUtils.toMemberPage(mid: mid);
                                     }
                                   }
                                 },
@@ -762,7 +760,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
             text: '@${currentDesc.rawText}',
             style: TextStyle(color: colorSchemePrimary),
             recognizer: NoDeadlineTapGestureRecognizer()
-              ..onTap = () => Get.toNamed('/member?mid=${currentDesc.bizId}'),
+              ..onTap = () => PageUtils.toMemberPage(mid: currentDesc.bizId),
           );
         default:
           return const TextSpan();
@@ -777,9 +775,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
     int? ownerMid,
     Staff item,
   ) {
-    void onTap() => Get.toNamed(
-      '/member?mid=${item.mid}&from_view_aid=${videoDetailCtr.aid}',
-    );
+    void onTap() => PageUtils.toMemberPage(mid: item.mid);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -904,9 +900,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
     behavior: HitTestBehavior.opaque,
     onSecondaryTap:
         PlatformUtils.isDesktop && introController.horizontalMemberPage
-        ? () => Get.toNamed(
-            '/member?mid=${introController.userStat.value.card?.mid}&from_view_aid=${videoDetailCtr.aid}',
-          )
+        ? () => PageUtils.toMemberPage(mid: introController.userStat.value.card?.mid)
         : null,
     child: Obx(
       () {
@@ -1052,10 +1046,7 @@ class _UgcIntroPanelState extends State<UgcIntroPanel> {
                       '/dynTopic',
                       parameters: {'id': item.tagId!.toString()},
                     ),
-                    _ => (tagName) => Get.toNamed(
-                      '/searchResult',
-                      parameters: {'keyword': tagName},
-                    ),
+                    _ => (tagName) => PageUtils.toSearchResultPage(keyword: tagName),
                   },
                   onLongPress: Utils.copyText,
                 ),

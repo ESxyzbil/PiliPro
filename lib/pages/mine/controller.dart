@@ -1,3 +1,4 @@
+﻿import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/user.dart';
@@ -283,7 +284,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
     if (!accountService.isLogin.value || longPress) {
       Get.toNamed('/loginPage');
     } else {
-      Get.toNamed('/member?mid=${userInfo.value.mid}');
+      PageUtils.toMemberPage(mid: userInfo.value.mid);
     }
   }
 

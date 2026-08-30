@@ -11,6 +11,7 @@ import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/pages/dynamics/controller.dart';
 import 'package:PiliPlus/pages/home/controller.dart';
 import 'package:PiliPlus/pages/mine/view.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
@@ -81,9 +82,9 @@ class MainController extends GetxController
 
     // tab 切换（点击底栏/侧栏/滑动翻页）都同步全局背景层当前 tab
     ever(selectedIndex, (value) {
-      GlobalBgState.tabIndex.value = value;
+      GlobalBgState.setTabIndex(value);
     });
-    GlobalBgState.tabIndex.value = selectedIndex.value;
+    GlobalBgState.setTabIndex(selectedIndex.value);
 
     controller = mainTabBarView
         ? TabController(
@@ -299,6 +300,8 @@ class MainController extends GetxController
       selectedIndex.value = value;
       // 同步全局背景层当前 tab
       GlobalBgState.tabIndex.value = value;
+      // 桌面端多页面标签页：点击主界面导航时切回主内容
+      TabHostController.instance?.selectMain();
       if (mainTabBarView) {
         controller.animateTo(value);
       } else {

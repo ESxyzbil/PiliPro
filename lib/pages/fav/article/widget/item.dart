@@ -4,8 +4,8 @@ import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
 import 'package:PiliPlus/models/common/stat_type.dart';
 import 'package:PiliPlus/models_new/fav/fav_article/item.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class FavArticleItem extends StatelessWidget {
   const FavArticleItem({
@@ -26,12 +26,9 @@ class FavArticleItem extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           InkWell(
-            onTap: () => Get.toNamed(
-              '/articlePage',
-              parameters: {
-                'id': item.opusId!.toString(),
-                'type': 'opus',
-              },
+            onTap: () => PageUtils.toArticlePage(
+              id: item.opusId!.toString(),
+              type: 'opus',
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(

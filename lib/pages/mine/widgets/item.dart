@@ -1,4 +1,5 @@
-import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+﻿import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
 import 'package:flutter/material.dart';
@@ -21,14 +22,10 @@ class FavFolderItem extends StatelessWidget {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: () {
-        Get.toNamed(
-          '/favDetail',
-          arguments: item,
-          parameters: {
-            'mediaId': item.id.toString(),
-            'heroTag': heroTag,
-          },
-        )?.whenComplete(onPop);
+        PageUtils.toFavDetailPage(
+          mediaId: item.id.toString(),
+          heroTag: heroTag,
+        );
       },
       behavior: HitTestBehavior.opaque,
       child: Column(

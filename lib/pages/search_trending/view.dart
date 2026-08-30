@@ -1,6 +1,7 @@
-import 'dart:math';
+﻿import 'dart:math';
 
 import 'package:PiliPlus/common/assets.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
@@ -165,12 +166,7 @@ class _SearchTrendingPageState extends State<SearchTrendingPage> {
                   final item = response[index];
                   return ListTile(
                     dense: true,
-                    onTap: () => Get.toNamed(
-                      '/searchResult',
-                      parameters: {
-                        'keyword': item.keyword!,
-                      },
-                    ),
+                    onTap: () => PageUtils.toSearchResultPage(keyword: item.keyword!),
                     leading: index < _controller.topCount
                         ? const Icon(
                             size: 17,

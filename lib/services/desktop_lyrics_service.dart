@@ -86,6 +86,16 @@ class DesktopLyricsService {
     } catch (_) {}
   }
 
+  /// Rebuild the lyrics overlay window from scratch (fresh surface) and
+  /// re-render the current lyrics/settings. Use this when the overlay
+  /// disappears during long playback (e.g. after display/DWM changes).
+  static Future<void> reload() async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod('reload');
+    } catch (_) {}
+  }
+
   /// Update the lyrics displayed on the overlay.
   static Future<void> setLyrics({
     required String currentLine,

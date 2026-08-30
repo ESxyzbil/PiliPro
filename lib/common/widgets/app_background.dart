@@ -31,6 +31,30 @@ abstract final class GlobalBgState {
   /// 当前主 tab 索引（0=首页, 1=动态, 2=我的）。
   static final RxInt tabIndex = 0.obs;
 
+  /// 安全更新 inMainTab：路由 observer 回调可能发生在 Navigator
+  /// build/commit 期间，直接改 Rx 会让依赖它的 Obx（GlobalBackgroundLayer）
+  /// 在 build 中被标记（"setState during build"），并连锁触发框架
+  /// GlobalKey retake 断言（_elements.contains）。延迟到帧后更新。
+  static void setInMainTab(bool v) {
+    if (inMainTab.value == v) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (inMainTab.value != v) {
+        inMainTab.value = v;
+      }
+    });
+  }
+
+  /// 安全更新 tabIndex（原因同上：MainController.onInit 在首帧 build 期间
+  /// 触发，直接赋值会让背景层 Obx 在 build 中被标记）。
+  static void setTabIndex(int v) {
+    if (tabIndex.value == v) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (tabIndex.value != v) {
+        tabIndex.value = v;
+      }
+    });
+  }
+
   /// 解析当前应显示的背景 (path, opacity, blur)。
   static (String, double, double) resolve() {
     if (inMainTab.value) {
@@ -113,7 +137,7 @@ class BgRouteObserver extends NavigatorObserver {
 
   void _sync(Route<dynamic>? top) {
     if (top is! PageRoute) return;
-    GlobalBgState.inMainTab.value = _isMainTab(top);
+    GlobalBgState.setInMainTab(_isMainTab(top));
   }
 
   @override

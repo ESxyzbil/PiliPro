@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -98,6 +98,12 @@ mixin BaseFavController
 class FavDetailController
     extends MultiSelectController<FavDetailData, FavDetailItemModel>
     with BaseFavController {
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.parameters
+  final String? mediaIdParam;
+  final String? heroTagParam;
+
+  FavDetailController({this.mediaIdParam, this.heroTagParam});
+
   @override
   late int mediaId;
   late String heroTag;
@@ -141,8 +147,8 @@ class FavDetailController
   void onInit() {
     super.onInit();
 
-    mediaId = int.parse(Get.parameters['mediaId']!);
-    heroTag = Get.parameters['heroTag']!;
+    mediaId = int.parse(mediaIdParam ?? Get.parameters['mediaId']!);
+    heroTag = heroTagParam ?? Get.parameters['heroTag']!;
 
     if (hasLocalFavCache) {
       // 有离线缓存 → 先显示缓存，再静默尝试在线刷新

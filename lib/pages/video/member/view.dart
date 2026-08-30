@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/skeleton/video_card_h.dart';
+﻿import 'package:PiliPlus/common/skeleton/video_card_h.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -349,7 +349,7 @@ class _HorizontalMemberPageState extends State<HorizontalMemberPage> {
                 tapTargetSize: .shrinkWrap,
                 visualDensity: const VisualDensity(vertical: -2),
               ),
-              onPressed: () => Get.toNamed('/member?mid=${widget.mid}'),
+              onPressed: () => PageUtils.toMemberPage(mid: widget.mid),
               child: const Text(
                 '查看主页',
                 maxLines: 1,

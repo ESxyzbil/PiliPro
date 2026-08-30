@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/widgets/image/image_save.dart';
+﻿import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/models/dynamics/result.dart';
 import 'package:PiliPlus/pages/dynamics/widgets/dyn_content.dart';
 import 'package:PiliPlus/pages/dynamics/widgets/module_panel.dart';
@@ -112,7 +112,7 @@ Widget _forwardAuthor({
     children: [
       GestureDetector(
         onTap: isNormalAuth
-            ? () => Get.toNamed('/member?mid=${moduleAuthor.mid}')
+            ? () => PageUtils.toMemberPage(mid: moduleAuthor.mid)
             : null,
         child: Text(
           '${isNormalAuth ? '@' : ''}${moduleAuthor.name}',

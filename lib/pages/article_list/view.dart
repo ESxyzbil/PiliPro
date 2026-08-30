@@ -1,4 +1,4 @@
-import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
+﻿import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/http/constants.dart';
@@ -140,7 +140,7 @@ class _ArticleListPageState extends State<ArticleListPage> with GridMixin {
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () =>
-                          Get.toNamed('/member?mid=${_controller.author!.mid}'),
+                          PageUtils.toMemberPage(mid: _controller.author!.mid),
                       child: Row(
                         spacing: 10,
                         mainAxisSize: MainAxisSize.min,

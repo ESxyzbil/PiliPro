@@ -27,6 +27,11 @@ import 'package:get/get.dart';
 
 abstract class CommonIntroController extends GetxController
     with GetSingleTickerProviderStateMixin, TripleMixin, FavMixin {
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final Map? arguments;
+
+  CommonIntroController({this.arguments});
+
   late final String heroTag;
   late String bvid;
 
@@ -75,7 +80,7 @@ abstract class CommonIntroController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    final args = Get.arguments;
+    final args = arguments ?? Get.arguments;
     heroTag = args['heroTag'];
     bvid = args['bvid'];
     cid = RxInt(args['cid']);

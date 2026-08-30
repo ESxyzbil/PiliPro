@@ -79,6 +79,11 @@ import 'package:media_kit/media_kit.dart' hide Subtitle;
 
 class VideoDetailController extends GetxController
     with GetTickerProviderStateMixin, BlockMixin {
+  /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
+  final Map? arguments;
+
+  VideoDetailController({this.arguments});
+
   /// 路由传参
   late final Map args;
   late String bvid;
@@ -382,7 +387,7 @@ class VideoDetailController extends GetxController
   @override
   void onInit() {
     super.onInit();
-    args = Get.arguments;
+    args = arguments ?? Get.arguments;
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
       if (!isLoginVideo) {
@@ -1422,6 +1427,10 @@ class VideoDetailController extends GetxController
       audioUrl: audioUrl,
       extraId: extraId,
       bvid: bvid,
+      // 传视频标题，避免标签显示 bv 号
+      title: args['title'] as String?,
+      // 视频页内"听音频"：替换当前标签，而非新开一页
+      replaceCurrent: true,
     );
   }
 

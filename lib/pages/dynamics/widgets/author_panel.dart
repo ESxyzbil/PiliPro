@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
@@ -98,7 +98,7 @@ class AuthorPanel extends StatelessWidget {
       onTap: moduleAuthor.type == 'AUTHOR_TYPE_NORMAL'
           ? () {
               feedBack();
-              Get.toNamed('/member?mid=${moduleAuthor.mid}');
+              PageUtils.toMemberPage(mid: moduleAuthor.mid);
             }
           : null,
       child: ExtraHitTestWidget(

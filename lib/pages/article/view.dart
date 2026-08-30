@@ -1,4 +1,4 @@
-import 'dart:math';
+﻿import 'dart:math';
 
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
@@ -32,7 +32,11 @@ import 'package:get/get.dart';
 import 'package:html/parser.dart' as parser;
 
 class ArticlePage extends StatefulWidget {
-  const ArticlePage({super.key});
+  const ArticlePage({super.key, this.id, this.type});
+
+  /// 显式传参（桌面端标签页模式）；为 null 时页面回退读取路由参数 Get.parameters
+  final String? id;
+  final String? type;
 
   @override
   State<ArticlePage> createState() => _ArticlePageState();
@@ -40,9 +44,15 @@ class ArticlePage extends StatefulWidget {
 
 class _ArticlePageState extends CommonDynPageState<ArticlePage> {
   @override
-  final ArticleController controller = Get.putOrFind(
-    ArticleController.new,
-    tag: Get.parameters['type']! + Get.parameters['id']!,
+  late final ArticleController controller = Get.putOrFind(
+    () => ArticleController(
+      parameters: {
+        'id': widget.id ?? Get.parameters['id']!,
+        'type': widget.type ?? Get.parameters['type']!,
+      },
+    ),
+    tag: (widget.type ?? Get.parameters['type']!) +
+        (widget.id ?? Get.parameters['id']!),
   );
 
   @override
@@ -352,9 +362,7 @@ class _ArticlePageState extends CommonDynPageState<ArticlePage> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: GestureDetector(
-                    onTap: () => Get.toNamed(
-                      '/member?mid=${controller.summary.author?.mid}',
-                    ),
+                    onTap: () => PageUtils.toMemberPage(mid: controller.summary.author?.mid),
                     child: Row(
                       children: [
                         NetworkImgLayer(
