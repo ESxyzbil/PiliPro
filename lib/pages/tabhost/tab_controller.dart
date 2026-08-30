@@ -4,6 +4,8 @@ import 'package:PiliPlus/models/dynamics/result.dart';
 import 'package:PiliPlus/pages/article/view.dart';
 import 'package:PiliPlus/pages/audio/controller.dart';
 import 'package:PiliPlus/pages/audio/view.dart';
+import 'package:PiliPlus/pages/video/reply_reply/view.dart'
+    show VideoReplyReplyPanel;
 import 'package:PiliPlus/pages/video/view.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -404,6 +406,13 @@ class TabHostController extends GetxController {
     // 标签功能未启用（手机竖屏等）时：即使有残留标签也不参与返回
     // （竖屏标签栏隐藏，按返回应退出/走正常路由，而非关残留标签）
     if (!tabsEnabled) return false;
+    // ⚠️ 评论详情 bottom sheet（showBottomSheet 非 modal，不参与 Navigator
+    // 路由）打开时：返回键不会自动关闭它，事件会直达这里——先关闭评论
+    // 详情，不关标签不退桌面（用户实测：评论区点评论详情后返回直接退桌面）。
+    // 再按一次返回才关标签/退桌面。
+    if (VideoReplyReplyPanel.closeSheet()) {
+      return true;
+    }
     if (closeAll) {
       tc.closeAll();
       return true;

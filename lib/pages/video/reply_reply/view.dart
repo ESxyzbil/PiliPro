@@ -47,6 +47,25 @@ class VideoReplyReplyPanel extends CommonSlidePage {
   final bool isNested;
   final Int64? upMid;
 
+  /// 当前打开的评论详情 bottom sheet（showBottomSheet 非 modal，不参与
+  /// Navigator 路由——系统返回键不会自动关闭它，返回事件会直达返回拦截器
+  /// 关标签/退桌面）。登记 controller 供 TabHostController.handleBack 优先
+  /// 关闭（返回先关评论详情，再返回才关标签/退桌面）。
+  static PersistentBottomSheetController? openSheetCtrl;
+
+  /// 是否有关联的评论详情 bottom sheet 打开
+  static bool get isSheetOpen => openSheetCtrl != null;
+
+  /// 关闭当前评论详情 bottom sheet（返回 true 表示已消费返回事件）。
+  /// 返回键/系统返回路径调用。
+  static bool closeSheet() {
+    final ctrl = openSheetCtrl;
+    if (ctrl == null) return false;
+    openSheetCtrl = null;
+    ctrl.close();
+    return true;
+  }
+
   @override
   State<VideoReplyReplyPanel> createState() => _VideoReplyReplyPanelState();
 
@@ -350,18 +369,27 @@ class _VideoReplyReplyPanelState extends State<VideoReplyReplyPanel>
       onReply: (replyItem) => _controller.onReply(replyItem, index: index),
       onDelete: (item, subIndex) => _controller.onRemove(index, item, null),
       upMid: _controller.upMid,
-      showDialogue: () => Scaffold.of(context).showBottomSheet(
-        backgroundColor: Colors.transparent,
-        constraints: const BoxConstraints(),
-        (context) => VideoReplyReplyPanel(
-          oid: replyItem.oid.toInt(),
-          rpid: replyItem.root.toInt(),
-          dialog: replyItem.dialog.toInt(),
-          replyType: widget.replyType,
-          isVideoDetail: true,
-          isNested: widget.isNested,
-        ),
-      ),
+      showDialogue: () {
+        // showBottomSheet 非 modal：登记 controller 供 handleBack 优先关闭
+        final ctrl = Scaffold.of(context).showBottomSheet(
+          backgroundColor: Colors.transparent,
+          constraints: const BoxConstraints(),
+          (context) => VideoReplyReplyPanel(
+            oid: replyItem.oid.toInt(),
+            rpid: replyItem.root.toInt(),
+            dialog: replyItem.dialog.toInt(),
+            replyType: widget.replyType,
+            isVideoDetail: true,
+            isNested: widget.isNested,
+          ),
+        );
+        VideoReplyReplyPanel.openSheetCtrl = ctrl;
+        ctrl.closed.whenComplete(() {
+          if (identical(VideoReplyReplyPanel.openSheetCtrl, ctrl)) {
+            VideoReplyReplyPanel.openSheetCtrl = null;
+          }
+        });
+      },
       jumpToDialogue: () {
         if (!_controller.setIndexById(replyItem.parent)) {
           SmartDialog.showToast('评论可能已被删除');

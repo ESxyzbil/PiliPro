@@ -248,7 +248,10 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
     EasyThrottle.throttle('replyReply', const Duration(milliseconds: 500), () {
       int oid = replyItem.oid.toInt();
       int rpid = replyItem.id.toInt();
-      Scaffold.of(context).showBottomSheet(
+      // showBottomSheet 非 modal：不参与 Navigator 路由，系统返回键不会
+      // 自动关闭它（返回会直达 handleBack 关标签/退桌面）——登记 controller
+      // 供 handleBack 优先关闭（先关评论详情，再返回才关标签/退桌面）
+      final ctrl = Scaffold.of(context).showBottomSheet(
         backgroundColor: Colors.transparent,
         constraints: const BoxConstraints(),
         (context) => VideoReplyReplyPanel(
@@ -262,6 +265,12 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
           upMid: _videoReplyController.upMid,
         ),
       );
+      VideoReplyReplyPanel.openSheetCtrl = ctrl;
+      ctrl.closed.whenComplete(() {
+        if (identical(VideoReplyReplyPanel.openSheetCtrl, ctrl)) {
+          VideoReplyReplyPanel.openSheetCtrl = null;
+        }
+      });
     });
   }
 }
