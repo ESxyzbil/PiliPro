@@ -150,6 +150,18 @@ class _FavDetailPageState extends State<FavDetailPage> with GridMixin {
   }
 
   Widget _buildHeader(bool enableMultiSelect, ThemeData theme) {
+    // 标签承载（TabHost 内嵌非路由）时 AppBar 不会自动生成返回箭头，
+    // 显式补一个：返回走 handleBack（关当前标签/回上一级）。
+    final Widget? tabBack = TabHostController.isTabHostedPage
+        ? IconButton(
+            tooltip: '返回',
+            onPressed: () {
+              if (TabHostController.handleBack()) return;
+              Get.back();
+            },
+            icon: const Icon(Icons.arrow_back_outlined),
+          )
+        : null;
     return SliverAppBar.medium(
       leadingWidth: enableMultiSelect ? 125 : null,
       leading: enableMultiSelect
@@ -171,7 +183,7 @@ class _FavDetailPageState extends State<FavDetailPage> with GridMixin {
                 ),
               ],
             )
-          : null,
+          : tabBack,
       expandedHeight: kToolbarHeight + 127,
       pinned: true,
       title: enableMultiSelect

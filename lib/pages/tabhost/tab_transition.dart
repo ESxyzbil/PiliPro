@@ -7,6 +7,7 @@ import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart'
         gTabBackCurrentEvent,
         gTabBackStartEvent,
         tabBackGestureProgress;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SwipeEdge;
 
@@ -46,6 +47,8 @@ class TabTransition extends StatefulWidget {
     required this.active,
     this.closing = false,
     this.gestureReveal = 0.0,
+    this.covered = false,
+    this.fadeExit = false,
     required this.child,
   });
 
@@ -59,6 +62,19 @@ class TabTransition extends StatefulWidget {
   /// 手势跟手时目标页（关闭当前标签后露出的页）随手势渐显，
   /// 与路由 predictiveBackProgress 的语义一致。
   final double gestureReveal;
+
+  /// 是否被上层覆盖保活（replaceCurrent 前进时的下层来源页）：
+  /// **始终完整显示**（不因 active 变化播退出/进入动画），被上层标签
+  /// 覆盖其上；返回（上层关闭）时直接露出——与路由下层页一致，
+  /// 无需重建/渐显（用户实测：前进时 A 播了退出动画、返回时 A 空，
+  /// 因为把保活层当普通标签 reverse 隐藏了）。
+  final bool covered;
+
+  /// 本次失去 active 是否因"add 新标签覆盖"（viaAdd，如收藏夹文件夹
+  /// →视频）：退出走**纯透明度淡出**（200ms，无 buildPiliPageTransition
+  /// 位移退场动画），与 covered 下层/路由 opaque 遮挡一致；false 时
+  /// （标签条切换/关闭）保留 buildPiliPageTransition 滑动退出。
+  final bool fadeExit;
 
   final Widget child;
 
@@ -103,17 +119,70 @@ class _TabTransitionState extends State<TabTransition>
   /// commit 滑出方向：左边缘手势（向右滑）→ 右移出屏 +1；右边缘 → -1
   double _commitSign = 1.0;
 
-  late bool _active = widget.active;
+  /// 上一帧的 active 快照（供 didUpdateWidget 判定 active 是否变化）。
+  /// ⚠️ 不能声明为 `late bool _active = widget.active;`——late 惰性求值：
+  /// 它在**首次被读取**时才初始化，而首次读取发生在 didUpdateWidget 的
+  /// `widget.active != _active` 比较处，此刻 widget.active 已是新值（false），
+  /// 导致 _active 被错误初始化为新值、比较恒 false、普通切换（active
+  /// true→false、closing=false）的 reverse 永不触发（下层 opacity 卡 1.0
+  /// 透出，用户实测"透过视频页看到收藏夹"）。必须在 initState 显式快照。
+  bool _active = false;
+
+  /// 本次失去 active 是否走纯透明度淡出（fadeExit=add 覆盖）。置 true 后
+  /// build 用纯 Opacity 而非 buildPiliPageTransition 位移退场。
+  bool _fadeExiting = false;
+
+  // ---- 探针（仅调试打印，不改行为）----
+  DateTime? _probeLast;
+
+  String get _probeKey {
+    final k = widget.key;
+    return k is ValueKey<String> ? k.value : '$k';
+  }
+
+  void _probe(String tag) {
+    if (!kDebugMode) return;
+    final now = DateTime.now();
+    if (_probeLast != null &&
+        now.difference(_probeLast!) < const Duration(milliseconds: 200)) {
+      return;
+    }
+    _probeLast = now;
+    debugPrint(
+      'TT_P $tag key=$_probeKey covered=${widget.covered} '
+      'active=${widget.active} closing=${widget.closing} '
+      'ctrl=${_controller.value.toStringAsFixed(3)} '
+      'animating=${_controller.isAnimating} commitFin=$_commitFinished',
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.active) {
-      _controller.forward(from: 0);
+    // ⚠️ 必须在 initState 立即快照 widget.active（不能靠 late 惰性初始化，
+    // 见 _active 字段注释——否则首次读取发生在 didUpdateWidget 时已拿新值）
+    _active = widget.active;
+    if (widget.covered) {
+      // 覆盖保活层初始：透明（等同 opaque 下层不可见），等返回手势渐显
+      _controller.value = 0.0;
+    } else if (widget.active) {
+      // 手势 commit 后重建（source 恢复替换：tabs[index]=source → key 变化
+      // → State 重建走 initState）：目标页（来源标签）从手势位置续播进入
+      // 动画，而不是从 0 重播（否则"返回松手后目标页又播一次完整进入动画"
+      // 跳变，用户实测反馈）。⚠️ gTabBackCommitProgress 专供进入方消费，
+      // 退出方（_startCommit）用 _lastDrag 不碰它，两者不竞争。
+      if (gTabBackCommitProgress >= 0) {
+        _controller.value = gTabBackCommitProgress;
+        gTabBackCommitProgress = -1.0;
+        _controller.forward();
+      } else {
+        _controller.forward(from: 0);
+      }
     } else {
       _controller.value = 0;
     }
     tabBackGestureProgress.addListener(_onGestureProgress);
+    _probe('init');
     // commit 动画播完：页面保持完全透明（等待 450ms 后真正移除），
     // 并清零手势残留（防下次普通切换误判为手势 commit）。
     // ⚠️ 清零必须等动画播完：commit 动画期间 _lastDrag/_lastBounce 是
@@ -122,6 +191,7 @@ class _TabTransitionState extends State<TabTransition>
       if (status == AnimationStatus.completed) {
         _lastBounce = 0.0;
         _lastDrag = Offset.zero;
+        _commitFinished = true;
         if (mounted) {
           _controller.value = 0.0;
           setState(() {});
@@ -202,37 +272,104 @@ class _TabTransitionState extends State<TabTransition>
   @override
   void didUpdateWidget(covariant TabTransition oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (kDebugMode) {
+      debugPrint(
+        'TT_DU key=$_probeKey '
+        'oldAct=${oldWidget.active} newAct=${widget.active} '
+        'oldCov=${oldWidget.covered} newCov=${widget.covered} '
+        'oldCls=${oldWidget.closing} newCls=${widget.closing} '
+        '_active=$_active bounce=$_lastBounce gCommit=$gTabBackCommitProgress '
+        'ctrl=${_controller.value.toStringAsFixed(3)} anim=${_controller.isAnimating}',
+      );
+    }
+    // covered（被覆盖保活层）：这是"replaceCurrent 前进后仍留在下层"的页，
+    // 不是标签切换。它不应走 buildPiliPageTransition 位移动画（用户明确
+    // 不要"A 播放退出过渡动画"），而是**纯透明度**控制：
+    // - 刚被覆盖（covered false→true）：透明度快速淡出到 0（controller reverse）
+    // - 平时透明（不渲染/不播放，等同 opaque 下层）
+    // - 返回手势跟手：gestureReveal 渐显（MainApp 传 gestureP）
+    // - 返回松手恢复（covered true→false 且 active）：从手势位置续播到 1
+    if (widget.covered != oldWidget.covered) {
+      if (widget.covered) {
+        // 被覆盖：快速淡出（不进 buildPiliPageTransition 位移）
+        _controller.duration = const Duration(milliseconds: 200);
+        _controller.reverse();
+      } else {
+        _controller.duration = const Duration(milliseconds: 400);
+        // 解除覆盖（恢复为当前页）：从手势进度续播淡入
+        if (gTabBackCommitProgress >= 0) {
+          _controller.value = gTabBackCommitProgress;
+          gTabBackCommitProgress = -1.0;
+          _controller.forward();
+        } else {
+          _controller.forward();
+        }
+      }
+      _active = widget.active;
+      _probe('covered-toggle');
+      return;
+    }
+    if (widget.covered) {
+      // 保持覆盖态：不因 active/closing 变化做任何动画（纯由手势渐显）
+      _active = widget.active;
+      return;
+    }
     if (widget.active != _active) {
       _active = widget.active;
       if (widget.active) {
+        _fadeExiting = false;
         // 进入：若刚发生手势 commit（目标页从手势位置续播渐显）。
         // ⚠️ gTabBackCommitProgress 专供进入方使用——退出方（当前标签）
         // 用 _lastDrag/_lastBounce 原地续播，两者不竞争同一个值。
         if (gTabBackCommitProgress >= 0) {
+          if (kDebugMode) {
+            debugPrint('TT enter-from-commit progress=$gTabBackCommitProgress');
+          }
           _controller.value = gTabBackCommitProgress;
           gTabBackCommitProgress = -1.0;
           _controller.forward();
         } else {
           _controller.forward(from: 0);
         }
+        _probe('active-false-to-true');
       } else {
-        // 退出：手势 commit（预测性返回，_lastBounce 记录了手势位置）
-        // → 从手势位置原地续播滑出；否则普通 reverse（切换动画）
-        if (_lastBounce > 0.001) {
+        // 退出：
+        // ① add 覆盖（fadeExit）：纯透明度快速淡出（200ms），
+        //    不走 buildPiliPageTransition 位移退场（用户实测：普通
+        //    add 前进后下层页播了"退出过渡动画"而不是透明度归 0，
+        //    与 covered 下层/路由 opaque 遮挡不一致）。
+        // ② 否则：手势 commit（预测性返回，_lastBounce 记录了手势位置）
+        //    → 从手势位置原地续播滑出；或普通 reverse（标签条切换）。
+        if (widget.fadeExit && !widget.closing && _lastBounce <= 0.001) {
+          _fadeExiting = true;
+          _controller.duration = const Duration(milliseconds: 200);
+          _controller.reverse();
+        } else if (_lastBounce > 0.001) {
+          _fadeExiting = false;
           _startCommit();
         } else {
+          _fadeExiting = false;
           _controller.reverse();
         }
+        _probe('active-true-to-false fadeExit=${widget.fadeExit} fadeExiting=$_fadeExiting');
       }
     } else if (widget.closing && !oldWidget.closing) {
       // active 未变化但被标记关闭（替换类返回）：同样区分手势 commit
       if (_lastBounce > 0.001) {
         _startCommit();
       } else {
+        if (kDebugMode) {
+          debugPrint('TT closing no-gesture reverse');
+        }
         _controller.reverse();
       }
     }
   }
+
+  /// commit 动画是否已完成（完成后保持完全透明，等待 450ms 后标签被移除/
+  /// 替换——否则 active 仍 true 时普通分支 opacity=1.0 会闪回完整页面，
+  /// 用户实测"被返回页播完动画又出现"）
+  bool _commitFinished = false;
 
   /// 手势 commit：从手势最后位置（_lastDrag）原地续播滑出屏幕外。
   /// ⚠️ commit 方向 = 跟手位移方向（_lastDrag.dx < 0 → 向左飞，否则向右飞），
@@ -246,6 +383,10 @@ class _TabTransitionState extends State<TabTransition>
   /// completed 回调里。
   void _startCommit() {
     _commitSign = _lastDrag.dx < 0 ? -1.0 : 1.0;
+    if (kDebugMode) {
+      debugPrint(
+          'TT startCommit drag=$_lastDrag bounce=$_lastBounce sign=$_commitSign');
+    }
     _commitCtrl.forward(from: 0);
   }
 
@@ -260,6 +401,37 @@ class _TabTransitionState extends State<TabTransition>
 
   @override
   Widget build(BuildContext context) {
+    // ---- 覆盖保活层（replaceCurrent 前进后留在下层的 A）----
+    // 纯透明度控制（用户需求）：点 B 时 A 快速淡出到 0（不播位移动画）；
+    // 返回手势跟手时 gestureReveal 渐显；松手后 controller 续播到 1。
+    // 透明时 Offstage 摘除（不渲染/不播放/纹理不合成，等同 opaque 下层）。
+    // fadeExiting（普通 add 覆盖的下层，viaAdd）同样走纯透明度淡出，
+    // 视觉与 covered 一致（用户实测：add 前进后下层播了 buildPiliPageTransition
+    // 位移退场动画而非透明度归 0，要求统一为透明度淡出）。
+    if (widget.covered || _fadeExiting) {
+      return AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final double v = _controller.value;
+          // 手势跟手渐显：跟手值取手势进度；松手恢复由 controller 续播
+          final double opacity =
+              widget.gestureReveal > v ? widget.gestureReveal : v;
+          Widget result = Opacity(opacity: opacity, child: child);
+          if (opacity <= 0.001 && !_controller.isAnimating) {
+            // 完全透明且动画已停：offstage 摘除（媒体纹理不合成）
+            result = Offstage(offstage: true, child: result);
+          }
+          _probe('covered-build v=$v gesture=${widget.gestureReveal} '
+              'opacity=$opacity offstage=${opacity <= 0.001 && !_controller.isAnimating}');
+          return result;
+        },
+        child: TickerMode(
+          enabled: widget.active || widget.gestureReveal > 0.001,
+          child: widget.child,
+        ),
+      );
+    }
+
     // ---- 预测性返回手势视觉（优先级高于切换动画）----
     final double progress = tabBackGestureProgress.value;
     final Size size = MediaQuery.sizeOf(context);
@@ -324,13 +496,17 @@ class _TabTransitionState extends State<TabTransition>
       );
     }
 
-    // 4) 普通切换动画（无手势）
+    // 4) 普通切换动画（无手势、非覆盖层）
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
         final animation = _controller;
+        // commit 动画已完成：保持完全透明（等待 450ms 后被移除/替换）——
+        // 否则 active 仍 true 时 baseOpacity=1.0 会闪回完整页面
+        final bool hidden = _commitFinished;
         // 非当前页：动画完成后完全透明；目标页（gestureReveal>0）随手势渐显
-        final double baseOpacity = widget.active ? 1.0 : animation.value;
+        final double baseOpacity =
+            hidden ? 0.0 : (widget.active ? 1.0 : animation.value);
         final double opacity =
             baseOpacity > widget.gestureReveal ? baseOpacity : widget.gestureReveal;
         final animated = buildPiliPageTransition(
@@ -340,6 +516,8 @@ class _TabTransitionState extends State<TabTransition>
           secondaryAnimation: kAlwaysDismissedAnimation,
           child: child!,
         );
+        _probe('norm-build v=${animation.value} base=$baseOpacity '
+            'opacity=$opacity gesture=${widget.gestureReveal} hidden=$hidden');
         return Opacity(opacity: opacity, child: animated);
       },
       child: TickerMode(

@@ -104,12 +104,17 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     // 锁定手势最后进度：TabTransition 从手势位置续播退出动画
     // （progress 复位前取值，随后复位让 TabTransition 退出跟手模式）
     gTabBackCommitProgress = tabBackGestureProgress.value;
+    // ⚠️ 必须先触发 handleBack（置 closing → didUpdateWidget → _startCommit
+    // 启动 commit 动画），再复位 progress：若先复位 progress，_onGestureProgress
+    // 触发 rebuild 时 closing 还是 false → 当前标签走普通分支完整显示
+    // → 闪回充满屏幕，然后 commit 动画才从错误状态启动（用户实测
+    // "松手后页面直接跳回充满屏幕然后瞬间消失"）。
+    final bool handled = TabHostController.handleBack();
     tabBackGestureProgress.value = 0.0;
     // 清空触摸事件（commit 续播只需要锁定的 progress，不再需要触摸点）
     gTabBackStartEvent = null;
     gTabBackCurrentEvent = null;
-    // 标签模式有标签：先关标签/恢复来源，不退出（界面保持前台）
-    if (TabHostController.handleBack()) {
+    if (handled) {
       return;
     }
     // 无标签（主内容页）：退出 app，系统播放返回桌面动画

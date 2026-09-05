@@ -10,6 +10,7 @@ import 'package:PiliPlus/pages/video/view.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
@@ -71,6 +72,18 @@ class TabItem {
   /// 来源标签：本标签是被"替换当前标签"打开时，被替换掉的旧标签。
   /// 返回（handleBack）时优先恢复来源标签（回到上一个页面）。
   TabItem? source;
+
+  /// 是否被覆盖保活（replaceCurrent 前进时旧标签不销毁，保留为下层
+  /// 保活标签）：仍在 Stack 中渲染保活（返回时可直接渐显、无需重建），
+  /// 但不在标签条显示、不参与常规切换。返回（恢复）时置 false 重新显示。
+  bool hidden = false;
+
+  /// 本次失去 active 是否因"add 新标签覆盖"（页面内打开新标签压上来，
+  /// 如收藏夹文件夹→视频）：true 时退出走**纯透明度淡出**（与 covered
+  /// 下层一致，无 buildPiliPageTransition 位移动画）；false（用户点
+  /// 标签条切换离开）保留滑动退出动画。由 select(viaAdd:) 在切换前
+  /// 设置，随后 Obx rebuild 时 MainApp 读取并传给 TabTransition。
+  bool fadeExit = false;
 }
 
 /// 桌面端多页面标签页控制器（方案 C：侧边标签栏）
@@ -91,6 +104,15 @@ class TabHostController extends GetxController {
   static bool get tabsEnabled =>
       (PlatformUtils.isDesktop || PlatformUtils.isMobile) &&
       Pref.desktopTabs;
+
+  /// 当前页面是否为「标签承载的二级页」：标签模式已启用，且页面不是
+  /// 独立路由（Navigator 无可 pop 路由 → AppBar 不会自动生成返回箭头）。
+  /// 这类页面（收藏夹列表/fav_detail 等以标签打开的页）需要显式返回
+  /// 按钮（调 handleBack 关标签/回上一级），而非依赖路由自动返回。
+  static bool get isTabHostedPage =>
+      tabsEnabled &&
+      !(Get.key.currentState?.canPop() ?? false) &&
+      Get.currentRoute == '/';
 
   final RxList<TabItem> tabs = <TabItem>[].obs;
 
@@ -143,6 +165,10 @@ class TabHostController extends GetxController {
   }
 
   bool get hasTabs => tabs.isNotEmpty;
+
+  /// 可见标签（不含 hidden 保活层）：标签条只显示这些。
+  List<TabItem> get visibleTabs =>
+      tabs.where((t) => !t.hidden).toList(growable: false);
 
   /// 打开视频标签页（桌面端由 PageUtils.toVideoPage 调用）
   /// [replaceCurrent] 为 true 时：当前有标签则直接替换当前标签
@@ -222,7 +248,8 @@ class TabHostController extends GetxController {
     bool replaceCurrent = false,
     required Widget Function(GlobalKey key) childBuilder,
   }) {
-    final existing = tabs.indexWhere((t) => t.id == id);
+    // 只对可见标签去重（hidden 保活层不算"打开的标签"）
+    final existing = tabs.indexWhere((t) => !t.hidden && t.id == id);
     if (existing >= 0) {
       select(existing);
       return;
@@ -241,23 +268,49 @@ class TabHostController extends GetxController {
     );
     // 替换当前标签（相关视频/听音频等页面内派生操作）
     if (replaceCurrent && currentIndex.value >= 0) {
+      if (kDebugMode) {
+        debugPrint('_open replaceCurrent idx=${currentIndex.value} id=$id');
+      }
       _replaceTab(currentIndex.value, item);
       return;
     }
+    if (kDebugMode) {
+      debugPrint('_open add new tab id=$id curIdx=${currentIndex.value}');
+    }
     tabs.add(item);
-    select(tabs.length - 1);
+    select(tabs.length - 1, viaAdd: true);
   }
 
-  /// 用新标签替换指定位置的旧标签（旧页面走切走/销毁流程）
+  /// 用新标签替换指定位置的旧标签——旧标签**保活为下层**（不销毁，
+  /// 标记 hidden：仍在 Stack 渲染保活、标签条不显示）。返回时旧标签
+  /// 作为下层被 currentIndex 切回，直接渐显无需重建（与主页渐显同机制，
+  /// 避免"来源页销毁重建 → 重播完整进入动画"）。
   void _replaceTab(int index, TabItem newTab) {
+    if (kDebugMode) {
+      debugPrint('_replaceTab idx=$index old=${index < tabs.length ? tabs[index].id : "OOB"} new=${newTab.id}');
+    }
     final old = tabs[index];
-    _notifyHide(old, autoAudio: false);
-    // 记录来源：返回时恢复被替换的旧标签（回到上一个页面）
+    // 来源链：返回时恢复到被覆盖的下层（old 自身保活，逐层返回）
     newTab.source = old;
-    tabs[index] = newTab;
+    // 旧标签保活为下层：不销毁、隐藏（标签条不显示）。
+    // ⚠️ 必须立即 _notifyHide(old)：被覆盖的 A 要**完全暂停**（等同 opaque
+    // 下层被遮挡时不渲染不播放）——否则 A 的视频一直播放、有声音
+    // （用户实测"A 会保持在那里甚至一直播放有声音"）。autoAudio:false
+    // 防止触发"切走转后台音频"（用户正在 B 上，不是主动切走）。
+    _notifyHide(old, autoAudio: false);
+    old.hidden = true;
+    // 旧标签若正在后台听视频则停止（保活层不播放）
+    _stopBgAudio(old);
+    old.bgPlayer?.dispose();
+    old.bgPlayer = null;
+    // 新标签插入旧标签之后（下层在上层前，Stack 顺序正确）
+    tabs.insert(index + 1, newTab);
     tabs.refresh();
-    currentIndex.value = index;
+    currentIndex.value = index + 1;
     _notifyShow(newTab);
+    if (kDebugMode) {
+      debugPrint('_replaceTab done now=${tabs.length} tabs cur=$currentIndex');
+    }
   }
 
   /// 判断某个视频 heroTag 对应的标签是否为当前选中的标签。
@@ -269,16 +322,24 @@ class TabHostController extends GetxController {
     return currentIndex.value == tabIndex;
   }
 
-  /// 选中标签；-1 表示切回主内容页
-  void select(int index) {
+  /// 选中标签；-1 表示切回主内容页。hidden（被覆盖保活）层不可选。
+  /// [viaAdd] 为 true 表示本次选中由"add 新标签覆盖"触发（页面内打开
+  /// 新页压上来，如收藏夹→视频）：被顶掉的旧标签退出走**纯透明度淡出**
+  /// （等同 covered 下层），而不是标签条切换的滑动退出动画。
+  void select(int index, {bool viaAdd = false}) {
     if (index < -1 || index >= tabs.length) return;
+    if (index >= 0 && tabs[index].hidden) return;
     final old = currentIndex.value;
     if (old == index) return;
     if (old >= 0 && old < tabs.length) {
+      tabs[old].fadeExit = viaAdd;
       _notifyHide(tabs[old]);
     }
     currentIndex.value = index;
     if (index >= 0) {
+      // 重新成为当前：清除 fadeExit 残留（下次被切走时走滑动退出，
+      // 除非再次被 viaAdd 顶掉）
+      tabs[index].fadeExit = false;
       _notifyShow(tabs[index]);
     }
   }
@@ -291,23 +352,41 @@ class TabHostController extends GetxController {
     if (index < 0 || index >= tabs.length) return;
     final tab = tabs[index];
     if (tab.closing) return; // 已在关闭动画中
-    // 优先恢复来源标签（返回 = 回到打开本标签之前的页面）。
-    // 与普通关闭一致：先播退出动画（closing → TabTransition 强制 reverse），
-    // 动画结束后再把来源页替换回原位——key（标签 id）变化 → TabTransition
-    // 重建自动播来源页进入动画，体验与路由 pop/push 一致。
-    // ⚠️ 不能直接 tabs[index] = source：那会无动画瞬间替换（用户实测
-    // "没有退出动画，也不会消失"——标签数量不变，只有来源页淡入）。
-    if (tab.source != null && !_containsId(tab.source!.id)) {
+    // 有来源标签（被 replaceCurrent 覆盖保活的下层 A）：返回 = 关闭本标签、
+    // 让下层 A 恢复显示（A 一直保活在 tabs 中，active=false 透明；返回时
+    // currentIndex 切到 A → TabTransition 从手势位置续播/直接渐显，无需重建，
+    // 不重播完整进入动画）。
+    if (tab.source != null) {
       final source = tab.source!;
       source.source = null; // 防止返回链循环
       tab.closing = true;
+      // 下层来源可能不在 tabs（旧逻辑遗留）：兜底恢复（插入替换）
+      if (!tabs.contains(source)) {
+        // 原销毁重建路径已废弃；若 source 被移除则直接按普通关闭处理
+      }
       tabs.refresh();
+      // 若下层来源在 tabs 中且隐藏，先恢复显示（unhidden + 作为当前）
+      final int srcIdx = tabs.indexOf(source);
+      if (srcIdx >= 0) {
+        source.hidden = false;
+        // 立即切到来源层（当前标签退出动画与其渐显并行）
+        currentIndex.value = srcIdx;
+      } else {
+        currentIndex.value = index;
+      }
+      _notifyShow(source);
+      // 退出动画结束后：暂停本页 + 真正移除
       Future<void>.delayed(const Duration(milliseconds: 450), () {
         if (!tabs.contains(tab)) return;
         _notifyHide(tab, autoAudio: false);
-        tabs[index] = source;
-        currentIndex.value = index;
-        _notifyShow(source);
+        final removedAt = tabs.indexOf(tab);
+        if (currentIndex.value > removedAt) {
+          currentIndex.value--;
+        }
+        tabs.remove(tab);
+        if (currentIndex.value >= tabs.length) {
+          currentIndex.value = tabs.length - 1;
+        }
       });
       return;
     }
@@ -357,8 +436,6 @@ class TabHostController extends GetxController {
       }
     });
   }
-
-  bool _containsId(String id) => tabs.any((t) => t.id == id);
 
   /// 关闭全部标签（返回主页）
   void closeAll() {

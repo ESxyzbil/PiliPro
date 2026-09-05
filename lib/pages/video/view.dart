@@ -139,6 +139,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) {
+      debugPrint(
+          'VideoDetailPageV initState heroTag=$heroTag args=${widget.arguments?['bvid']}/${widget.arguments?['cid']}');
+    }
 
     PlPlayerController.setPlayCallBack(playCallBack);
     videoDetailController = Get.put(

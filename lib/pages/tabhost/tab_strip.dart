@@ -283,13 +283,14 @@ class _TabStripState extends State<TabStrip> {
       key: const ValueKey('tab-strip-collapsed'),
       child: Obx(() {
         final controller = widget.controller;
+        final curIdx = controller.currentIndex.value;
         return Column(
           children: [
             const SizedBox(height: 10),
             _CollapsedTab(
               tooltip: '主页面',
               icon: const Icon(Icons.home_outlined, size: 18),
-              selected: controller.currentIndex.value == -1,
+              selected: curIdx == -1,
               onTap: controller.selectMain,
             ),
             const SizedBox(height: 4),
@@ -297,12 +298,13 @@ class _TabStripState extends State<TabStrip> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 children: [
-                  for (var i = 0; i < controller.tabs.length; i++)
+                  // 只显示可见标签（hidden 保活层不出现在标签条）
+                  for (final tab in controller.visibleTabs)
                     _CollapsedTab(
-                      tooltip: controller.tabs[i].title,
-                      icon: controller.tabs[i].icon,
-                      selected: controller.currentIndex.value == i,
-                      onTap: () => controller.select(i),
+                      tooltip: tab.title,
+                      icon: tab.icon,
+                      selected: curIdx >= 0 && controller.tabs[curIdx] == tab,
+                      onTap: () => controller.select(controller.tabs.indexOf(tab)),
                     ),
                 ],
               ),
@@ -344,8 +346,9 @@ class _TabStripState extends State<TabStrip> {
                 return ListView(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   children: [
-                    for (var i = 0; i < tabs.length; i++)
-                      _buildTabTile(tabs[i], i, curIdx),
+                    // 只显示可见标签（hidden 保活层不出现在标签条）
+                    for (final tab in widget.controller.visibleTabs)
+                      _buildTabTile(tab, tabs.indexOf(tab), curIdx),
                   ],
                 );
               },

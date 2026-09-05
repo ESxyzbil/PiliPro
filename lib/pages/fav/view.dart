@@ -7,6 +7,7 @@ import 'package:PiliPlus/pages/fav/cheese/controller.dart';
 import 'package:PiliPlus/pages/fav/topic/controller.dart';
 import 'package:PiliPlus/pages/fav/video/controller.dart';
 import 'package:PiliPlus/pages/fav_folder_sort/view.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/extension/scroll_controller_ext.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -59,6 +60,18 @@ class _FavPageState extends State<FavPage> with SingleTickerProviderStateMixin {
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('我的收藏'),
+        // 标签承载（TabHost 内嵌非路由）时 AppBar 不会自动生成返回箭头，
+        // 显式补一个：返回走 handleBack（关当前标签/回上一级）。
+        leading: TabHostController.isTabHostedPage
+            ? IconButton(
+                tooltip: '返回',
+                onPressed: () {
+                  if (TabHostController.handleBack()) return;
+                  Get.back();
+                },
+                icon: const Icon(Icons.arrow_back_outlined),
+              )
+            : null,
         actions: [
           Obx(
             () => _showVideoFavMenu.value

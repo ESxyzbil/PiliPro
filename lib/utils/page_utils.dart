@@ -606,9 +606,16 @@ abstract final class PageUtils {
     // 桌面端多页面标签页：默认在标签页中打开（而非压栈）
     final tabHost = TabHostController.instance;
     if (tabHost != null && _tabsEnabled) {
+      if (kDebugMode) {
+        debugPrint(
+            'toVideoPage TAB cid=$cid bvid=$bvid replaceCurrent=$replaceCurrent curIdx=${tabHost.currentIndex.value} tabs=${tabHost.tabs.length}');
+      }
       _popToMainIfNeeded();
       tabHost.openVideo(arguments, replaceCurrent: replaceCurrent);
       return null;
+    }
+    if (kDebugMode) {
+      debugPrint('toVideoPage ROUTE cid=$cid bvid=$bvid');
     }
     return Get.toNamed(
       '/videoV',

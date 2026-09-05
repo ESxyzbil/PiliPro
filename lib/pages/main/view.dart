@@ -31,6 +31,7 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -519,6 +520,9 @@ class _MainAppState extends PopScopeState<MainApp>
         child = Obx(() {
           final tabs = tabController.tabs;
           final current = tabController.currentIndex.value;
+          if (kDebugMode) {
+            debugPrint('TAB_OBX rebuild tabs=${tabs.length} cur=$current');
+          }
           // 视频全屏时隐藏标签栏，避免挤压视频
           final isFullScreen =
               PlPlayerController.instance?.isFullScreen.value ?? false;
@@ -538,14 +542,23 @@ class _MainAppState extends PopScopeState<MainApp>
             valueListenable: tabBackGestureProgress,
             builder: (context, gestureP, _) {
               // 目标页 Stack 坐标（0=主内容，i>=1=标签）：关闭当前标签后显示谁
-              // 与 TabHostController.close() 的 next 逻辑一致：
-              // 唯一标签 → 主内容(0)；否则 next = index>0 ? index-1 : 1（标签索引），
-              // Stack 坐标 = next+1 = index>0 ? index : 2
-              final int targetStackIndex = (gestureP > 0.001 && current >= 0)
-                  ? (tabs.length <= 1
-                        ? 0
-                        : (current > 0 ? current : 2))
-                  : -1;
+              // 与 TabHostController.close() 的目标一致：
+              // - source 恢复（replaceCurrent 保活下层 A）：目标是 A 的来源层
+              //   （A 保活在 tabs 中、位于当前标签之前），手势跟手时 A 作为
+              //   下层随手势渐显（与主页渐显同机制，A 一直保活无需重建）。
+              // - 普通关闭：唯一标签 → 主内容(0)；否则关当前标签后显示
+              //   index>0 ? index-1 : 1（标签索引），Stack 坐标 = index+1。
+              final int? srcIdx = (gestureP > 0.001 && current >= 0)
+                  ? _sourceLowerIndex(tabs, current)
+                  : null;
+              final int targetStackIndex =
+                  (gestureP > 0.001 && current >= 0)
+                      ? (srcIdx != null
+                            ? srcIdx + 1
+                            : (tabs.length <= 1
+                                  ? 0
+                                  : (current > 0 ? current : 2)))
+                      : -1;
               return _buildTabHostStack(
                 context,
                 tabController: tabController,
@@ -667,6 +680,18 @@ class _MainAppState extends PopScopeState<MainApp>
     return child;
   }
 
+  /// 当前标签的保活来源层 index（replaceCurrent 前进时旧标签 A 保活为
+  /// hidden 下层、位于 B 之前）：返回 A 在 tabs 中的 index，供手势跟手时
+  /// 将 A 作为目标层渐显。无来源层返回 null（普通关闭/无来源）。
+  int? _sourceLowerIndex(List<TabItem> tabs, int current) {
+    if (current < 0 || current >= tabs.length) return null;
+    final tab = tabs[current];
+    final source = tab.source;
+    if (source == null) return null;
+    final idx = tabs.indexOf(source);
+    return idx >= 0 ? idx : null;
+  }
+
   /// 标签宿主布局：标签栏 + 内容区（Stack 保活 + 切换动画）。
   /// 抽成方法供 Obx+ValueListenableBuilder 复用（手势进度变化时
   /// 只重建本方法，不重建整个 Obx）。
@@ -681,6 +706,12 @@ class _MainAppState extends PopScopeState<MainApp>
     required bool showStrip,
     required bool isExpanded,
   }) {
+    if (kDebugMode) {
+      debugPrint(
+          'TAB_STACK build tabs=${tabs.length} ids=${tabs.map((t) => t.id).join(",")} cur=$current '
+          'mainTarget=${current == -1 ? 1.0 : (targetStackIndex == 0 ? gestureP : 0.0)} '
+          'tgt=$targetStackIndex p=$gestureP');
+    }
     return Row(
       children: [
         if (showStrip)
@@ -753,6 +784,15 @@ class _MainAppState extends PopScopeState<MainApp>
                               : TabTransition(
                                   key: ValueKey('tab-anim-${tabs[i - 1].id}'),
                                   active: i == current + 1,
+                                  // replaceCurrent 保活下层（hidden）：
+                                  // 被覆盖 → 纯透明度快速淡出到 0（无位移
+                                  // 退出动画）；返回手势 gestureReveal 渐显
+                                  covered: tabs[i - 1].hidden,
+                                  // 普通 add 覆盖（viaAdd，如收藏夹文件夹
+                                  // →视频）被顶掉的下层：同样纯透明度淡出
+                                  // 到 0，不走 buildPiliPageTransition 位移
+                                  // 退场（与 covered 一致）
+                                  fadeExit: tabs[i - 1].fadeExit,
                                   // 替换类返回（source 恢复）时：
                                   // active 仍 true 但 closing=true，
                                   // 强制播退出动画再替换
