@@ -549,6 +549,10 @@ abstract final class Pref {
     defaultValue: true,
   );
 
+  /// 反转滚轮操作：播放器滚轮调音量、图片滚轮缩放方向取反
+  static bool get reverseWheelOperation =>
+      _setting.get(SettingBoxKey.reverseWheelOperation, defaultValue: false);
+
   static bool get enableSlideFS =>
       _setting.get(SettingBoxKey.enableSlideFS, defaultValue: true);
 
@@ -708,6 +712,57 @@ abstract final class Pref {
       return isTablet;
     }
     return horizontalScreen;
+  }
+
+  // ---- 横屏适配（用户要求拆成独立设置项）----
+  /// 横屏布局模式：0=关，1=自动（按宽高比阈值），2=开（全局应用）。
+  /// 兼容旧设置：未写入新模式时由旧 [horizontalScreen] 布尔推导
+  /// （true → 开，false → 关）。
+  static int get horizontalLayoutMode {
+    final v = _setting.get(SettingBoxKey.horizontalLayoutMode);
+    if (v is int && v >= 0 && v <= 2) return v;
+    return horizontalScreen ? 2 : 0;
+  }
+
+  static void setHorizontalLayoutMode(int mode) =>
+      _setting.put(SettingBoxKey.horizontalLayoutMode, mode);
+
+  /// 自动模式的宽高比阈值：屏幕最长边/最短边 ≥ 该值时使用横屏布局。
+  static double get horizontalLayoutRatio {
+    final v = _setting.get(SettingBoxKey.horizontalLayoutRatio);
+    return v is double && v > 0 ? v : (v is int && v > 0 ? v.toDouble() : 1.2);
+  }
+
+  static void setHorizontalLayoutRatio(double ratio) =>
+      _setting.put(SettingBoxKey.horizontalLayoutRatio, ratio);
+
+  /// 是否允许屏幕旋转（默认跟随旧的横屏适配设置）。
+  static bool get allowScreenRotation =>
+      _setting.get(SettingBoxKey.allowScreenRotation,
+          defaultValue: horizontalScreen);
+
+  static void setAllowScreenRotation(bool value) =>
+      _setting.put(SettingBoxKey.allowScreenRotation, value);
+
+  /// 当前设备是否应使用横屏布局（考虑「自动」模式的宽高比阈值）。
+  /// ⚠️ 不能用 Size.isPortrait 判定：正方形屏（如 480x480 手表）宽==高时
+  /// isPortrait 为 true，会把横屏设备判成竖屏（标签栏永不显示）。
+  static bool get useHorizontalLayout {
+    switch (horizontalLayoutMode) {
+      case 2:
+        return true;
+      case 0:
+        return false;
+      default:
+        final views = WidgetsBinding.instance.platformDispatcher.views;
+        if (views.isEmpty) return false;
+        final double dpr = views.first.devicePixelRatio;
+        if (dpr <= 0) return false;
+        final size = views.first.physicalSize / dpr;
+        final shortest = size.shortestSide;
+        if (shortest <= 0) return false;
+        return (size.longestSide / shortest) >= horizontalLayoutRatio;
+    }
   }
 
   static String get banWordForDyn =>

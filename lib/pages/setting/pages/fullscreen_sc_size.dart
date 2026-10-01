@@ -40,7 +40,8 @@ class _FullScreenScSizeState extends State<FullScreenScSize> {
   @override
   void dispose() {
     if (PlatformUtils.isMobile) {
-      if (Pref.horizontalScreen) {
+      // 恢复为「横屏适配」设置里的屏幕旋转开关状态（与布局模式解耦）
+      if (Pref.allowScreenRotation) {
         fullMode();
       } else {
         portraitUpMode();

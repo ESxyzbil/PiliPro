@@ -153,8 +153,10 @@ void main() async {
 
   if (PlatformUtils.isMobile) {
     if (Platform.isAndroid) MaxScreenSize.init();
+    // 屏幕旋转由「横屏适配」设置里的独立开关控制（与横屏布局模式解耦）：
+    // 允许旋转 → 跟随传感器（fullMode）；不允许 → 锁定竖屏（portraitUpMode）
     await Future.wait([
-      if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),
+      if (Pref.allowScreenRotation) ?fullMode() else ?portraitUpMode(),
       setupServiceLocator(),
     ]);
   } else if (Platform.isWindows) {

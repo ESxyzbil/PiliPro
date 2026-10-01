@@ -23,7 +23,6 @@ import 'package:PiliPlus/pages/setting/widgets/dual_slider_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
-import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -60,19 +59,15 @@ List<SettingsModel> get styleSettings => [
     ),
   ],
   if (Platform.isLinux) _useSSDModel(),
-  SwitchModel(
+  NormalModel(
     title: '横屏适配',
-    subtitle: '启用横屏布局与逻辑，平板、折叠屏等可开启；建议全屏方向设为【不改变当前方向】',
-    leading: const Icon(Icons.phonelink_outlined),
-    setKey: SettingBoxKey.horizontalScreen,
-    defaultVal: Pref.horizontalScreen,
-    onChanged: (value) {
-      if (value) {
-        fullMode();
-      } else {
-        portraitUpMode();
-      }
+    getSubtitle: () => switch (Pref.horizontalLayoutMode) {
+      0 => '当前：关（始终竖屏布局）',
+      2 => '当前：开（始终横屏布局）',
+      _ => '当前：自动（宽高比 ≥ ${Pref.horizontalLayoutRatio.toStringAsFixed(2)}）',
     },
+    leading: const Icon(Icons.phonelink_outlined),
+    onTap: (context, setState) => Get.toNamed('/horizontalLayoutSetting'),
   ),
   const SwitchModel(
     title: '改用侧边栏',
@@ -882,7 +877,11 @@ Future<void> _showDefHomeDialog(
     builder: (context) => SelectDialog<NavigationBarType>(
       title: '首页启动页',
       value: Pref.defaultHomePage,
-      values: NavigationBarType.values.map((e) => (e, e.label)).toList(),
+      // 「网页」是启动器入口，不能作为主页启动页（会渲染成空白）
+      values: NavigationBarType.values
+          .where((e) => !e.isLauncher)
+          .map((e) => (e, e.label))
+          .toList(),
     ),
   );
   if (res != null) {

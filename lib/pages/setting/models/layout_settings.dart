@@ -36,12 +36,16 @@ List<SettingsModel> get layoutSettings => [
       ),
     ),
   ],
-  if (PlatformUtils.isDesktop) ...[
+  // 多页面标签：手机端也显示（用户反馈：原来只在桌面端显示，手机端布局
+  // 设置里看不到标签页开关；手机端标签同样生效——竖屏标签栏隐藏、标签
+  // 内容全屏，横屏/桌面才显示标签栏）
+  if (PlatformUtils.isDesktop || PlatformUtils.isMobile) ...[
     SplitModel(
-      normalModel: const NormalModel.split(
-        title: '桌面端多页面标签',
-        subtitle: '侧边标签栏打开视频/专栏，可多开切换、关闭',
-        leading: Icon(Icons.tab_outlined),
+      normalModel: NormalModel.split(
+        title: PlatformUtils.isDesktop ? '桌面端多页面标签' : '多页面标签',
+        subtitle: '侧边标签栏打开视频/专栏，可多开切换、关闭；'
+            '手机竖屏时标签栏隐藏、标签内容全屏显示',
+        leading: const Icon(Icons.tab_outlined),
       ),
       switchModel: SwitchModel.split(
         setKey: SettingBoxKey.desktopTabs,

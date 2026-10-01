@@ -89,6 +89,13 @@ List<SettingsModel> get playSettings => [
     setKey: SettingBoxKey.enableSlideVolumeBrightness,
     defaultVal: true,
   ),
+  const SwitchModel(
+    title: '反转滚轮操作',
+    subtitle: '开启后反转播放器滚轮调节音量与图片滚轮放大缩小的方向',
+    leading: Icon(Icons.mouse_outlined),
+    setKey: SettingBoxKey.reverseWheelOperation,
+    defaultVal: false,
+  ),
   if (Platform.isAndroid)
     const SwitchModel(
       title: '调节系统亮度',
