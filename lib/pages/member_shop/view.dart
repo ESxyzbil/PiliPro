@@ -8,6 +8,7 @@ import 'package:PiliPlus/pages/member_shop/controller.dart';
 import 'package:PiliPlus/pages/member_shop/widgets/item.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/waterfall.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:waterfall_flow/waterfall_flow.dart'
@@ -109,10 +110,7 @@ class _MemberShopState extends State<MemberShop>
                             clickUrl,
                           ).queryParameters['url'];
                           if (url case final url?) {
-                            Get.toNamed(
-                              '/webview',
-                              parameters: {'url': url},
-                            );
+                            PageUtils.toWebview(url);
                           }
                         }
                       },

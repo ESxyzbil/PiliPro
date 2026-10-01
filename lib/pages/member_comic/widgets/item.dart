@@ -3,8 +3,8 @@ import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models_new/space/space_archive/item.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class MemberComicItem extends StatelessWidget {
   const MemberComicItem({super.key, required this.item});
@@ -23,11 +23,8 @@ class MemberComicItem extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () {
-          Get.toNamed(
-            '/webview',
-            parameters: {
-              'url': 'https://manga.bilibili.com/detail/mc${item.param}',
-            },
+          PageUtils.toWebview(
+            'https://manga.bilibili.com/detail/mc${item.param}',
           );
         },
         onLongPress: onLongPress,

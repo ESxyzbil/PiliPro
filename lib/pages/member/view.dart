@@ -307,11 +307,8 @@ class _MemberPageState extends State<MemberPage> {
                                   recognizer:
                                       lottery.jumpUrl?.isNotEmpty == true
                                       ? (NoDeadlineTapGestureRecognizer()
-                                          ..onTap = () => Get.toNamed(
-                                            '/webview',
-                                            parameters: {
-                                              'url': lottery.jumpUrl!,
-                                            },
+                                          ..onTap = () => PageUtils.toWebview(
+                                            lottery.jumpUrl!,
                                           ))
                                       : null,
                                 ),
