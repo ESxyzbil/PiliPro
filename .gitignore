@@ -151,3 +151,36 @@ pili_release.json
 dist
 
 test*
+# === PiliPro sync-task scratch / build artifacts (kept on disk, not tracked) ===
+# build outputs
+piliplus_arm64.apk
+piliplus_win_out192/
+build_arc*.txt
+releases_dump.json
+pili_release.json
+# release/upload helper scripts
+release_fill.py
+release_update.py
+release_upload.py
+upload_arm.py
+# reverse-engineering scratch / references
+abogus_ref.py
+xbogus_ref.py
+qishui_plugin.js
+rsshub_dm.js
+elevator.cpp
+elevator.hpp
+browser_config.hpp
+payload_main.cpp
+abe_readme.md
+# scratch dirs
+.dsh-meow/
+.scratch/
+# upstream-sync analysis baselines (task book: keep on disk, do not delete)
+up_seed.json
+seed_tree.txt
+local_changed.txt
+upstream_changed.txt
+# memory-bank migration helpers (root-scoped; tracked scripts live in lib/scripts/)
+/*.cmd
+/*.ps1
