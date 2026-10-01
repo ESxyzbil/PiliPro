@@ -26,20 +26,30 @@ abstract final class LoginUtils {
     final webManager = web.CookieManager.instance(
       webViewEnvironment: webViewEnvironment,
     );
-    final isWindows = Platform.isWindows;
     return Future.wait(
       cookies.map(
-        (cookie) => webManager.setCookie(
-          url: web.WebUri(
-            '${isWindows ? 'https://' : ''} ${cookie.domain}',
-          ),
-          name: cookie.name,
-          value: cookie.value,
-          path: cookie.path ?? '/',
-          domain: cookie.domain,
-          isSecure: cookie.secure,
-          isHttpOnly: cookie.httpOnly,
-        ),
+        (cookie) {
+          // ⚠️ 原来拼的是 '${isWindows ? 'https://' : ''} ${cookie.domain}'：
+          // 域名前多一个空格，Android 上更是没有 scheme，WebView 只会把它
+          // 解析成 http://<domain>，于是这些 cookie 以「非安全来源」落库
+          // （adb 实测 source_scheme=1/non-secure、source_port=80、
+          // top_frame_site_key="http://bilibili.com"）。HTTPS 的 bilibili
+          // 页面在 Schemeful Same-Site 下会把它们判成跨站而不随 XHR 发送，
+          // 网页因此显示未登录（Chromium 对应提示语：
+          // "Migrate entirely to HTTPS to have cookies sent on same-site requests"）。
+          // 必须传一个完整的 https URL，让 cookie 带上 secure 的来源 scheme。
+          final domain = cookie.domain ?? '';
+          final host = domain.startsWith('.') ? domain.substring(1) : domain;
+          return webManager.setCookie(
+            url: web.WebUri('https://$host${cookie.path ?? '/'}'),
+            name: cookie.name,
+            value: cookie.value,
+            path: cookie.path ?? '/',
+            domain: cookie.domain,
+            isSecure: cookie.secure,
+            isHttpOnly: cookie.httpOnly,
+          );
+        },
       ),
     );
   }

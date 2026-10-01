@@ -4,6 +4,7 @@ import 'package:PiliPlus/common/widgets/fractionally_sized_box.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/gallery_viewer.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/hero_dialog_route.dart';
 import 'package:PiliPlus/grpc/im.dart';
+import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/dynamics.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/search.dart';
@@ -185,10 +186,7 @@ abstract final class PageUtils {
   }
 
   static void reportVideo(int aid) {
-    Get.toNamed(
-      '/webview',
-      parameters: {'url': 'https://www.bilibili.com/appeal/?avid=$aid'},
-    );
+    toWebview('https://www.bilibili.com/appeal/?avid=$aid');
   }
 
   static bool _fitsInAndroidRequirements(int width, int height) {
@@ -250,8 +248,7 @@ abstract final class PageUtils {
             id: 'dyn_${item.idStr}',
             title: '动态',
             icon: const Icon(Icons.dynamic_feed_outlined, size: 16),
-            childBuilder: (key) =>
-                DynamicDetailPage(key: key, item: item),
+            childBuilder: (key) => DynamicDetailPage(key: key, item: item),
           );
           return;
         }
@@ -442,6 +439,56 @@ abstract final class PageUtils {
     );
   }
 
+  /// 打开内置网页的统一入口。
+  /// 标签页模式下开成标签页（与视频/搜索等同级，可关闭、可切换）；否则
+  /// 回退到 /webview 路由。所有内置网页都应经此进入——不要再直接
+  /// `Get.toNamed('/webview')`，那样在标签页模式下会盖住整个主界面。
+  /// [uaType]：'pc' 桌面 UA、'mob' 手机 UA、null 用平台默认。
+  /// [off]：路由模式下替换当前路由（标签模式下无意义）。
+  static void toWebview(
+    String url, {
+    String? uaType,
+    bool off = false,
+    Map? arguments,
+    Map? parameters,
+  }) {
+    final String? userAgent = switch (uaType) {
+      'pc' => BrowserUa.pc,
+      'mob' => BrowserUa.mob,
+      _ => null,
+    };
+    if (!off) {
+      final tabHost = TabHostController.instance;
+      if (tabHost != null && _tabsEnabled) {
+        _popToMainIfNeeded();
+        tabHost.openWebview(url: url, userAgent: userAgent);
+        return;
+      }
+    }
+    final Map<String, String> params = {
+      'url': url,
+      'uaType': ?uaType,
+      ...?parameters?.map((k, v) => MapEntry(k.toString(), v.toString())),
+    };
+    if (off) {
+      Get.offNamed('/webview', parameters: params, arguments: arguments);
+    } else {
+      Get.toNamed(
+        '/webview',
+        parameters: params,
+        arguments: arguments,
+        preventDuplicates: false,
+      );
+    }
+  }
+
+  /// 「网页」入口（主页底栏/侧栏第四个图标）：在标签页中打开哔哩哔哩网页版。
+  /// Windows 与 Android 统一使用 PC 桌面版 UA；桌面版还会让站点直接返回
+  /// PC 版页面而不做 App 跳转。
+  static void openBiliWeb() {
+    toWebview('https://www.bilibili.com', uaType: 'pc');
+  }
+
   static void inAppWebview(
     String url, {
     bool off = false,
@@ -449,19 +496,7 @@ abstract final class PageUtils {
     if (Pref.openInBrowser) {
       launchURL(url);
     } else {
-      if (off) {
-        Get.offNamed(
-          '/webview',
-          parameters: {'url': url},
-          arguments: {'inApp': true},
-        );
-      } else {
-        Get.toNamed(
-          '/webview',
-          parameters: {'url': url},
-          arguments: {'inApp': true},
-        );
-      }
+      toWebview(url, off: off, arguments: {'inApp': true});
     }
   }
 
@@ -491,13 +526,7 @@ abstract final class PageUtils {
       }
     } else {
       if (off) {
-        Get.offNamed(
-          '/webview',
-          parameters: {
-            'url': url,
-            ...?parameters,
-          },
-        );
+        toWebview(url, off: true, parameters: parameters);
       } else {
         PiliScheme.routePushFromUrl(url, parameters: parameters);
       }
@@ -608,7 +637,8 @@ abstract final class PageUtils {
     if (tabHost != null && _tabsEnabled) {
       if (kDebugMode) {
         debugPrint(
-            'toVideoPage TAB cid=$cid bvid=$bvid replaceCurrent=$replaceCurrent curIdx=${tabHost.currentIndex.value} tabs=${tabHost.tabs.length}');
+          'toVideoPage TAB cid=$cid bvid=$bvid replaceCurrent=$replaceCurrent curIdx=${tabHost.currentIndex.value} tabs=${tabHost.tabs.length}',
+        );
       }
       _popToMainIfNeeded();
       tabHost.openVideo(arguments, replaceCurrent: replaceCurrent);
@@ -628,8 +658,7 @@ abstract final class PageUtils {
   /// 竖屏标签栏隐藏、标签内容全屏显示，横竖屏切换只是标签栏显隐，
   /// 页面/播放状态不销毁重建，避免"转化"时重载）。
   static bool get _tabsEnabled =>
-      (PlatformUtils.isDesktop || PlatformUtils.isMobile) &&
-      Pref.desktopTabs;
+      (PlatformUtils.isDesktop || PlatformUtils.isMobile) && Pref.desktopTabs;
 
   /// 标签页打开前：若当前有二级路由覆盖主界面（如搜索/收藏/动态详情），
   /// 先退回主界面（否则标签开在 MainApp 里被当前路由挡住，看起来

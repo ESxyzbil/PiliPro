@@ -63,6 +63,7 @@ import 'package:PiliPlus/pages/setting/pages/desktop_lyrics_page.dart';
 import 'package:PiliPlus/pages/setting/pages/display_mode.dart';
 import 'package:PiliPlus/pages/setting/pages/font_size_select.dart';
 import 'package:PiliPlus/pages/setting/pages/font_setting.dart';
+import 'package:PiliPlus/pages/setting/pages/horizontal_layout.dart';
 import 'package:PiliPlus/pages/setting/pages/logs.dart';
 import 'package:PiliPlus/pages/setting/pages/play_speed_set.dart';
 import 'package:PiliPlus/pages/setting/pages/ppi_setting.dart';
@@ -145,6 +146,11 @@ class Routes {
     GetPage(name: '/blackListPage', page: () => const BlackListPage()),
     GetPage(name: '/colorSetting', page: () => const ColorSelectPage()),
     GetPage(name: '/fontSizeSetting', page: () => const FontSizeSelectPage()),
+    // 横屏适配（布局模式 + 屏幕旋转）
+    GetPage(
+      name: '/horizontalLayoutSetting',
+      page: () => const HorizontalLayoutSettingPage(),
+    ),
     // PPI 设置
     GetPage(name: '/ppiSetting', page: () => const PpiSettingPage()),
     // OCR 歌词模型

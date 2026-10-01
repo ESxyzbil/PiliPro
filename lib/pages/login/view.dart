@@ -290,17 +290,12 @@ class _LoginPageState extends State<LoginPage> {
                           'https://passport.bilibili.com/h5-app/passport/login/findPassword',
                         ),
                         dense: false,
-                        onTap: () => Get
-                          ..back()
-                          ..toNamed(
-                            '/webview',
-                            parameters: {
-                              'url':
-                                  'https://passport.bilibili.com/h5-app/passport/login/findPassword',
-                              'type': 'url',
-                              'pageTitle': '忘记密码',
-                            },
-                          ),
+                        onTap: () {
+                          Get.back();
+                          PageUtils.toWebview(
+                            'https://passport.bilibili.com/h5-app/passport/login/findPassword',
+                          );
+                        },
                       ),
                       ListTile(
                         title: const Text(
@@ -311,18 +306,13 @@ class _LoginPageState extends State<LoginPage> {
                           'https://passport.bilibili.com/pc/passport/findPassword',
                         ),
                         dense: false,
-                        onTap: () => Get
-                          ..back()
-                          ..toNamed(
-                            '/webview',
-                            parameters: {
-                              'url':
-                                  'https://passport.bilibili.com/pc/passport/findPassword',
-                              'type': 'url',
-                              'pageTitle': '忘记密码',
-                              'uaType': 'pc',
-                            },
-                          ),
+                        onTap: () {
+                          Get.back();
+                          PageUtils.toWebview(
+                            'https://passport.bilibili.com/pc/passport/findPassword',
+                            uaType: 'pc',
+                          );
+                        },
                       ),
                     ],
                   ),

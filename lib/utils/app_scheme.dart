@@ -1,4 +1,4 @@
-﻿// ignore_for_file: constant_identifier_names
+// ignore_for_file: constant_identifier_names
 
 import 'dart:async' show StreamSubscription;
 
@@ -296,7 +296,11 @@ abstract final class PiliScheme {
           case 'medialist':
             String? mediaId = uriDigitRegExp.firstMatch(path)?.group(1);
             if (mediaId != null) {
-              PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId), off: off);
+              PageUtils.toFavDetailPage(
+                mediaId: mediaId,
+                heroTag: Utils.makeHeroTag(mediaId),
+                off: off,
+              );
               return true;
             }
             return false;
@@ -372,7 +376,10 @@ abstract final class PiliScheme {
             if (path.startsWith('/playlist/')) {
               final mediaId = uriDigitRegExp.firstMatch(path)?.group(1);
               if (mediaId != null) {
-                PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId));
+                PageUtils.toFavDetailPage(
+                  mediaId: mediaId,
+                  heroTag: Utils.makeHeroTag(mediaId),
+                );
                 return true;
               }
             }
@@ -385,7 +392,10 @@ abstract final class PiliScheme {
             if (path.startsWith('/detail/')) {
               final id = path.split('/').last;
               if (id.isNotEmpty) {
-                PageUtils.toFavDetailPage(mediaId: id, heroTag: Utils.makeHeroTag(id));
+                PageUtils.toFavDetailPage(
+                  mediaId: id,
+                  heroTag: Utils.makeHeroTag(id),
+                );
                 return true;
               }
             }
@@ -721,7 +731,11 @@ abstract final class PiliScheme {
       case 'medialist':
         String? mediaId = RegExp(r'/ml(\d+)').firstMatch(path)?.group(1);
         if (mediaId != null) {
-          PageUtils.toFavDetailPage(mediaId: mediaId, heroTag: Utils.makeHeroTag(mediaId), off: off);
+          PageUtils.toFavDetailPage(
+            mediaId: mediaId,
+            heroTag: Utils.makeHeroTag(mediaId),
+            off: off,
+          );
           return true;
         }
         launchURL();
@@ -838,14 +852,7 @@ abstract final class PiliScheme {
     bool off,
     Map? parameters,
   ) {
-    PageUtils.toDupNamed(
-      '/webview',
-      parameters: {
-        'url': url,
-        ...?parameters,
-      },
-      off: off,
-    );
+    PageUtils.toWebview(url, off: off, parameters: parameters);
   }
 
   // 投稿跳转

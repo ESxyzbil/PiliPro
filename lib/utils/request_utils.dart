@@ -37,6 +37,7 @@ import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
@@ -351,12 +352,8 @@ abstract final class RequestUtils {
                 onPressed: () {
                   Get.back();
                   Utils.copyText('https://www.bilibili.com/opus/$id');
-                  Get.toNamed(
-                    '/webview',
-                    parameters: {
-                      'url':
-                          'https://www.bilibili.com/h5/comment/appeal?${ThemeUtils.themeUrl(theme.isDark)}',
-                    },
+                  PageUtils.toWebview(
+                    'https://www.bilibili.com/h5/comment/appeal?${ThemeUtils.themeUrl(theme.isDark)}',
                   );
                 },
                 child: const Text('申诉'),
