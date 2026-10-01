@@ -523,9 +523,26 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
     final shortestSide = size.shortestSide;
     final minVideoHeight = shortestSide / Style.aspectRatio16x9;
-    final maxVideoHeight = max(size.longestSide * 0.65, shortestSide);
+    // 播放器最大高度（竖屏视频 isVertical 时 videoHeight 取此值）：
+    // ⚠️ 必须有上界——原写法 max(longestSide*0.65, shortestSide) 在正方形屏
+    //（480x480 手表等）上等于 shortestSide = 整屏高，导致播放器直接占满
+    // 整屏、下方没有任何内容区（用户实测）。这里限制为不超过屏幕高度的
+    // 65%：对普通竖屏手机无影响（longestSide == maxHeight，两者相等），
+    // 只在正方形/小屏设备上生效。
+    final maxVideoHeight = min(
+      max(size.longestSide * 0.65, shortestSide),
+      maxHeight * 0.65,
+    );
+    // 近方形屏（手表 480x480 等：最长边/最短边 < kScreenRatio=1.2）没有横向
+    // 空间做横屏分栏，强制按**竖屏布局**渲染。
+    // ⚠️ 否则方形屏被系统转成横屏时 MediaQuery 变成宽>高 → isPortrait=false
+    // → 竖屏布局里走 `!isPortrait` 分支，header 高度直接取 maxHeight（整屏）
+    // → 播放器占满屏幕（用户实测"咋还是占满屏幕"；此时 maxVideoHeight 上界
+    // 作用不到，因为该分支不用 videoHeight）。
+    final bool nearSquareScreen =
+        size.longestSide / shortestSide < kScreenRatio;
     videoDetailController
-      ..isPortrait = isPortrait = maxHeight >= maxWidth
+      ..isPortrait = isPortrait = nearSquareScreen || maxHeight >= maxWidth
       ..minVideoHeight = minVideoHeight
       ..maxVideoHeight = maxVideoHeight
       ..videoHeight = videoDetailController.isVertical.value
@@ -535,6 +552,43 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     themeData = videoDetailController.plPlayerController.darkVideoPage
         ? ThemeUtils.darkTheme
         : Theme.of(context);
+
+    _logLayout('DEP');
+  }
+
+  /// 临时布局诊断日志（release 同样输出到 logcat，tag=flutter）。
+  /// 用于排查"播放器占满屏幕"：记录尺寸/朝向判定/所走布局分支/关键高度。
+  /// 值不变时不重复输出，避免刷屏。排查结束可整段删除。
+  /// ⚠️ 必须 try/catch 且**不得读取 late 字段**：本方法会在
+  /// didChangeDependencies（元素 mount 早期）被调用，此时 controller 里
+  /// `late double animHeight` 等字段尚未初始化——读取会抛
+  /// LateInitializationError，使 didChangeDependencies 失败、页面
+  /// mount 失败 → **整页一片空白**（2026-09-24 实测踩坑：手机/手表进
+  /// 视频页全白，异常栈 #1 _logLayout → #2 didChangeDependencies）。
+  static String? _lastLayoutLog;
+  void _logLayout(String tag) {
+    try {
+      final s = MediaQuery.sizeOf(context);
+      final msg = '$tag size=${s.width.toStringAsFixed(1)}x${s.height.toStringAsFixed(1)} '
+          'ratio=${(s.longestSide / s.shortestSide).toStringAsFixed(3)} '
+          'mw=${maxWidth.toStringAsFixed(1)} mh=${maxHeight.toStringAsFixed(1)} '
+          'isPortrait=$isPortrait fs=$isFullScreen wm=$isWindowMode '
+          'pad=${padding.top.toStringAsFixed(1)} '
+          'hs=${videoDetailController.horizontalScreen} '
+          'vH=${videoDetailController.videoHeight.toStringAsFixed(1)} '
+          'minVH=${videoDetailController.minVideoHeight.toStringAsFixed(1)} '
+          'maxVH=${videoDetailController.maxVideoHeight.toStringAsFixed(1)} '
+          'tabs=${TabHostController.tabsEnabled} '
+          'landscapeMode=${TabHostController.landscapeMode} '
+          'route=${Get.currentRoute}';
+      if (msg != _lastLayoutLog) {
+        _lastLayoutLog = msg;
+        // ignore: avoid_print
+        print('[PL_LAYOUT] $msg');
+      }
+    } catch (_) {
+      // 诊断日志绝不能影响页面构建
+    }
   }
 
   bool removeAppBar(bool isFullScreen) =>
@@ -663,12 +717,20 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                                                     .onSurface,
                                               ),
                                               onPressed: () {
-                                                // 桌面端标签页模式：关闭当前标签
+                                                // 标签页模式：先关当前标签/恢复来源
                                                 if (TabHostController
                                                     .handleBack()) {
                                                   return;
                                                 }
-                                                Get.back();
+                                                // 非标签模式：走播放器统一返回
+                                                // （控制锁→PIP→全屏→Get.back，
+                                                // 全屏时先取消全屏而非退出页面）
+                                                videoDetailController
+                                                    .plPlayerController
+                                                    .onPopInvokedWithResult(
+                                                  false,
+                                                  null,
+                                                );
                                               },
                                             ),
                                           ),
@@ -1223,11 +1285,14 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
                         ],
                       ),
                       onPressed: () {
-                        // 桌面端标签页模式：关闭当前标签
+                        // 标签页模式：先关当前标签/恢复来源
                         if (TabHostController.handleBack()) {
                           return;
                         }
-                        Get.back();
+                        // 非标签模式：走播放器统一返回（控制锁→PIP→全屏→
+                        // Get.back，全屏时先取消全屏而非退出页面）
+                        videoDetailController.plPlayerController
+                            .onPopInvokedWithResult(false, null);
                       },
                     ),
                   ),
@@ -1409,17 +1474,24 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   @override
   Widget build(BuildContext context) {
     Widget child;
+    String branch;
     if (videoDetailController.plPlayerController.isPipMode) {
       child = plPlayer(width: maxWidth, height: maxHeight, isPipMode: true);
+      branch = 'pip';
     } else if (!videoDetailController.horizontalScreen) {
       child = childWhenDisabled;
+      branch = 'portraitOnly';
     } else if (maxWidth / maxHeight >= kScreenRatio) {
       child = childWhenDisabledLandscape;
+      branch = 'landscapeSplit';
     } else if (maxWidth / Style.aspectRatio16x9 < 0.4 * maxHeight) {
       child = childWhenDisabled;
+      branch = 'portraitTall';
     } else {
       child = childWhenDisabledAlmostSquare;
+      branch = 'almostSquare';
     }
+    _logLayout('BUILD:$branch');
     if (videoDetailController.plPlayerController.keyboardControl) {
       child = PlayerFocus(
         plPlayerController: videoDetailController.plPlayerController,

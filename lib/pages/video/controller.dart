@@ -58,6 +58,8 @@ import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
+import 'package:PiliPlus/utils/media/fmp4_muxer.dart';
+import 'package:PiliPlus/utils/media/media_transcoder.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -1434,51 +1436,108 @@ class VideoDetailController extends GetxController
     );
   }
 
-  /// 将当前视频保存到本地（每次弹出系统保存对话框，SAF 可写任意目录）：
-  /// 在线 → 下载当前视频流；已缓存 → 读取缓存文件
-  /// 扩展名统一 .m4s（B站 DASH 标准，视频/音频一致，避免 URL/源文件推断出 .segment 等）
+  /// 将当前视频保存到本地：
+  /// 把视频/音频两个 m4s 合并为一个 MP4（纯 Dart 重封装，样本原样搬运、不重新编码），
+  /// 若轨道编码不是 H.264/AAC，再调用平台原生转码器转换，最后弹系统保存对话框
+  /// （Android 由原生通过 ContentResolver 写入，桌面端返回路径后自行写入）。
   Future<void> saveVideoToLocal() async {
     final ds = plPlayerController.dataSource;
     final baseName = _safeFileName(
       '${isFileSource ? entry.showTitle : bvid}_${cid.value}',
     );
+    final tmpDir = await getTemporaryDirectory();
+    final tempFiles = <String>[];
+    String? warning;
     try {
-      // 先收集要保存的文件（源路径 → 保存文件名）
-      final files = <(String, String)>[];
+      SmartDialog.showLoading(msg: '正在合并音视频…');
+
+      // 1. 收集来源：在线先下载到应用临时目录，已缓存则直接用缓存文件
+      late String videoPath;
+      String? audioPath;
       if (isFileSource) {
-        files.add((ds.videoSource, '$baseName.m4s'));
-        if (ds.audioSource case final audio?) {
-          files.add((audio, '${baseName}_audio.m4s'));
-        }
+        videoPath = ds.videoSource;
+        audioPath = ds.audioSource;
       } else {
-        // 在线：先下载到应用临时目录（app 专属，可写），再走 SAF 保存
-        final tmpDir = await getTemporaryDirectory();
-        final tmpV = '${tmpDir.path}/$baseName.m4s';
-        await Request.http11Dio.download(ds.videoSource.http2https, tmpV);
-        files.add((tmpV, '$baseName.m4s'));
+        videoPath = '${tmpDir.path}/$baseName.m4s';
+        await Request.http11Dio.download(ds.videoSource.http2https, videoPath);
+        tempFiles.add(videoPath);
         if (ds.audioSource case final audio?) {
-          final tmpA = '${tmpDir.path}/${baseName}_audio.m4s';
-          await Request.http11Dio.download(audio.http2https, tmpA);
-          files.add((tmpA, '${baseName}_audio.m4s'));
+          audioPath = '${tmpDir.path}/${baseName}_audio.m4s';
+          await Request.http11Dio.download(audio.http2https, audioPath);
+          tempFiles.add(audioPath);
         }
       }
-      // 逐个弹系统保存对话框（SAF）：Android 由原生通过 ContentResolver 写入，
-      // 桌面端返回路径后自行写入
-      for (final (src, name) in files) {
-        final bytes = await File(src).readAsBytes();
-        final savePath = await FilePicker.saveFile(fileName: name, bytes: bytes);
-        if (savePath == null) {
-          SmartDialog.showToast('已取消保存');
-          return;
-        }
-        if (!Platform.isAndroid) {
-          await File(savePath).writeAsBytes(bytes);
+
+      // 2. 合并为 MP4（源不是 DASH 分片时退回直接保存原文件）
+      var savePath = '${tmpDir.path}/$baseName.mp4';
+      Mp4MergeResult? merged;
+      try {
+        merged = await Fmp4Muxer.merge(
+          videoPath: videoPath,
+          audioPath: audioPath,
+          outputPath: savePath,
+        );
+        tempFiles.add(savePath);
+      } on Mp4MuxException catch (e) {
+        // 例如离线缓存里的整段 0.mp4（本身已是完整 MP4），直接保存原文件
+        if (kDebugMode) debugPrint('merge skipped: ${e.message}');
+        savePath = videoPath;
+        warning = '已直接保存原文件（${e.message}）';
+      }
+
+      // 3. 非 H.264/AAC 时转码（失败则退回未转码的合并结果，不阻断保存）
+      if (merged != null && !merged.isCompatible) {
+        final srcCodec =
+            '${merged.video.codec}/${merged.audio?.codec ?? '无音频'}';
+        if (MediaTranscoder.isSupported) {
+          SmartDialog.showLoading(msg: '正在转码为 H.264/AAC…');
+          final target = '${tmpDir.path}/${baseName}_h264.mp4';
+          try {
+            await MediaTranscoder.transcode(input: savePath, output: target);
+            savePath = target;
+            tempFiles.add(target);
+          } catch (e) {
+            if (kDebugMode) debugPrint('transcode error: $e');
+            warning = '转码失败（源 $srcCodec），已保存未转码的 MP4';
+          }
+        } else {
+          warning = '源编码为 $srcCodec，当前平台不支持转码';
         }
       }
-      SmartDialog.showToast('保存成功');
+
+      // 4. 系统保存对话框
+      final bytes = await File(savePath).readAsBytes();
+      SmartDialog.dismiss(status: SmartStatus.loading);
+      final savedPath = await FilePicker.saveFile(
+        fileName: '$baseName.mp4',
+        bytes: bytes,
+      );
+      if (savedPath == null) {
+        SmartDialog.showToast('已取消保存');
+        return;
+      }
+      if (!Platform.isAndroid) {
+        await File(savedPath).writeAsBytes(bytes);
+      }
+      SmartDialog.showToast(
+        warning ??
+            (merged?.isCompatible == true
+                ? '保存成功'
+                : '保存成功（已转为 H.264/AAC）'),
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('save video error: $e');
       SmartDialog.showToast('保存失败：$e');
+    } finally {
+      SmartDialog.dismiss(status: SmartStatus.loading);
+      for (final path in tempFiles) {
+        try {
+          final file = File(path);
+          if (file.existsSync()) {
+            file.deleteSync();
+          }
+        } catch (_) {}
+      }
     }
   }
 

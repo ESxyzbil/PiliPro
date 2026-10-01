@@ -1399,7 +1399,10 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
 
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
-      final offset = -event.scrollDelta.dy / 4000;
+      final offset =
+          (Pref.reverseWheelOperation ? 1.0 : -1.0) *
+          event.scrollDelta.dy /
+          4000;
       final volume = clampDouble(
         plPlayerController.volume.value + offset,
         0.0,
@@ -1782,7 +1785,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
             child: Obx(
               () {
                 final showControls = plPlayerController.showControls.value;
-                // 圆屏适配 + 全屏时，进度条与分段条均按下半圆弧绘制
+                // 圆屏适配 + 放大(全屏)时，进度条与分段条均按下半圆弧绘制
                 final bool arc = Pref.circularScreen && isFullScreen;
                 final bool offstage;
                 switch (plPlayerController.progressType) {

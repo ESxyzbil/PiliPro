@@ -1453,7 +1453,9 @@ class PlPlayerController with BlockConfigMixin {
   double screenRatio = 0.0;
   bool isManualFS = true;
   late final FullScreenMode mode = Pref.fullScreenMode;
-  late final horizontalScreen = Pref.horizontalScreen;
+  /// 是否使用横屏布局（新的横屏适配设置：关/自动（宽高比阈值）/开）。
+  /// 用 getter 而非 late final：自动模式需随屏幕尺寸动态判定。
+  bool get horizontalScreen => Pref.useHorizontalLayout;
   late final removeSafeArea = Pref.removeSafeArea;
 
   Future<void>? changeOrientation({

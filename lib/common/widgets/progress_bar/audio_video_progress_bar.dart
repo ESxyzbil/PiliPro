@@ -453,8 +453,17 @@ class RenderProgressBar extends RenderBox implements MouseTrackerAnnotation {
   void _updateThumbPosition(Offset localPosition) {
     final dx = localPosition.dx;
     if (_arcMode) {
-      final position = dx.clamp(0.0, size.width);
-      _thumbValue = position / size.width;
+      // 弧模式：以「圆心→触摸点的射线」与弧的交点决定进度，
+      // 而非按横坐标线性映射（弧上不同高度触摸时角度才对应进度）。
+      // 下半弧角度范围 θ∈[0,π]（0=右端, π/2=正下方, π=左端），
+      // progress = (π - θ) / π。
+      final center = Offset(size.width / 2, -kProgressArcShiftY);
+      final vx = localPosition.dx - center.dx;
+      var vy = localPosition.dy - center.dy;
+      if (vy < 0) vy = 0; // 圆心上方：射线与下半弧无交点，投影到水平方向
+      final theta = (vx == 0 && vy == 0) ? pi / 2 : atan2(vy, vx);
+      final value = ((pi - theta) / pi).clamp(0.0, 1.0);
+      _thumbValue = value;
       _progress = _currentThumbDuration();
       markNeedsPaint();
       return;
