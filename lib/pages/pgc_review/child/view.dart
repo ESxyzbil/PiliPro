@@ -1,4 +1,4 @@
-﻿import 'package:PiliPlus/common/skeleton/video_reply.dart';
+import 'package:PiliPlus/common/skeleton/video_reply.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
@@ -175,15 +175,12 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
                 '举报',
                 style: TextStyle(fontSize: 14),
               ),
-              onTap: () => Get
-                ..back()
-                ..toNamed(
-                  '/webview',
-                  parameters: {
-                    'url':
-                        'https://www.bilibili.com/appeal/?reviewId=${item.reviewId}&type=shortComment&mediaId=${widget.mediaId}',
-                  },
-                ),
+              onTap: () {
+                Get.back();
+                PageUtils.toWebview(
+                  'https://www.bilibili.com/appeal/?reviewId=${item.reviewId}&type=shortComment&mediaId=${widget.mediaId}',
+                );
+              },
             ),
           ],
         ),

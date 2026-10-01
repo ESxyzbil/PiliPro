@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/main.dart';
 import 'package:PiliPlus/models/common/webview_menu_type.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/login_utils.dart';
@@ -21,6 +22,7 @@ class WebviewPage extends StatefulWidget {
     this.oid,
     this.title,
     this.userAgent,
+    this.tabId,
   });
 
   final String? url;
@@ -30,6 +32,10 @@ class WebviewPage extends StatefulWidget {
   final String? title;
   final String? userAgent;
 
+  /// 所在标签页的 id（非空 = 本页面在标签页中打开）：
+  /// 此时不经路由，返回语义是"关闭当前标签"而非 Get.back()。
+  final String? tabId;
+
   @override
   State<WebviewPage> createState() => _WebviewPageState();
 }
@@ -37,6 +43,9 @@ class WebviewPage extends StatefulWidget {
 class _WebviewPageState extends State<WebviewPage> {
   late final String _url = widget.url ?? Get.parameters['url'] ?? '';
   late final String userAgent;
+
+  /// 是否在标签页中打开
+  bool get _isTab => widget.tabId != null;
   final RxString title = ''.obs;
   final RxDouble progress = 1.0.obs;
   bool _inApp = false;
@@ -52,16 +61,25 @@ class _WebviewPageState extends State<WebviewPage> {
   @override
   void initState() {
     super.initState();
-    userAgent =
-        widget.userAgent ??
-        switch (Get.parameters['uaType']) {
-          'pc' => BrowserUa.pc,
-          'mob' => BrowserUa.mob,
-          _ => BrowserUa.platform,
-        };
-    if (Get.arguments case final Map map) {
-      _inApp = map['inApp'] ?? false;
-      _off = map['off'] ?? false;
+    if (widget.userAgent != null) {
+      userAgent = widget.userAgent!;
+    } else if (widget.url != null) {
+      // 标签页模式：不经路由，用平台默认 UA
+      userAgent = BrowserUa.platform;
+    } else {
+      userAgent = switch (Get.parameters['uaType']) {
+        'pc' => BrowserUa.pc,
+        'mob' => BrowserUa.mob,
+        _ => BrowserUa.platform,
+      };
+    }
+    // 只有路由模式（widget.url == null）才读路由参数与 arguments：
+    // 标签页模式下 Get.arguments 可能残留上一条路由的值。
+    if (widget.url == null) {
+      if (Get.arguments case final Map map) {
+        _inApp = map['inApp'] ?? false;
+        _off = map['off'] ?? false;
+      }
     }
   }
 
@@ -69,6 +87,19 @@ class _WebviewPageState extends State<WebviewPage> {
   void dispose() {
     _webViewController = null;
     super.dispose();
+  }
+
+  /// 统一的"返回"语义：标签页中 = 关闭当前标签；路由中 = Get.back()。
+  void _close() {
+    if (_isTab) {
+      final tabHost = TabHostController.instance;
+      final idx = tabHost?.tabs.indexWhere((t) => t.id == widget.tabId) ?? -1;
+      if (tabHost != null && idx >= 0) {
+        tabHost.close(idx);
+        return;
+      }
+    }
+    Get.back();
   }
 
   @override
@@ -86,9 +117,18 @@ class _WebviewPageState extends State<WebviewPage> {
       );
     }
     return Scaffold(
-      appBar: widget.url != null
+      // 标签页模式下也显示工具栏（标题/刷新/复制链接/浏览器打开/清缓存）
+      appBar: widget.url != null && !_isTab
           ? null
           : AppBar(
+              // 标签页模式：手机竖屏不显示标签栏，给一个显式的关闭按钮
+              leading: _isTab
+                  ? IconButton(
+                      tooltip: '关闭',
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: _close,
+                    )
+                  : null,
               title: Obx(
                 () => Text(
                   title.value.isNotEmpty ? title.value : _url,
@@ -136,7 +176,7 @@ class _WebviewPageState extends State<WebviewPage> {
                         if (await _webViewController?.canGoBack() == true) {
                           _webViewController?.goBack();
                         } else {
-                          Get.back();
+                          _close();
                         }
                         break;
                       case WebviewMenuItem.resetCookie:
@@ -190,7 +230,7 @@ class _WebviewPageState extends State<WebviewPage> {
               ..addJavaScriptHandler(
                 handlerName: 'finishButtonClicked',
                 callback: (args) {
-                  Get.back();
+                  _close();
                 },
               )
               ..addJavaScriptHandler(
@@ -211,8 +251,12 @@ class _WebviewPageState extends State<WebviewPage> {
           },
           onTitleChanged: (controller, title) {
             this.title.value = title ?? '';
+            // 标签页：标签标题跟随网页标题
+            if (_isTab && title != null && title.isNotEmpty) {
+              TabHostController.instance?.updateTabTitle(widget.tabId!, title);
+            }
           },
-          onCloseWindow: (controller) => Get.back(),
+          onCloseWindow: (controller) => _close(),
           onLoadStop: (controller, uri) {
             final url = uri.toString();
             if (url.startsWith('https://www.bilibili.com/h5/note-app')) {

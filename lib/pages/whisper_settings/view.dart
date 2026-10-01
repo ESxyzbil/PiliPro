@@ -5,6 +5,7 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/pages/whisper_block/view.dart';
 import 'package:PiliPlus/pages/whisper_settings/controller.dart';
 import 'package:PiliPlus/pages/whisper_settings/widgets/item.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -131,10 +132,7 @@ class _WhisperSettingsPageState extends State<WhisperSettingsPage> {
       if (item.redirect.title == '黑名单') {
         Get.toNamed('/blackListPage');
       } else if (item.redirect.otherPage.url.startsWith('http')) {
-        Get.toNamed(
-          '/webview',
-          parameters: {'url': item.redirect.otherPage.url},
-        );
+        PageUtils.toWebview(item.redirect.otherPage.url);
       } else {
         SmartDialog.showToast(item.redirect.otherPage.url);
       }
@@ -142,10 +140,7 @@ class _WhisperSettingsPageState extends State<WhisperSettingsPage> {
       if (item.redirect.title == '消息屏蔽词') {
         Get.to(const WhisperBlockPage());
       } else if (item.redirect.settingPage.url.startsWith('http')) {
-        Get.toNamed(
-          '/webview',
-          parameters: {'url': item.redirect.settingPage.url},
-        );
+        PageUtils.toWebview(item.redirect.settingPage.url);
       } else {
         SmartDialog.showToast(item.redirect.settingPage.url);
       }

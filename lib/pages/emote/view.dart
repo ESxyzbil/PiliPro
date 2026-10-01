@@ -10,6 +10,7 @@ import 'package:PiliPlus/models_new/emote/package.dart';
 import 'package:PiliPlus/pages/emote/controller.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -178,12 +179,8 @@ class _EmotePanelState extends State<EmotePanel>
                           iconSize: 20,
                           iconColor: theme.colorScheme.onSurfaceVariant
                               .withValues(alpha: 0.8),
-                          onPressed: () => Get.toNamed(
-                            '/webview',
-                            parameters: {
-                              'url':
-                                  'https://www.bilibili.com/h5/mall/emoji-package/home?navhide=1&${ThemeUtils.themeUrl(theme.isDark)}',
-                            },
+                          onPressed: () => PageUtils.toWebview(
+                            'https://www.bilibili.com/h5/mall/emoji-package/home?navhide=1&${ThemeUtils.themeUrl(theme.isDark)}',
                           ),
                           icon: const Icon(Icons.settings),
                         ),

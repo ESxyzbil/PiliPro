@@ -1,4 +1,5 @@
 import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart' show PlPlayerController;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
@@ -28,6 +29,12 @@ PredictiveBackEvent? gTabBackCurrentEvent;
 /// 从手势位置续播（而不是从完整状态重播），与路由 pop 的「松手续播」一致。
 double gTabBackCommitProgress = -1.0;
 
+/// 本次返回手势是否在「视频全屏」状态下消费：true 时只消费手势
+/// （避免系统直接播放返回桌面动画/退出），但**不驱动应用内跟手动画**
+/// （不缩小当前标签页）——commit 时 TabHostController.handleBack 会先
+/// 退出全屏（用户需求：全屏返回 = 取消全屏，而不是退出页面）。
+bool gTabBackFullScreenGesture = false;
+
 /// 根路由（主页）返回手势消费器。
 ///
 /// 问题背景：Flutter 引擎的预测性返回手势进度只转发给「可 pop 的 route」，
@@ -55,6 +62,16 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     // 硬件返回键事件不是手势，不消费（返回键本来就没有跟手动画，
     // 走 didPopRoute → GlobalBackInterceptor 拦截）
     if (backEvent.isButtonEvent) return false;
+    // 视频全屏：消费手势（避免系统直接退桌面），但应用内不播跟手动画
+    // —— 全屏返回语义 = 取消全屏（commit 时 handleBack 退出全屏）。
+    final player = PlPlayerController.instance;
+    if (player != null && player.isFullScreen.value) {
+      gTabBackFullScreenGesture = true;
+      tabBackGestureProgress.value = 0.0;
+      gTabBackCommitProgress = -1.0;
+      return true;
+    }
+    gTabBackFullScreenGesture = false;
     final navigator = Get.key.currentState;
     final bool canPop = navigator?.canPop() ?? true;
     // 标签模式启用且有标签：消费手势（显示跟手动画），commit 时关标签不退出。
@@ -82,6 +99,8 @@ class RootBackGestureObserver with WidgetsBindingObserver {
 
   @override
   void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
+    // 全屏返回手势：不驱动应用内跟手动画（页面不缩小），松手只退出全屏
+    if (gTabBackFullScreenGesture) return;
     // 标签模式：写入全局手势进度，当前标签页（TabTransition）读取它
     // 做应用内跟手动画（缩小+右移）；系统窗口动画由系统呈现。
     // 非标签模式（根路由返回桌面）：无需应用内驱动。
@@ -97,10 +116,25 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     gTabBackCommitProgress = -1.0;
     gTabBackStartEvent = null;
     gTabBackCurrentEvent = null;
+    gTabBackFullScreenGesture = false;
   }
 
   @override
   void handleCommitBackGesture() {
+    // 全屏返回：只需退出全屏（handleBack 内部处理优先级），不驱动
+    // 标签退出动画/不关标签、也不退桌面
+    if (gTabBackFullScreenGesture) {
+      gTabBackFullScreenGesture = false;
+      tabBackGestureProgress.value = 0.0;
+      gTabBackCommitProgress = -1.0;
+      gTabBackStartEvent = null;
+      gTabBackCurrentEvent = null;
+      if (TabHostController.handleBack()) {
+        return;
+      }
+      SystemNavigator.pop();
+      return;
+    }
     // 锁定手势最后进度：TabTransition 从手势位置续播退出动画
     // （progress 复位前取值，随后复位让 TabTransition 退出跟手模式）
     gTabBackCommitProgress = tabBackGestureProgress.value;

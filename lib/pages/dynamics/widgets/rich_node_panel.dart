@@ -1,4 +1,4 @@
-﻿import 'dart:io' show Platform;
+import 'dart:io' show Platform;
 
 import 'package:PiliPlus/common/widgets/gesture/tap_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -15,7 +15,6 @@ import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
-import 'package:get/get.dart';
 
 const _linkFoldedText = '网页链接';
 
@@ -94,11 +93,11 @@ TextSpan? richNode(
                 style: style,
                 recognizer: NoDeadlineTapGestureRecognizer()
                   ..onTap = () => PageUtils.toSearchResultPage(
-                      keyword: i.origText!.substring(
-                        1,
-                        i.origText!.length - 1,
-                      ),
+                    keyword: i.origText!.substring(
+                      1,
+                      i.origText!.length - 1,
                     ),
+                  ),
               ),
             );
             break;
@@ -190,12 +189,8 @@ TextSpan? richNode(
                   text: '${i.origText} ',
                   style: style,
                   recognizer: NoDeadlineTapGestureRecognizer()
-                    ..onTap = () => Get.toNamed(
-                      '/webview',
-                      parameters: {
-                        'url':
-                            'https://www.bilibili.com/h5/lottery/result?business_id=${item.idStr}',
-                      },
+                    ..onTap = () => PageUtils.toWebview(
+                      'https://www.bilibili.com/h5/lottery/result?business_id=${item.idStr}',
                     ),
                 ),
               );

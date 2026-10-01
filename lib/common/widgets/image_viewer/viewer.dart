@@ -21,6 +21,7 @@ import 'package:PiliPlus/common/widgets/gesture/horizontal_drag_gesture_recogniz
     show touchSlopH;
 import 'package:PiliPlus/common/widgets/gesture/image_horizontal_drag_gesture_recognizer.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -530,7 +531,11 @@ class _ViewerState extends State<Viewer> with SingleTickerProviderStateMixin {
         return;
       }
       _stopFling();
-      final double scaleChange = math.exp(-event.scrollDelta.dy / _scaleFactor);
+      final double scaleChange = math.exp(
+        (Pref.reverseWheelOperation ? 1.0 : -1.0) *
+            event.scrollDelta.dy /
+            _scaleFactor,
+      );
       final Offset local = event.localPosition;
       final Offset focalPointScene = _toScene(local);
       _scale = clampDouble(
