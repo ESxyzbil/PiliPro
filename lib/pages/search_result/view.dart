@@ -8,6 +8,9 @@ import 'package:PiliPlus/pages/search_panel/pgc/view.dart';
 import 'package:PiliPlus/pages/search_panel/user/view.dart';
 import 'package:PiliPlus/pages/search_panel/video/view.dart';
 import 'package:PiliPlus/pages/search_result/controller.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/utils/storage.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -67,6 +70,31 @@ class _SearchResultPageState extends State<SearchResultPage>
     sSearchController?.initIndex = _tabController.index;
   }
 
+  /// 就地改词后重新搜索（回车触发）：开一个新的结果标签（旧结果标签保留，
+  /// 可切回），与搜索页提交的行为一致。
+  void _onSubmitKeyword(String value) {
+    final keyword = value.trim();
+    _searchResultController.focusNode.unfocus();
+    if (keyword.isEmpty || keyword == _searchResultController.keyword) {
+      return;
+    }
+    if (Pref.recordSearchHistory) {
+      final history =
+          List<String>.from(
+              GStorage.historyWord.get('cacheList') ?? const <String>[],
+            )
+            ..remove(keyword)
+            ..insert(0, keyword);
+      GStorage.historyWord.put('cacheList', history);
+    }
+    PageUtils.toSearchResultPage(
+      keyword: keyword,
+      tag: widget.tag,
+      initIndex: _tabController.index,
+      fromSearch: _isFromSearch,
+    );
+  }
+
   @override
   void dispose() {
     _tabController
@@ -87,26 +115,21 @@ class _SearchResultPageState extends State<SearchResultPage>
             width: 1,
           ),
         ),
-        title: GestureDetector(
-          onTap: () {
-            if (_isFromSearch) {
-              Get.back();
-            } else {
-              Get.offNamed(
-                '/search',
-                parameters: {'text': _searchResultController.keyword},
-              );
-            }
-          },
-          behavior: HitTestBehavior.opaque,
-          child: SizedBox(
-            width: double.infinity,
-            child: Text(
-              _searchResultController.keyword,
-              style: theme.textTheme.titleMedium,
-              maxLines: 1,
-            ),
+        // 顶部搜索框：就地可编辑，回车以新关键词重新搜索。
+        // （旧写法是 GestureDetector + Text，点击试图 Get.back()/offNamed，
+        //   在标签页模式下两者都不生效 = "点了没反应"。）
+        title: TextField(
+          controller: _searchResultController.textController,
+          focusNode: _searchResultController.focusNode,
+          style: theme.textTheme.titleMedium,
+          textInputAction: TextInputAction.search,
+          maxLines: 1,
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            hintText: '搜索',
           ),
+          onSubmitted: _onSubmitKeyword,
         ),
       ),
       body: ViewSafeArea(
