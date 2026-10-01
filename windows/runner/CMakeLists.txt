@@ -13,6 +13,8 @@ add_executable(${BINARY_NAME} WIN32
   "win32_window.cpp"
   "smtc_handler.cpp"
   "lyrics_overlay.cpp"
+  "media_transcoder.cpp"
+  "mp4_transcoder.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
@@ -45,6 +47,12 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "gdiplus.lib")
+
+# Media Foundation：保存到本地时的 H.264/AAC 转码
+target_link_libraries(${BINARY_NAME} PRIVATE "mfplat.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "mfreadwrite.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "mfuuid.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "propsys.lib")
 
 # C++/WinRT runtime libraries
 target_link_libraries(${BINARY_NAME} PRIVATE "WindowsApp.lib")

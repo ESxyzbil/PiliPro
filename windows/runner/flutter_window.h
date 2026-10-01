@@ -10,6 +10,7 @@
 
 class SmtcHandler;
 class LyricsOverlay;
+class MediaTranscoder;
 
 class FlutterWindow : public Win32Window {
  public:
@@ -27,6 +28,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<SmtcHandler> smtc_handler_;
   std::unique_ptr<LyricsOverlay> lyrics_overlay_;
+  std::unique_ptr<MediaTranscoder> media_transcoder_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

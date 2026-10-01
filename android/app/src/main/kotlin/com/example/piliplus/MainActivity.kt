@@ -26,6 +26,7 @@ class MainActivity : AudioServiceActivity() {
     private var ocrFrameExtractor: OcrFrameExtractor? = null
     private val downloadProgressChannel = "com.example.piliplus/download_progress"
     private var downloadProgressManager: DownloadProgressManager? = null
+    private var mediaTranscoder: MediaTranscoder? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -202,6 +203,17 @@ class MainActivity : AudioServiceActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+
+        // 保存到本地：合并后的 MP4 转码为 H.264 + AAC
+        val mediaTranscoderChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            MediaTranscoder.CHANNEL_NAME
+        )
+        val transcoder = MediaTranscoder(mediaTranscoderChannel)
+        mediaTranscoder = transcoder
+        mediaTranscoderChannel.setMethodCallHandler { call, result ->
+            transcoder.onMethodCall(call, result)
         }
     }
 
