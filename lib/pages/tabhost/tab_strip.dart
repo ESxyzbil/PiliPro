@@ -14,19 +14,36 @@ class TabStrip extends StatefulWidget {
     required this.controller,
     required this.isExpanded,
     required this.onExpandedChanged,
+    required this.width,
   });
 
   final TabHostController controller;
   final bool isExpanded;
   final ValueChanged<bool> onExpandedChanged;
 
+  /// 标签栏**当前宽度**（由父级 MainApp 用 TweenAnimationBuilder 动画后传入）。
+  /// ⚠️ 宽度动画不再由本组件内部播放：内部播放时父级拿不到"当前宽度"，
+  /// 只能让内容区跟着逐帧变窄 → **逐帧重排整页重内容**（视频页等），
+  /// 用户实测"展开/收起比较卡顿"。现改为：父级负责宽度动画 → 本组件只按
+  /// 给定宽度绘制；内容区尺寸固定为动画**终态**、整体被 Transform 平移
+  ///（只重绘不重排）。
+  final double width;
+
+  /// 收起态 / 展开态宽度（父级据此计算动画目标宽度）
+  static const double collapsedWidth = 52;
+  static const double expandedWidth = 200;
+
+  /// 宽度动画时长（展开/折叠、显隐共用）
+  static const Duration animDuration = Duration(milliseconds: 220);
+
   @override
   State<TabStrip> createState() => _TabStripState();
 }
 
 class _TabStripState extends State<TabStrip> {
-  static const double _collapsedWidth = 52;
-  static const double _expandedWidth = 200;
+  // 收起/展开宽度与动画时长已上移到 TabStrip 的静态常量
+  //（collapsedWidth/expandedWidth/animDuration）——父级 MainApp 需要据此
+  // 计算动画目标宽度与内容区终态尺寸。
 
   /// 当前是否有音频页在后台播放（优先于视频播放判断）
   bool get _audioPlaying => AudioController.isBackgroundPlaying;
@@ -94,8 +111,7 @@ class _TabStripState extends State<TabStrip> {
     final videoPlaying =
         PlPlayerController.instance?.playerStatus.value.isPlaying ?? false;
     // 音频播放状态走各自独立 controller 的 playingState（多音频标签并存）
-    final audioPlaying =
-        _audioCtrOf(tab)?.playingState.value ?? false;
+    final audioPlaying = _audioCtrOf(tab)?.playingState.value ?? false;
     // 播放/暂停按钮展示真实播放状态：
     // - 音频标签：跟随该标签自己的 AudioController 播放状态
     // - 视频标签：当前选中标签（全局播放器）或 后台独立音频播放器在播
@@ -224,16 +240,16 @@ class _TabStripState extends State<TabStrip> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isExpanded = widget.isExpanded;
     // 桌面：悬停展开/移出折叠；手机：触控标签栏展开
-    final child = AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOutCubic,
-      width: isExpanded ? _expandedWidth : _collapsedWidth,
+    // ⚠️ 这里用普通 Container（不再 AnimatedContainer）：宽度由父级动画后
+    // 逐帧传入（见 widget.width 注释），本组件不自持动画，避免与内容区
+    // 位移不同步/重复动画。
+    final child = Container(
+      width: widget.width,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLowest.withValues(alpha: 0.6),
         border: Border(
@@ -263,17 +279,25 @@ class _TabStripState extends State<TabStrip> {
             : _buildCollapsed(colorScheme),
       ),
     );
+    final Widget result;
     if (PlatformUtils.isMobile) {
       // 手机：触控标签栏区域即展开（无悬停）
-      return Listener(
+      result = Listener(
         onPointerDown: (_) => widget.onExpandedChanged(true),
         child: child,
       );
+    } else {
+      result = MouseRegion(
+        onEnter: (_) => widget.onExpandedChanged(true),
+        onExit: (_) => widget.onExpandedChanged(false),
+        child: child,
+      );
     }
-    return MouseRegion(
-      onEnter: (_) => widget.onExpandedChanged(true),
-      onExit: (_) => widget.onExpandedChanged(false),
-      child: child,
+    // 隐藏时：裁剪（宽度动画到 0 期间内容不外溢到内容区）+ 忽略指针事件
+    //（宽度 0 时不可点，避免透明区域挡住内容区触摸）
+    return IgnorePointer(
+      ignoring: widget.width < 0.5,
+      child: ClipRect(child: result),
     );
   }
 
@@ -304,7 +328,8 @@ class _TabStripState extends State<TabStrip> {
                       tooltip: tab.title,
                       icon: tab.icon,
                       selected: curIdx >= 0 && controller.tabs[curIdx] == tab,
-                      onTap: () => controller.select(controller.tabs.indexOf(tab)),
+                      onTap: () =>
+                          controller.select(controller.tabs.indexOf(tab)),
                     ),
                 ],
               ),
@@ -368,10 +393,9 @@ class _TabStripState extends State<TabStrip> {
                         style: IconButton.styleFrom(
                           shape: const CircleBorder(),
                           side: BorderSide(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .outline
-                                .withValues(alpha: 0.4),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outline.withValues(alpha: 0.4),
                           ),
                         ),
                       ),

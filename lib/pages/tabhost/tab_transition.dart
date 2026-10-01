@@ -295,8 +295,12 @@ class _TabTransitionState extends State<TabTransition>
         _controller.duration = const Duration(milliseconds: 200);
         _controller.reverse();
       } else {
-        _controller.duration = const Duration(milliseconds: 400);
         // 解除覆盖（恢复为当前页）：从手势进度续播淡入
+        // ⚠️ 同时复位 _commitFinished——若本层曾 commit 滑出后又被
+        // 恢复，残留 true 会让 build 的 hidden 分支强制 opacity 0
+        //（用户实测：返回再点同一处，进入页面全透明）。
+        _commitFinished = false;
+        _controller.duration = const Duration(milliseconds: 400);
         if (gTabBackCommitProgress >= 0) {
           _controller.value = gTabBackCommitProgress;
           gTabBackCommitProgress = -1.0;
@@ -317,6 +321,9 @@ class _TabTransitionState extends State<TabTransition>
     if (widget.active != _active) {
       _active = widget.active;
       if (widget.active) {
+        // 重新成为当前：复位 commit 完成标志（曾 commit 滑出后被再次
+        // 激活/复活时，不能继续强制透明）
+        _commitFinished = false;
         _fadeExiting = false;
         // 进入：若刚发生手势 commit（目标页从手势位置续播渐显）。
         // ⚠️ gTabBackCommitProgress 专供进入方使用——退出方（当前标签）

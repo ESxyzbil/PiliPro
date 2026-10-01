@@ -7,6 +7,9 @@ import 'package:PiliPlus/pages/audio/view.dart';
 import 'package:PiliPlus/pages/video/reply_reply/view.dart'
     show VideoReplyReplyPanel;
 import 'package:PiliPlus/pages/video/view.dart';
+import 'package:PiliPlus/pages/webview/view.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart'
+    show PlPlayerController;
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -92,18 +95,20 @@ class TabHostController extends GetxController {
 
   static TabHostController? get instance =>
       Get.isRegistered<TabHostController>()
-          ? Get.find<TabHostController>()
-          : null;
+      ? Get.find<TabHostController>()
+      : null;
 
-  /// 手机端横屏模式（由 MainApp 检测设置）：横屏时标签页功能也启用
+  /// 设备当前是否为横向（由 MainApp 按窗口 width >= height 检测，方形屏
+  /// 视为横向）。手机端据此显示/隐藏侧边标签栏——**只跟方向走，不绑定
+  /// 「横屏适配」设置**（用户实测：手表横屏不显示标签栏，根因是旧写法
+  /// 把它与 Pref.useHorizontalLayout 绑定，而该手表横屏适配为关）。
   static bool landscapeMode = false;
 
   /// 标签页功能是否实际启用：桌面端始终；手机端**始终**（竖屏也走标签，
   /// 竖屏标签栏隐藏、标签内容全屏显示——横竖屏切换只是标签栏显隐，
   /// 不销毁重建页面，避免转化时重载）。
   static bool get tabsEnabled =>
-      (PlatformUtils.isDesktop || PlatformUtils.isMobile) &&
-      Pref.desktopTabs;
+      (PlatformUtils.isDesktop || PlatformUtils.isMobile) && Pref.desktopTabs;
 
   /// 当前页面是否为「标签承载的二级页」：标签模式已启用，且页面不是
   /// 独立路由（Navigator 无可 pop 路由 → AppBar 不会自动生成返回箭头）。
@@ -132,17 +137,19 @@ class TabHostController extends GetxController {
   /// [videoHeroTag] 非空时更新对应视频标签（而非当前标签），避免后台
   /// 标签连播时错误更新别的标签；[audioOid] 非空时仅更新该 oid 对应的
   /// 音频标签（多音频标签并存时各自更新，不能更新所有音频标签）。
-  void updateCurrentTabTitle(String title,
-      {String? videoHeroTag, bool isAudio = false, int? audioOid}) {
+  void updateCurrentTabTitle(
+    String title, {
+    String? videoHeroTag,
+    bool isAudio = false,
+    int? audioOid,
+  }) {
     if (isAudio) {
       // 多音频标签并存时，只更新对应 oid 的标签；无 oid 时不更新
       // （避免一个音频页的切歌/连播串改所有音频标签标题）
       if (audioOid == null) return;
       final id = 'audio_$audioOid';
       for (var i = 0; i < tabs.length; i++) {
-        if (tabs[i].isAudio &&
-            tabs[i].id == id &&
-            tabs[i].title != title) {
+        if (tabs[i].isAudio && tabs[i].id == id && tabs[i].title != title) {
           tabs[i].title = title;
           tabs.refresh();
         }
@@ -175,7 +182,8 @@ class TabHostController extends GetxController {
   /// （相关视频/分P 等"页面内派生"场景，而非新开一页）
   void openVideo(Map arguments, {bool replaceCurrent = false}) {
     final id = 'video_${arguments['aid']}_${arguments['cid']}';
-    final title = (arguments['title'] as String?) ??
+    final title =
+        (arguments['title'] as String?) ??
         (arguments['bvid'] as String?) ??
         '视频';
     _open(
@@ -186,8 +194,7 @@ class TabHostController extends GetxController {
       videoHeroTag: arguments['heroTag'] as String?,
       arguments: arguments,
       replaceCurrent: replaceCurrent,
-      childBuilder: (key) =>
-          VideoDetailPageV(key: key, arguments: arguments),
+      childBuilder: (key) => VideoDetailPageV(key: key, arguments: arguments),
     );
   }
 
@@ -206,7 +213,8 @@ class TabHostController extends GetxController {
   /// 打开音频页标签页
   /// [replaceCurrent] 为 true 时替换当前标签（视频页内"听音频"场景）
   void openAudio(Map arguments, {bool replaceCurrent = false}) {
-    final title = (arguments['title'] as String?) ??
+    final title =
+        (arguments['title'] as String?) ??
         (arguments['bvid'] as String?) ??
         '音频';
     _open(
@@ -219,6 +227,37 @@ class TabHostController extends GetxController {
       replaceCurrent: replaceCurrent,
       childBuilder: (key) => AudioPage(key: key, arguments: arguments),
     );
+  }
+
+  /// 打开内置网页标签页（由 PageUtils.toWebview 调用）。
+  /// 同一个 url 复用同一个标签：已存在则切回它，不重复打开。
+  void openWebview({required String url, String? userAgent}) {
+    final id = 'web_$url';
+    _open(
+      id: id,
+      title: '网页',
+      icon: const Icon(Icons.public_outlined, size: 16),
+      isVideo: false,
+      arguments: {'url': url},
+      childBuilder: (key) => WebviewPage(
+        key: key,
+        url: url,
+        tabId: id,
+        userAgent: userAgent,
+      ),
+    );
+  }
+
+  /// 按标签 id 更新标题（内容页自己拿到标题时用，如内置网页的
+  /// onTitleChanged）。不能复用 updateCurrentTabTitle：后台网页标签
+  /// 也要能更新自己的标题，而后者只会改"当前标签"。
+  void updateTabTitle(String id, String title) {
+    if (title.isEmpty) return;
+    final idx = tabs.indexWhere((t) => t.id == id);
+    if (idx >= 0 && tabs[idx].title != title) {
+      tabs[idx].title = title;
+      tabs.refresh();
+    }
   }
 
   /// 打开通用页面标签（搜索/用户主页/收藏夹等）
@@ -277,8 +316,18 @@ class TabHostController extends GetxController {
     if (kDebugMode) {
       debugPrint('_open add new tab id=$id curIdx=${currentIndex.value}');
     }
-    tabs.add(item);
-    select(tabs.length - 1, viaAdd: true);
+    // 插入位置（用户需求：新标签插在"上一个页面"之后，而不是追加到末尾）：
+    // - 当前有标签：插入到当前标签之后（父子相邻，标签顺序与浏览路径一致，
+    //   返回时关掉本标签即回到来源页；标签条上也紧挨着来源页）
+    // - 当前是主内容（currentIndex == -1）：插入到最前面（第一个标签位）
+    final int cur = currentIndex.value;
+    if (cur >= 0 && cur < tabs.length) {
+      tabs.insert(cur + 1, item);
+      select(cur + 1, viaAdd: true);
+    } else {
+      tabs.insert(0, item);
+      select(0, viaAdd: true);
+    }
   }
 
   /// 用新标签替换指定位置的旧标签——旧标签**保活为下层**（不销毁，
@@ -287,7 +336,9 @@ class TabHostController extends GetxController {
   /// 避免"来源页销毁重建 → 重播完整进入动画"）。
   void _replaceTab(int index, TabItem newTab) {
     if (kDebugMode) {
-      debugPrint('_replaceTab idx=$index old=${index < tabs.length ? tabs[index].id : "OOB"} new=${newTab.id}');
+      debugPrint(
+        '_replaceTab idx=$index old=${index < tabs.length ? tabs[index].id : "OOB"} new=${newTab.id}',
+      );
     }
     final old = tabs[index];
     // 来源链：返回时恢复到被覆盖的下层（old 自身保活，逐层返回）
@@ -308,6 +359,8 @@ class TabHostController extends GetxController {
     tabs.refresh();
     currentIndex.value = index + 1;
     _notifyShow(newTab);
+    // 防御：确保 currentIndex 仍指向可见标签
+    ensureValidCurrent();
     if (kDebugMode) {
       debugPrint('_replaceTab done now=${tabs.length} tabs cur=$currentIndex');
     }
@@ -329,6 +382,13 @@ class TabHostController extends GetxController {
   void select(int index, {bool viaAdd = false}) {
     if (index < -1 || index >= tabs.length) return;
     if (index >= 0 && tabs[index].hidden) return;
+    // 复活：选中仍在关闭动画中(closing)的标签（450ms 移除定时器触发前
+    // 用户又点它/再次打开同 id）——取消关闭、允许重新激活。否则残留
+    // closing/commitFinished 会让页面透明或稍后被定时器误删。
+    if (index >= 0 && tabs[index].closing) {
+      tabs[index].closing = false;
+      tabs.refresh();
+    }
     final old = currentIndex.value;
     if (old == index) return;
     if (old >= 0 && old < tabs.length) {
@@ -346,6 +406,90 @@ class TabHostController extends GetxController {
 
   /// 切回主内容页
   void selectMain() => select(-1);
+
+  /// 关闭 [index] 后应显示的标签：按标签条**显示顺序**取它前面的最近一个
+  /// **可见**标签；不存在（它是第一个可见标签，或前面全是 hidden 保活层）
+  /// 则返回 -1（主内容页）。
+  /// ⚠️ 用户需求：当前标签被销毁时回到列表顺序上的「前一个标签」，
+  /// **不回退到后面的标签**。必须跳过 hidden 保活层——hidden 层按 covered
+  /// 渲染（opacity 0 + Offstage），若 currentIndex 落在它上面会「整个页面
+  /// 空白」（用户实测：关闭某个页面后不进入任何标签页、整页空白）；也必须
+  /// 排除被关闭标签自身（否则 currentIndex 不变、退出动画不触发）。
+  int _visibleNeighborForClose(int index) {
+    for (var i = index - 1; i >= 0; i--) {
+      if (!tabs[i].hidden) return i;
+    }
+    return -1;
+  }
+
+  /// 离 [from] 最近的可见（非 hidden）标签索引（先左后右）；无则 -1。
+  int nearestVisibleIndex(int from) {
+    if (tabs.isEmpty) return -1;
+    final start = from < 0 ? 0 : (from >= tabs.length ? tabs.length - 1 : from);
+    for (var d = 0; d < tabs.length; d++) {
+      final left = start - d;
+      if (left >= 0 && !tabs[left].hidden) return left;
+      final right = start + d;
+      if (right < tabs.length && !tabs[right].hidden) return right;
+    }
+    return -1;
+  }
+
+  /// 保证 currentIndex 恒为合法值：-1（主内容页）或指向**可见**标签。
+  /// ⚠️ 任何改动 tabs（移除/插入/隐藏）之后都必须调用：否则 currentIndex
+  /// 可能落在 hidden 保活层（渲染透明 → 整页空白）、越界（Stack 无可见层
+  /// → 整页空白）或指向空列表（主内容 opacity 判定失配 → 整页空白）。
+  void ensureValidCurrent() {
+    final cur = currentIndex.value;
+    if (tabs.isEmpty) {
+      if (cur != -1) currentIndex.value = -1;
+      return;
+    }
+    final bool visible = cur >= 0 && cur < tabs.length && !tabs[cur].hidden;
+    if (visible) return;
+    if (cur == -1) {
+      // 主内容页：顺手清理孤儿 hidden 层（不再被任何标签的 source 引用）
+      _pruneOrphanHidden();
+      return;
+    }
+    // 越界或指向 hidden 层：修正到最近的可见标签；没有可见标签则回主内容
+    final fixed = nearestVisibleIndex(cur < 0 ? 0 : cur);
+    if (fixed >= 0) {
+      currentIndex.value = fixed;
+      _notifyShow(tabs[fixed]);
+    } else {
+      currentIndex.value = -1;
+      _pruneOrphanHidden();
+    }
+  }
+
+  /// 清理"孤儿 hidden 保活层"：hidden 层是 replaceCurrent 前进时被覆盖的
+  /// 来源页，正常由后继标签的 source 引用、返回时恢复；若已无任何标签引用
+  /// 它（source 链断裂，例如后继标签被直接关闭），它永远不会恢复——属于
+  /// 泄漏（占内存、干扰索引计算），直接移除。
+  void _pruneOrphanHidden() {
+    if (tabs.isEmpty) return;
+    final referenced = <TabItem>{};
+    for (final t in tabs) {
+      final s = t.source;
+      if (s != null && s != t) referenced.add(s);
+    }
+    final orphans = tabs
+        .where((t) => t.hidden && !referenced.contains(t))
+        .toList();
+    if (orphans.isEmpty) return;
+    for (final o in orphans) {
+      _notifyHide(o, autoAudio: false);
+      _stopBgAudio(o);
+      o.bgPlayer?.dispose();
+      o.bgPlayer = null;
+      tabs.remove(o);
+    }
+    tabs.refresh();
+    if (kDebugMode) {
+      debugPrint('_pruneOrphanHidden removed=${orphans.length}');
+    }
+  }
 
   /// 关闭标签（先播退出动画，动画结束后再暂停页面并真正移除）
   void close(int index) {
@@ -376,17 +520,18 @@ class TabHostController extends GetxController {
       }
       _notifyShow(source);
       // 退出动画结束后：暂停本页 + 真正移除
+      // ⚠️ 若期间该标签被复活（select 取消 closing），不再移除
       Future<void>.delayed(const Duration(milliseconds: 450), () {
-        if (!tabs.contains(tab)) return;
+        if (!tabs.contains(tab) || !tab.closing) return;
         _notifyHide(tab, autoAudio: false);
         final removedAt = tabs.indexOf(tab);
         if (currentIndex.value > removedAt) {
           currentIndex.value--;
         }
         tabs.remove(tab);
-        if (currentIndex.value >= tabs.length) {
-          currentIndex.value = tabs.length - 1;
-        }
+        // 移除后统一校验 currentIndex（越界/hidden/空表 → 修正），
+        // 否则可能停在 hidden 保活层或空列表 → 整页空白
+        ensureValidCurrent();
       });
       return;
     }
@@ -399,13 +544,20 @@ class TabHostController extends GetxController {
       if (tabs.length <= 1) {
         currentIndex.value = -1;
       } else {
-        // 切到"前一个"标签（index==0 时切到下一个）。
+        // 切到最近的**可见**标签（index==0 时切到下一个）。
         // 注意不能用 (index+1).clamp(0, len-1)：关闭最后一个标签时
         // next==index，currentIndex 不变，active 不变 → reverse 不触发，
         // 退出动画根本不会播（用户实测"返回后没有动画，片刻后删除"）。
-        final next = index > 0 ? index - 1 : 1;
-        currentIndex.value = next;
-        _notifyShow(tabs[next]);
+        // ⚠️ 也不能直接用 index-1/1：左侧邻居可能是 replaceCurrent 保活的
+        // hidden 层（covered 渲染 opacity 0）→ 关闭后整页空白（用户实测）；
+        // 没有其他可见标签时回主内容页。
+        final next = _visibleNeighborForClose(index);
+        if (next < 0) {
+          currentIndex.value = -1;
+        } else {
+          currentIndex.value = next;
+          _notifyShow(tabs[next]);
+        }
       }
     } else {
       // 关闭的是后台标签：停止并销毁其后台音频播放器。
@@ -419,8 +571,9 @@ class TabHostController extends GetxController {
     // 触发重建：TabTransition active 变 false → reverse 播退出动画
     tabs.refresh();
     // 动画结束后：暂停页面（切走逻辑）+ 真正移除
+    // ⚠️ 若期间该标签被复活（select 取消 closing），不再移除
     Future<void>.delayed(const Duration(milliseconds: 450), () {
-      if (!tabs.contains(tab)) return;
+      if (!tabs.contains(tab) || !tab.closing) return;
       _notifyHide(tab, autoAudio: false);
       // 先修正索引再移除：若当前选中在关闭标签之后，移除后整体左移
       // 一位，currentIndex 同步减一（否则会指向错误的标签，且 Obx
@@ -430,10 +583,9 @@ class TabHostController extends GetxController {
         currentIndex.value--;
       }
       tabs.remove(tab);
-      // 移除后若当前索引越界则修正（选中最后标签）
-      if (currentIndex.value >= tabs.length) {
-        currentIndex.value = tabs.length - 1;
-      }
+      // 移除后统一校验 currentIndex（越界/hidden/空表 → 修正），
+      // 否则可能停在 hidden 保活层（透明）或空列表 → 整页空白
+      ensureValidCurrent();
     });
   }
 
@@ -479,21 +631,44 @@ class TabHostController extends GetxController {
   /// [closeAll] 为 true 时关闭全部标签（对应"返回主页"）。
   static bool handleBack({bool closeAll = false}) {
     final tc = instance;
-    if (tc == null) return false;
-    // 标签功能未启用（手机竖屏等）时：即使有残留标签也不参与返回
-    // （竖屏标签栏隐藏，按返回应退出/走正常路由，而非关残留标签）
-    if (!tabsEnabled) return false;
+    final bool tabMode = tc != null && tabsEnabled;
     // ⚠️ 评论详情 bottom sheet（showBottomSheet 非 modal，不参与 Navigator
     // 路由）打开时：返回键不会自动关闭它，事件会直达这里——先关闭评论
     // 详情，不关标签不退桌面（用户实测：评论区点评论详情后返回直接退桌面）。
     // 再按一次返回才关标签/退桌面。
-    if (VideoReplyReplyPanel.closeSheet()) {
+    if (tabMode && VideoReplyReplyPanel.closeSheet()) {
       return true;
     }
+    // "返回主页"（显式按钮意图）：优先于全屏取消，直接关全部标签
     if (closeAll) {
+      if (!tabMode) return false;
       tc.closeAll();
       return true;
     }
+    // ⚠️ 视频全屏/控制锁/桌面 PIP 的返回优先级（用户需求：全屏播放时返回
+    // 应**取消全屏**，而不是退出当前页面/退桌面）。优先级与
+    // PlPlayerController.onPopInvokedWithResult 一致：控制锁 → PIP → 全屏。
+    // ⚠️ 必须在 tabsEnabled 判定之前：路由模式（非标签）的左上角返回按钮
+    // 与预测性返回手势同样经过这里，否则全屏时返回会直接退出页面/退桌面。
+    final player = PlPlayerController.instance;
+    if (player != null) {
+      if (player.controlsLock.value) {
+        player.onLockControl(false);
+        return true;
+      }
+      if (player.isDesktopPip) {
+        player.exitDesktopPip();
+        return true;
+      }
+      if (player.isFullScreen.value) {
+        player.triggerFullScreen(status: false);
+        return true;
+      }
+    }
+    if (tc == null) return false;
+    // 标签功能未启用（手机竖屏等）时：即使有残留标签也不参与返回
+    // （竖屏标签栏隐藏，按返回应退出/走正常路由，而非关残留标签）
+    if (!tabsEnabled) return false;
     // ⚠️ 有可 pop 的二级路由（前台全屏页，如通知页/设置页）时：返回应
     // 交给 GetX 正常 pop 该路由，不能关标签——否则前台全屏页与标签页
     // 同时响应返回（用户实测：侧栏开通知页后按返回，通知页和标签页
@@ -502,6 +677,9 @@ class TabHostController extends GetxController {
     if (Get.key.currentState?.canPop() ?? false) {
       return false;
     }
+    // 防御：currentIndex 可能因异常路径落在 hidden 保活层/越界（表现为
+    // "整页空白"）——先修正到可见标签或主内容，再决定返回行为
+    tc.ensureValidCurrent();
     if (tc.currentIndex.value >= 0) {
       tc.close(tc.currentIndex.value);
       return true;
@@ -535,8 +713,7 @@ class TabHostController extends GetxController {
       case '/videoV':
         if (arguments is Map) {
           PageUtils.toVideoPage(
-            videoType: (arguments['videoType'] as VideoType?) ??
-                VideoType.ugc,
+            videoType: (arguments['videoType'] as VideoType?) ?? VideoType.ugc,
             aid: arguments['aid'] as int?,
             bvid: arguments['bvid'] as String?,
             cid: (arguments['cid'] as int?) ?? 0,
@@ -566,7 +743,8 @@ class TabHostController extends GetxController {
             oid: (arguments['oid'] as int?) ?? 0,
             subId: (arguments['subId'] as List?)?.cast<int>(),
             itemType: (arguments['itemType'] as int?) ?? 1,
-            from: (arguments['from'] as PlaylistSource?) ??
+            from:
+                (arguments['from'] as PlaylistSource?) ??
                 PlaylistSource.DEFAULT,
             heroTag: arguments['heroTag'] as String?,
             start: arguments['start'] as Duration?,
@@ -639,8 +817,7 @@ class TabHostController extends GetxController {
             oid: (args['oid'] as int?) ?? 0,
             subId: (args['subId'] as List?)?.cast<int>(),
             itemType: (args['itemType'] as int?) ?? 1,
-            from: (args['from'] as PlaylistSource?) ??
-                PlaylistSource.DEFAULT,
+            from: (args['from'] as PlaylistSource?) ?? PlaylistSource.DEFAULT,
             heroTag: args['heroTag'] as String?,
             start: args['start'] as Duration?,
             audioUrl: args['audioUrl'] as String?,
@@ -698,8 +875,7 @@ class TabHostController extends GetxController {
             audioUrl.isNotEmpty &&
             !AudioController.isBackgroundPlaying) {
           // 记录当前播放位置，后台音频从该位置续播
-          tab.bgPosition =
-              (pc?.position as Duration?) ?? tab.bgPosition;
+          tab.bgPosition = (pc?.position as Duration?) ?? tab.bgPosition;
           _startBgAudio(tab, audioUrl);
         }
       } catch (_) {
