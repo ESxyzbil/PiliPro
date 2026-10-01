@@ -16,6 +16,7 @@ import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
@@ -231,6 +232,21 @@ class MainController extends GetxController
   void setNavBarConfig() {
     List<int>? navBarSort =
         (GStorage.setting.get(SettingBoxKey.navBarSort) as List?)?.fromCast();
+    if (navBarSort != null && navBarSort.isNotEmpty) {
+      // 一次性迁移：新增「网页」入口后，老版本保存的 navBarSort 里没有这个
+      // 枚举项（老用户看不到第四个图标）。这里补到末尾并落盘；迁移只做一次，
+      // 之后用户在设置里取消该入口不会被自动加回。
+      if (!GStorage.setting.get(
+        SettingBoxKey.navBarNewEntryMerged,
+        defaultValue: false,
+      )) {
+        GStorage.setting.put(SettingBoxKey.navBarNewEntryMerged, true);
+        if (!navBarSort.contains(NavigationBarType.web.index)) {
+          navBarSort = [...navBarSort, NavigationBarType.web.index];
+          GStorage.setting.put(SettingBoxKey.navBarSort, navBarSort);
+        }
+      }
+    }
     late final List<NavigationBarType> navigationBars;
     if (navBarSort == null || navBarSort.isEmpty) {
       navigationBars = NavigationBarType.values;
@@ -240,8 +256,13 @@ class MainController extends GetxController
           .toList();
     }
     this.navigationBars = navigationBars;
-    final defPage = Pref.defaultHomePage;
-    selectedIndex.value = navigationBars.indexOf(defPage);
+    // 「网页」是启动器入口（点击开标签页），不是主页内容页：默认启动页若
+    // 指向它（或该入口已被移除）会渲染成空白，这里回退到第一个内容页。
+    int idx = navigationBars.indexOf(Pref.defaultHomePage);
+    if (idx < 0 || navigationBars[idx].isLauncher) {
+      idx = navigationBars.indexWhere((e) => !e.isLauncher);
+    }
+    selectedIndex.value = idx < 0 ? 0 : idx;
   }
 
   void checkDefaultSearch([bool shouldCheck = false]) {
@@ -296,6 +317,12 @@ class MainController extends GetxController
     feedBack();
 
     final currentNav = navigationBars[value];
+    // 「网页」入口：不切换主页内容页（它是启动器），直接在标签页中打开
+    // 哔哩哔哩网页版（Windows/Android 都走 PC 桌面配置）。
+    if (currentNav.isLauncher) {
+      PageUtils.openBiliWeb();
+      return;
+    }
     if (value != selectedIndex.value) {
       selectedIndex.value = value;
       // 同步全局背景层当前 tab

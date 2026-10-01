@@ -23,7 +23,20 @@ enum NavigationBarType implements EnumWithLabel {
     Icon(Icons.person, size: 24),
     MinePage(),
   ),
+  // 第四个入口：「网页」——不是主页内容页，点击由 MainController.setIndex
+  // 拦截，直接在多页面标签页中打开网页（见 PageUtils.openBiliWeb）。
+  // page 只是占位（该入口永远不会成为主页 PageView 的当前页）。
+  web(
+    '网页',
+    Icon(Icons.public_outlined, size: 24),
+    Icon(Icons.public, size: 24),
+    SizedBox.shrink(),
+  ),
   ;
+
+  /// 是否为「启动器入口」：点击不切换主页内容页，而是触发外部动作
+  /// （当前仅 web：在标签页中打开哔哩哔哩网页版）。
+  bool get isLauncher => this == NavigationBarType.web;
 
   @override
   final String label;
