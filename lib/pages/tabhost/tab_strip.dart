@@ -4,7 +4,7 @@ import 'package:PiliPlus/pages/video/introduction/pgc/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 
 /// 侧边标签栏（方案 C）：默认只显示图标；桌面悬停 / 手机触控展开
@@ -65,7 +65,7 @@ class _TabStripState extends State<TabStrip> {
     }
     final pc = PlPlayerController.instance;
     if (pc != null) {
-      if (pc.playerStatus.value.isPlaying) {
+      if (pc.playerStatus.isPlaying) {
         pc.pause();
       } else {
         pc.play();
@@ -109,7 +109,7 @@ class _TabStripState extends State<TabStrip> {
     // 仅媒体标签（视频/音频）才显示播放控制
     final isMediaTab = tab.isVideo || tab.isAudio;
     final videoPlaying =
-        PlPlayerController.instance?.playerStatus.value.isPlaying ?? false;
+        PlPlayerController.instance?.playerStatus.isPlaying ?? false;
     // 音频播放状态走各自独立 controller 的 playingState（多音频标签并存）
     final audioPlaying = _audioCtrOf(tab)?.playingState.value ?? false;
     // 播放/暂停按钮展示真实播放状态：

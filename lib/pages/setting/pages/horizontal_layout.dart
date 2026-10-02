@@ -1,7 +1,7 @@
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 横屏适配设置页（用户要求：把原来的「横屏适配」开关拆成一个可点进去的
 /// 设置项，包含两部分）：

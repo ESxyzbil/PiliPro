@@ -1,6 +1,6 @@
 import 'package:PiliPlus/services/ocr/ocr_model_manager.dart';
 import 'package:PiliPlus/services/ocr/ocr_service.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 
 /// OCR 歌词模型下载管理页（懒下载，仅 arm64 设备）

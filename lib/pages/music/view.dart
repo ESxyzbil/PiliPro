@@ -7,6 +7,10 @@ import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/hero.dart';
 import 'package:PiliPlus/common/widgets/marquee.dart';
+import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
+import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
+import 'package:PiliPlus/common/widgets/selection_text.dart';
+import 'package:PiliPlus/common/widgets/sliver/sliver_to_box_adapter.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/music.dart';
 import 'package:PiliPlus/models/common/image_preview_type.dart';
@@ -28,10 +32,10 @@ import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MusicDetailPage extends StatefulWidget {
   const MusicDetailPage({super.key});
@@ -52,18 +56,18 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: _buildAppBar(),
-      body: Padding(
-        padding: EdgeInsets.only(left: padding.left, right: padding.right),
-        child: isPortrait
-            ? refreshIndicator(
-                onRefresh: controller.onRefresh,
-                child: _buildBody(theme),
-              )
-            : _buildBody(theme),
+    return fabAnimWrapper(
+      child: SimpleScaffold(
+        appBar: _buildAppBar(),
+        body: Padding(
+          padding: EdgeInsets.only(left: padding.left, right: padding.right),
+          child: isPortrait
+              ? refreshIndicator(
+                  onRefresh: controller.onRefresh,
+                  child: _buildBody(),
+                )
+              : _buildBody(),
+        ),
       ),
     );
   }
@@ -107,7 +111,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
           ],
   );
 
-  Widget _buildBody(ThemeData theme) => Obx(() {
+  Widget _buildBody() => Obx(() {
     switch (controller.infoState.value) {
       case Success(:final response):
         double padding = max(maxWidth / 2 - Grid.smallCardWidth, 0);
@@ -116,17 +120,18 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
           child = Padding(
             padding: EdgeInsets.symmetric(horizontal: padding),
             child: CustomScrollView(
-              controller: scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverToBoxAdapter(
-                  child: _buildCard(theme, response, maxWidth),
+                SliverToBoxWithOffsetAdapter(
+                  offset: 45,
+                  onVisibilityChanged: controller.showTitle.call,
+                  child: _buildCard(response, maxWidth),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildChart(theme, response, maxWidth),
+                  child: _buildChart(response, maxWidth),
                 ),
-                buildReplyHeader(theme),
-                Obx(() => replyList(theme, controller.loadingState.value)),
+                buildReplyHeader(),
+                Obx(() => replyList(controller.loadingState.value)),
               ],
             ),
           );
@@ -142,7 +147,6 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
               Expanded(
                 flex: flex,
                 child: CustomScrollView(
-                  controller: scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
                     SliverPadding(
@@ -150,7 +154,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
                         left: padding,
                       ),
                       sliver: SliverToBoxAdapter(
-                        child: _buildCard(theme, response, leftWidth),
+                        child: _buildCard(response, leftWidth),
                       ),
                     ),
                     SliverPadding(
@@ -159,7 +163,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
                         bottom: this.padding.bottom + 100,
                       ),
                       sliver: SliverToBoxAdapter(
-                        child: _buildChart(theme, response, leftWidth),
+                        child: _buildChart(response, leftWidth),
                       ),
                     ),
                   ],
@@ -169,19 +173,15 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
                 flex: flex1,
                 child: Padding(
                   padding: EdgeInsets.only(right: padding),
-                  child: Scaffold(
-                    backgroundColor: Colors.transparent,
-                    resizeToAvoidBottomInset: false,
+                  child: MiniScaffold(
                     body: refreshIndicator(
                       onRefresh: controller.onRefresh,
                       child: CustomScrollView(
-                        controller: scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [
-                          buildReplyHeader(theme),
+                          buildReplyHeader(),
                           Obx(
-                            () =>
-                                replyList(theme, controller.loadingState.value),
+                            () => replyList(controller.loadingState.value),
                           ),
                         ],
                       ),
@@ -192,23 +192,19 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
             ],
           );
         }
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            child,
-            _buildBottom(theme, response),
-          ],
+        return ScaffoldLayout(
+          body: child,
+          fab: _buildBottom(response),
         );
       default:
         return const SizedBox.shrink();
     }
   });
 
-  Widget _buildBottom(ThemeData theme, MusicDetail item) {
+  Widget _buildBottom(MusicDetail item) {
     if (!controller.showDynActionBar) {
-      return Positioned(
-        right: kFloatingActionButtonMargin,
-        bottom: 0,
+      return Padding(
+        padding: const .only(right: kFloatingActionButtonMargin),
         child: SlideTransition(
           position: fabAnimation,
           child: fabButton,
@@ -248,110 +244,104 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
       );
     }
 
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: SlideTransition(
-        position: fabAnimation,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                right: kFloatingActionButtonMargin,
-                bottom: kFloatingActionButtonMargin,
-              ),
-              child: replyButton,
+    return SlideTransition(
+      position: fabAnimation,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(
+              right: kFloatingActionButtonMargin,
+              bottom: kFloatingActionButtonMargin,
             ),
-            Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(
-                  top: BorderSide(
-                    color: theme.colorScheme.outline.withValues(
-                      alpha: 0.08,
-                    ),
+            child: replyButton,
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              border: Border(
+                top: BorderSide(
+                  color: theme.colorScheme.outline.withValues(
+                    alpha: 0.08,
                   ),
                 ),
               ),
-              padding: EdgeInsets.only(bottom: padding.bottom),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  // TODO
-                  // Expanded(
-                  //   child: textIconButton(
-                  //     icon: FontAwesomeIcons.shareFromSquare,
-                  //     text: '转发',
-                  //     count: item.musicShares,
-                  //     onPressed: () {
-                  //       final data = controller.infoState.value.dataOrNull;
-                  //       if (data != null) {
-                  //         showModalBottomSheet(
-                  //           context: context,
-                  //           isScrollControlled: true,
-                  //           useSafeArea: true,
-                  //           builder: (context) => RepostPanel(
-                  //             rid: controller.oid,
-                  //             dynType: null,
-                  //             pic: data.mvCover,
-                  //             title: data.musicTitle,
-                  //           ),
-                  //         );
-                  //       }
-                  //     },
-                  //   ),
-                  // ),
-                  Expanded(
-                    child: textIconButton(
-                      icon: CustomIcons.share_node,
-                      text: '分享',
-                      onPressed: () =>
-                          ShareUtils.shareText(controller.shareUrl),
-                    ),
-                  ),
-                  Expanded(
-                    child: Builder(
-                      builder: (context) => textIconButton(
-                        icon: FontAwesomeIcons.thumbsUp,
-                        activatedIcon: FontAwesomeIcons.solidThumbsUp,
-                        text: '点赞',
-                        count: item.wishCount,
-                        status: item.wishListen ?? false,
-                        onPressed: () async {
-                          if (!Accounts.main.isLogin) {
-                            SmartDialog.showToast('请先登录');
-                            return;
-                          }
-                          final hasLike = item.wishListen ?? false;
-                          final res = await MusicHttp.wishUpdate(
-                            controller.musicId,
-                            hasLike,
-                          );
-                          if (res.isSuccess) {
-                            if (hasLike) {
-                              item.wishCount--;
-                            } else {
-                              item.wishCount++;
-                            }
-                            item.wishListen = !hasLike;
-                            if (context.mounted) {
-                              (context as Element).markNeedsBuild();
-                            }
-                          } else {
-                            res.toast();
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
-          ],
-        ),
+            padding: EdgeInsets.only(bottom: padding.bottom),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                // TODO
+                // Expanded(
+                //   child: textIconButton(
+                //     icon: FontAwesomeIcons.shareFromSquare,
+                //     text: '转发',
+                //     count: item.musicShares,
+                //     onPressed: () {
+                //       final data = controller.infoState.value.dataOrNull;
+                //       if (data != null) {
+                //         showModalBottomSheet(
+                //           context: context,
+                //           isScrollControlled: true,
+                //           useSafeArea: true,
+                //           builder: (context) => RepostPanel(
+                //             rid: controller.oid,
+                //             dynType: null,
+                //             pic: data.mvCover,
+                //             title: data.musicTitle,
+                //           ),
+                //         );
+                //       }
+                //     },
+                //   ),
+                // ),
+                Expanded(
+                  child: textIconButton(
+                    icon: CustomIcons.share_node,
+                    text: '分享',
+                    onPressed: () => ShareUtils.shareText(controller.shareUrl),
+                  ),
+                ),
+                Expanded(
+                  child: Builder(
+                    builder: (context) => textIconButton(
+                      icon: FontAwesomeIcons.thumbsUp,
+                      activatedIcon: FontAwesomeIcons.solidThumbsUp,
+                      text: '点赞',
+                      count: item.wishCount,
+                      status: item.wishListen ?? false,
+                      onPressed: () async {
+                        if (!Accounts.main.isLogin) {
+                          SmartDialog.showToast('请先登录');
+                          return;
+                        }
+                        final hasLike = item.wishListen ?? false;
+                        final res = await MusicHttp.wishUpdate(
+                          controller.musicId,
+                          hasLike,
+                        );
+                        if (res.isSuccess) {
+                          if (hasLike) {
+                            item.wishCount--;
+                          } else {
+                            item.wishCount++;
+                          }
+                          item.wishListen = !hasLike;
+                          if (context.mounted) {
+                            (context as Element).markNeedsBuild();
+                          }
+                        } else {
+                          res.toast();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -387,8 +377,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
 
   Widget _buildRank(
     int? rank,
-    String name,
-    ThemeData theme, [
+    String name, [
     VoidCallback? onTap,
   ]) {
     final outline = theme.colorScheme.outline;
@@ -424,7 +413,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
           );
   }
 
-  Widget _buildCard(ThemeData theme, MusicDetail item, double maxWidth) {
+  Widget _buildCard(MusicDetail item, double maxWidth) {
     final textTheme = theme.textTheme;
     return SizedBox(
       width: maxWidth,
@@ -555,7 +544,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              SelectableText(
+              SelectionText(
                 [
                   if (!(item.originArtist ?? item.originArtistList)
                       .isNullOrEmpty)
@@ -569,12 +558,11 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('热歌榜排名'),
-                  _buildRank(item.hotSongHeat?.lastHeat, '热度', theme),
-                  _buildRank(item.listenPv, '总播放量', theme),
+                  _buildRank(item.hotSongHeat?.lastHeat, '热度'),
+                  _buildRank(item.listenPv, '总播放量'),
                   _buildRank(
                     item.musicRelation,
                     '使用稿件量',
-                    theme,
                     () => Get.to(
                       const MusicRecommendPage(),
                       arguments: (id: controller.musicId, item: item),
@@ -589,7 +577,7 @@ class _MusicDetailPageState extends CommonDynPageState<MusicDetailPage> {
     );
   }
 
-  Widget? _buildChart(ThemeData theme, MusicDetail item, double maxWidth) {
+  Widget? _buildChart(MusicDetail item, double maxWidth) {
     final heat = item.hotSongHeat?.songHeat;
     if (heat == null || heat.isEmpty) return null;
     final colorScheme = theme.colorScheme;

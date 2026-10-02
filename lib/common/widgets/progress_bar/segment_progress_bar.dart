@@ -24,8 +24,8 @@ import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart' show TapGestureRecognizer;
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestEntry;
+import 'package:material_ui/material_ui.dart';
 
 @immutable
 sealed class BaseSegment {
@@ -252,13 +252,7 @@ class RenderViewPointProgressBar
               ),
             ),
           )
-          ..pushStyle(
-            ui.TextStyle(
-              color: Colors.white,
-              fontSize: size,
-              height: 1,
-            ),
-          )
+          ..pushStyle(.new(color: Colors.white, fontSize: size, height: 1))
           ..addText(title);
     return builder.build()
       ..layout(const ui.ParagraphConstraints(width: double.infinity));

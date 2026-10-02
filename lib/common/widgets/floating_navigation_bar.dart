@@ -4,7 +4,7 @@
 
 import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 const double _kMaxLabelTextScaleFactor = 1.3;
 

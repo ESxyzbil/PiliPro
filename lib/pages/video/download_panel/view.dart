@@ -27,10 +27,10 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kReleaseMode;
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:super_sliver_list/super_sliver_list.dart';
 
 class DownloadPanel extends StatefulWidget {
@@ -383,7 +383,7 @@ class _DownloadPanelState extends State<DownloadPanel> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: SizedBox(
-        height: 98,
+        height: 110,
         child: Builder(
           builder: (context) {
             return Material(
@@ -412,8 +412,8 @@ class _DownloadPanelState extends State<DownloadPanel> {
                           children: [
                             NetworkImgLayer(
                               src: cover,
-                              width: 140.8,
-                              height: 88,
+                              width: 160,
+                              height: 100,
                               cacheWidth: cacheWidth,
                             ),
                             if (duration != null && duration > 0)

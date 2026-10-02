@@ -1,10 +1,11 @@
 package com.example.piliplus
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
+import android.view.WindowManager.LayoutParams
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
@@ -16,8 +17,6 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
 
     private val shortcutChannel = "com.example.piliplus/shortcuts"
-    private lateinit var liveUpdateManager: LiveUpdateManager
-    private val liveUpdateChannel = "com.example.piliplus/live_update"
     private val asrAudioChannel = "com.example.piliplus/asr_audio"
     private val asrAudioEventsChannel = "com.example.piliplus/asr_audio_events"
     private var asrAudioBridge: AsrAudioBridge? = null
@@ -30,32 +29,6 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        liveUpdateManager = LiveUpdateManager(this)
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            liveUpdateChannel
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "updateMusic" -> {
-                    val args = call.arguments as Map<*, *>
-                    liveUpdateManager.updateMusic(
-                        songTitle = args["songTitle"] as? String ?: "",
-                        currentLyric = args["currentLyric"] as? String ?: "",
-                        nextLyric = args["nextLyric"] as? String ?: "",
-                        progress = args["progress"] as? Int ?: 0,
-                        maxProgress = args["maxProgress"] as? Int ?: 100,
-                        isPlaying = args["isPlaying"] as? Boolean ?: false
-                    )
-                    result.success(true)
-                }
-                "endMusic" -> {
-                    liveUpdateManager.endMusic()
-                    result.success(true)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
         // 缓存下载进度通知
         downloadProgressManager = DownloadProgressManager(this)
@@ -157,8 +130,13 @@ class MainActivity : AudioServiceActivity() {
                     val args = call.arguments as Map<*, *>
                     val id = (args["id"] as? Number)?.toLong() ?: 0L
                     val name = args["name"] as? String ?: ""
-                    addCollectionShortcut(id, name)
-                    result.success(true)
+                    result.success(addCollectionShortcut(id, name))
+                }
+                "pinCollectionShortcut" -> {
+                    val args = call.arguments as Map<*, *>
+                    val id = (args["id"] as? Number)?.toLong() ?: 0L
+                    val name = args["name"] as? String ?: ""
+                    result.success(pinCollectionShortcut(id, name))
                 }
                 "removeShortcut" -> {
                     val shortcutId = call.arguments as? String ?: ""
@@ -217,19 +195,52 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
-    private fun addCollectionShortcut(id: Long, name: String) {
-        val shortcutId = "collection_$id"
-        val intent = Intent(this, MainActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            data = android.net.Uri.parse("bilibili://fav/detail/$id")
-        }
-        val shortcut = ShortcutInfoCompat.Builder(this, shortcutId)
+    private fun favShortcut(id: Long, name: String) =
+        ShortcutInfoCompat.Builder(this, "collection_$id")
             .setShortLabel(name)
             .setLongLabel(name)
             .setIcon(IconCompat.createWithResource(this, R.drawable.ic_shortcut_fav))
-            .setIntent(intent)
+            .setIntent(
+                Intent(this, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    data = android.net.Uri.parse("bilibili://fav/detail/$id")
+                }
+            )
             .build()
-        ShortcutManagerCompat.pushDynamicShortcut(this, shortcut)
+
+    // 加入桌面长按菜单。pushDynamicShortcut 不抛异常不代表桌面会显示，
+    // 这里回读动态快捷方式列表，把真实结果给 Dart 侧提示。
+    private fun addCollectionShortcut(id: Long, name: String): Boolean {
+        val shortcutId = "collection_$id"
+        ShortcutManagerCompat.pushDynamicShortcut(this, favShortcut(id, name))
+        val listed = ShortcutManagerCompat.getDynamicShortcuts(this)
+            .orEmpty()
+            .any { it.id == shortcutId }
+        android.util.Log.i(
+            "ShortcutBridge",
+            "push $shortcutId listed=$listed total=" +
+                    ShortcutManagerCompat.getDynamicShortcuts(this).size
+        )
+        return listed
+    }
+
+    // 请求固定到主屏幕：系统确认弹窗后生成真实桌面图标。
+    // 部分厂商桌面不展示长按菜单里的动态快捷方式，用这条兜底。
+    private fun pinCollectionShortcut(id: Long, name: String): Boolean = try {
+        val callback = PendingIntent.getActivity(
+            this,
+            (1_000_000 + id).toInt(),
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        ShortcutManagerCompat.requestPinShortcut(
+            this,
+            favShortcut(id, name),
+            callback.intentSender,
+        )
+    } catch (e: Exception) {
+        android.util.Log.w("ShortcutBridge", "requestPinShortcut failed", e)
+        false
     }
 
     private fun removeShortcut(shortcutId: String) {
@@ -247,13 +258,8 @@ class MainActivity : AudioServiceActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode =
-                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-    }
-
-    override fun onDestroy() {
-        stopService(Intent(this, com.ryanheise.audioservice.AudioService::class.java))
-        super.onDestroy()
     }
 
     override fun onUserLeaveHint() {

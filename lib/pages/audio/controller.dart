@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 
 import 'package:dio/dio.dart';
 import 'package:PiliPlus/common/constants.dart';
+import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/grpc/audio.dart';
 import 'package:PiliPlus/models_new/video/video_tag/data.dart';
 import 'package:PiliPlus/pages/audio/lyrics_api.dart';
@@ -29,18 +31,17 @@ import 'package:PiliPlus/http/user.dart' as user_http;
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/music.dart';
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/model_hot_video_item.dart';
 import 'package:PiliPlus/models/model_owner.dart';
+import 'package:PiliPlus/models/common/audio_normalization.dart';
+import 'package:PiliPlus/models/video/play/url.dart' as http_model show Volume;
 import 'package:PiliPlus/pages/common/common_intro_controller.dart'
     show FavMixin;
 import 'package:PiliPlus/pages/dynamics_repost/view.dart';
 import 'package:PiliPlus/pages/main_reply/view.dart';
-import 'package:PiliPlus/pages/setting/models/play_settings.dart'
-    show kMaxVolume;
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
 import 'package:PiliPlus/services/desktop_lyrics_service.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
@@ -52,6 +53,7 @@ import 'package:PiliPlus/services/media_control_windows.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/services/shutdown_timer_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
@@ -66,10 +68,11 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:fixnum/fixnum.dart' show Int64;
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class AudioController extends GetxController
     with
@@ -77,7 +80,8 @@ class AudioController extends GetxController
         TripleMixin,
         FavMixin,
         BlockConfigMixin,
-        BlockMixin {
+        BlockMixin,
+        AudioNormalizationMixin {
   /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.arguments
   final Map? arguments;
 
@@ -98,6 +102,7 @@ class AudioController extends GetxController
   late final bool isUgc = itemType == 1;
 
   final audioItem = Rxn<DetailItem>();
+
   final audioTitle = ''.obs;
   final audioArtist = ''.obs;
 
@@ -126,9 +131,12 @@ class AudioController extends GetxController
   late int cacheAudioQa;
 
   late bool isDragging = false;
+
+  /// 后台/息屏时 media_kit 的 completed 事件可能延迟或不触发，
+  /// 用 position 走到末尾来补一次「播完」处理，一首歌只触发一次。
   bool _endOfStreamTriggered = false;
-  final Rx<Duration> position = Duration.zero.obs;
-  final Rx<Duration> duration = Duration.zero.obs;
+  final RxInt position = RxInt(0);
+  final RxInt duration = RxInt(0);
 
   late final AnimationController animController;
 
@@ -138,6 +146,14 @@ class AudioController extends GetxController
   List<DetailItem>? playlist;
 
   late double speed = 1.0;
+
+  void setSpeed(double value) {
+    if (player case final player?) {
+      speed = value;
+      player.setRate(value);
+      _updatePlaybackState();
+    }
+  }
 
   late final Rx<PlayRepeat> playMode = Pref.audioPlayMode.obs;
 
@@ -159,12 +175,16 @@ class AudioController extends GetxController
   final lyricsResults = <LyricsSource, LyricsResult>{}.obs;
   final lyricsSearchResults = <LyricsSource, List<LyricsSearchItem>>{}.obs;
   final selectedSearchItems = <LyricsSource, LyricsSearchItem?>{}.obs;
+
   /// CC 字幕锁定状态（响应式）
   final RxBool ccLocked = false.obs;
+
   /// 全局默认 CC 字幕（响应式）
   final RxBool ccDefault = false.obs;
+
   /// 弹幕歌词锁定状态（响应式）
   final RxBool dmLocked = false.obs;
+
   /// 全局默认弹幕歌词（响应式）
   final RxBool dmDefault = false.obs;
   final RxInt currentLineIndex = 0.obs;
@@ -178,6 +198,8 @@ class AudioController extends GetxController
   late final RxDouble desktopVolume = RxDouble(Pref.desktopVolume);
 
   late final MediaControlWindows _mediaControl = MediaControlWindows();
+
+  Timer? _statusTimer;
 
   /// 音频页是否正在播放（含后台），供视频页判断 SMTC 控制权：
   /// 音频页在播时，视频页不得抢占 SMTC 回调（否则系统媒体按钮失效）
@@ -208,6 +230,19 @@ class AudioController extends GetxController
     if (audioItem.value case DetailItem(:final arc, :final owner)) {
       _mediaControl.updateMetadata(title: arc.title, artist: owner.name);
     }
+  }
+
+  void _startStatusTimer() {
+    _statusTimer?.cancel();
+    _statusTimer = Timer(
+      const Duration(milliseconds: 500),
+      _updatePlaybackState,
+    );
+  }
+
+  void _stopStatusTimer() {
+    _statusTimer?.cancel();
+    _statusTimer = null;
   }
 
   void toggleVolume() {
@@ -300,7 +335,12 @@ class AudioController extends GetxController
     final hasAudioUrl = audioUrl != null;
     if (hasAudioUrl) {
       _querySponsorBlock();
-      _onOpenMedia(audioUrl, ua: BrowserUa.pc, referer: HttpString.baseUrl);
+      _onOpenMedia(
+        audioUrl,
+        ua: BrowserUa.pc,
+        referer: HttpString.baseUrl,
+        volume: _videoDetailController?.volume,
+      );
     }
     ConnectivityUtils.isWiFi.then((isWiFi) {
       cacheAudioQa = isWiFi ? Pref.defaultAudioQa : Pref.defaultAudioQaCellular;
@@ -308,18 +348,16 @@ class AudioController extends GetxController
         _queryPlayUrl();
       }
     });
-    if (videoPlayerServiceHandler case final handler?) {
-      handler
-        ..onPlay = onPlay
-        ..onPause = onPause
-        ..onSeek = onSeek
-        ..onSkipToNext = () async {
-          return playNext();
-        }
-        ..onSkipToPrevious = () async {
-          return playPrev();
-        };
-    }
+    videoPlayerServiceHandler
+      ?..onPlay = onPlay
+      ..onPause = onPause
+      ..onSeek = onSeek
+      ..onSkipToNext = () async {
+        return playNext();
+      }
+      ..onSkipToPrevious = () async {
+        return playPrev();
+      };
 
     animController = AnimationController(
       vsync: this,
@@ -346,6 +384,7 @@ class AudioController extends GetxController
   }
 
   Future<void>? onSeek(Duration duration) {
+    _updatePlaybackState(position: duration);
     return player?.seek(duration);
   }
 
@@ -369,15 +408,9 @@ class AudioController extends GetxController
       (subId.firstOrNull ?? oid).toInt(),
       hashCode.toString(),
     );
-    // 更新 Windows SMTC 元数据（含封面）
-    _mediaControl.updateMetadata(
-      title: item.arc.title,
-      artist: item.owner.name,
-      thumbnail: item.arc.cover,
-    );
-    // 自动搜索歌词
-    final title = '${item.arc.title} ${item.owner.name}';
-    searchLyrics(title);
+    // 切歌/连播后自动搜歌词（SMTC 元数据由 onVideoDetailChange →
+    // _updateSmtcFromData 统一处理，不在这里重复推一次）
+    searchLyrics('${item.arc.title} ${item.owner.name}');
   }
 
   Future<void> _queryPlayList({
@@ -476,18 +509,31 @@ class AudioController extends GetxController
   void _onPlay(PlayURLResp data) {
     final PlayInfo? playInfo = data.playerInfo.values.firstOrNull;
     if (playInfo != null) {
+      http_model.Volume? volume;
+      if (playInfo.hasVolume()) {
+        final volumeInfo = playInfo.volume;
+        volume = http_model.Volume(
+          measuredI: volumeInfo.measuredI,
+          measuredLra: volumeInfo.measuredLra,
+          measuredTp: volumeInfo.measuredTp,
+          measuredThreshold: volumeInfo.measuredThreshold,
+          targetOffset: volumeInfo.targetOffset,
+          targetI: volumeInfo.targetI,
+          targetTp: volumeInfo.targetTp,
+        );
+      }
       if (playInfo.hasPlayDash()) {
         final playDash = playInfo.playDash;
         final audios = playDash.audio;
         if (audios.isEmpty) {
           return;
         }
-        position.value = Duration.zero;
+        position.value = 0;
         final audio = audios.findClosestTarget(
           (e) => e.id <= cacheAudioQa,
           (a, b) => a.id > b.id ? a : b,
         );
-        _onOpenMedia(VideoUtils.getCdnUrl(audio.playUrls));
+        _onOpenMedia(VideoUtils.getCdnUrl(audio.playUrls), volume: volume);
       } else if (playInfo.hasPlayUrl()) {
         final playUrl = playInfo.playUrl;
         final durls = playUrl.durl;
@@ -495,8 +541,8 @@ class AudioController extends GetxController
           return;
         }
         final durl = durls.first;
-        position.value = Duration.zero;
-        _onOpenMedia(VideoUtils.getCdnUrl(durl.playUrls));
+        position.value = 0;
+        _onOpenMedia(VideoUtils.getCdnUrl(durl.playUrls), volume: volume);
       }
     }
   }
@@ -505,16 +551,30 @@ class AudioController extends GetxController
     String url, {
     String ua = Constants.userAgentApp,
     String? referer,
+    http_model.Volume? volume,
   }) async {
     await _initPlayerIfNeeded();
+    final extras = audioFilterExtras(volume);
     player
       ?..setMediaHeader(
         userAgent: ua,
         // mpv cannot clear referer option
         headers: {'Referer': ?referer},
       )
-      ..open(Media(url, start: _start));
+      ..open(Media(url, start: _start, extras: extras));
     _start = null;
+  }
+
+  PlayerStatus _playerStatus = .paused;
+  void _updatePlaybackState({Duration? position, String? debugLabel}) {
+    videoPlayerServiceHandler?.onUpdateState(
+      _playerStatus,
+      false,
+      false,
+      position: position ?? player!.state.position,
+      speed: speed,
+      debugLabel: debugLabel,
+    );
   }
 
   Future<void> _initPlayerIfNeeded() async {
@@ -524,12 +584,10 @@ class AudioController extends GetxController
     player = await Player.create(
       configuration: PlayerConfiguration(
         options: {
+          if (Platform.isAndroid) 'ao': Pref.audioOutput,
           'volume': PlatformUtils.isDesktop
               ? (desktopVolume.value * 100).toString()
               : Pref.playerVolume.toString(),
-          'volume-max': kMaxVolume.toString(),
-          // keep-open 保持默认 (yes)：避免 mpv 状态机重置导致通知控件异常
-          // 播完检测由位置监听器处理
           ...Pref.initBuffer(),
         },
       ),
@@ -539,58 +597,72 @@ class AudioController extends GetxController
       player = null;
       return;
     }
-    _initMediaControl();
     final stream = player!.stream;
     _subscriptions = [
       stream.position.listen((position) {
         if (isDragging) return;
-        final prevPosition = this.position.value;
-        if (position.inSeconds != prevPosition.inSeconds) {
-          this.position.value = position;
+        final seconds = position.inSeconds;
+        final prevSeconds = this.position.value;
+        if (seconds != prevSeconds) {
+          if (seconds == 0 && _playerStatus.isPlaying) {
+            _updatePlaybackState(position: position);
+          }
+          this.position.value = seconds;
           _videoDetailController?.playedTime = position;
+          // 通知栏/锁屏进度上报（media_kit 不走 PlPlayerController 的时钟）
           videoPlayerServiceHandler?.onPositionChange(position);
           updateLyricsLine();
         }
         // 播放结束检测（适配后台/息屏时 completed 事件延迟/不触发的情况）
         if (!_endOfStreamTriggered &&
-            duration.value > const Duration(seconds: 2) &&
-            position >= duration.value - const Duration(seconds: 1) &&
-            position > Duration.zero &&
-            prevPosition < position) {
-          // prevPosition < position 确保位置在向前走（不是 seek 跳过来的）
+            this.duration.value > 2 &&
+            seconds >= this.duration.value - 1 &&
+            seconds > 0 &&
+            prevSeconds < seconds) {
+          // prevSeconds < seconds 确保位置在向前走（不是 seek 跳过来的）
           _endOfStreamTriggered = true;
           _handleCompletion();
         }
       }),
-      stream.duration.listen(duration.call),
+      stream.duration.listen((duration) {
+        this.duration.value = duration.inSeconds;
+      }),
       stream.playing.listen((playing) {
         isBackgroundPlaying = playing;
         playingState.value = playing;
-        final PlayerStatus playerStatus;
         if (playing) {
           _endOfStreamTriggered = false;
           animController.forward();
-          playerStatus = PlayerStatus.playing;
+          _playerStatus = .playing;
           // 息屏时保持 CPU 活跃以便检测播完
           WakelockPlus.enable();
           // 重新接管 SMTC 回调（防被视频页抢占导致系统媒体按钮失效）
           _initMediaControl();
+          _stopStatusTimer();
+          _updatePlaybackState();
         } else {
           animController.reverse();
-          playerStatus = PlayerStatus.paused;
+          _playerStatus = .paused;
           WakelockPlus.disable();
+          _startStatusTimer();
         }
+        // Windows SMTC 播放/暂停状态
         _mediaControl.updatePlaybackStatus(playing);
-        videoPlayerServiceHandler?.onStatusChange(playerStatus, false, false);
+      }),
+      stream.buffering.listen((bool buffering) {
+        if (!_playerStatus.isCompleted) {
+          _stopStatusTimer();
+          _updatePlaybackState();
+        }
       }),
       stream.completed.listen((completed) {
-        _videoDetailController?.playedTime = duration.value;
-        videoPlayerServiceHandler?.onStatusChange(
-          PlayerStatus.completed,
-          false,
-          false,
-        );
+        _videoDetailController?.playedTime = player!.state.duration;
         if (completed) {
+          _playerStatus = .completed;
+          _startStatusTimer();
+          // 连播分支统一走 _handleCompletion：这里的 completed 事件与
+          // position 末尾检测（后台/息屏 completed 不触发时）共用一份逻辑，
+          // 避免两处各写一遍导致行为不一致（离线列表回绕只在方法里）。
           _handleCompletion();
         }
       }),
@@ -725,62 +797,45 @@ class AudioController extends GetxController
         : '${HttpString.baseUrl}/audio/au$oid';
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (_) => SimpleDialog(
         clipBehavior: Clip.hardEdge,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              dense: true,
-              title: const Text(
-                '复制链接',
-                style: TextStyle(fontSize: 14),
-              ),
-              onTap: () {
+        children: [
+          DialogOption(
+            child: const Text('复制链接', style: TextStyle(fontSize: 14)),
+            onPressed: () {
+              Get.back();
+              Utils.copyText(audioUrl);
+            },
+          ),
+          DialogOption(
+            child: const Text('其它app打开', style: TextStyle(fontSize: 14)),
+            onPressed: () {
+              Get.back();
+              PiliAndroidHelper.openUrl(audioUrl);
+            },
+          ),
+          if (PlatformUtils.isMobile)
+            DialogOption(
+              child: const Text('分享视频', style: TextStyle(fontSize: 14)),
+              onPressed: () {
                 Get.back();
-                Utils.copyText(audioUrl);
+                if (audioItem.value case DetailItem(
+                  :final arc,
+                  :final owner,
+                )) {
+                  ShareUtils.shareText(
+                    '${arc.title} '
+                    'UP主: ${owner.name}'
+                    ' - $audioUrl',
+                  );
+                }
               },
             ),
-            ListTile(
-              dense: true,
-              title: const Text(
-                '其它app打开',
-                style: TextStyle(fontSize: 14),
-              ),
-              onTap: () {
-                Get.back();
-                PageUtils.launchURL(audioUrl);
-              },
-            ),
-            if (PlatformUtils.isMobile)
-              ListTile(
-                dense: true,
-                title: const Text(
-                  '分享视频',
-                  style: TextStyle(fontSize: 14),
-                ),
-                onTap: () {
-                  Get.back();
-                  if (audioItem.value case DetailItem(
-                    :final arc,
-                    :final owner,
-                  )) {
-                    ShareUtils.shareText(
-                      '${arc.title} '
-                      'UP主: ${owner.name}'
-                      ' - $audioUrl',
-                    );
-                  }
-                },
-              ),
-            ListTile(
-              dense: true,
-              title: const Text(
-                '分享至动态',
-                style: TextStyle(fontSize: 14),
-              ),
-              onTap: () {
+          if (isLogin)
+            DialogOption(
+              child: const Text('分享至动态', style: TextStyle(fontSize: 14)),
+              onPressed: () {
                 Get.back();
                 if (audioItem.value case DetailItem(
                   :final arc,
@@ -801,52 +856,41 @@ class AudioController extends GetxController
                 }
               },
             ),
-            if (isUgc)
-              ListTile(
-                dense: true,
-                title: const Text(
-                  '分享至消息',
-                  style: TextStyle(fontSize: 14),
-                ),
-                onTap: () {
-                  Get.back();
-                  if (audioItem.value case DetailItem(
-                    :final arc,
-                    :final owner,
-                  )) {
-                    try {
-                      PageUtils.pmShare(
-                        context,
-                        content: {
-                          "id": oid.toString(),
-                          "title": arc.title,
-                          "headline": arc.title,
-                          "source": 5,
-                          "thumb": arc.cover,
-                          "author": owner.name,
-                          "author_id": owner.mid.toString(),
-                        },
-                      );
-                    } catch (e) {
-                      SmartDialog.showToast(e.toString());
-                    }
+          if (isUgc && isLogin)
+            DialogOption(
+              child: const Text('分享至消息', style: TextStyle(fontSize: 14)),
+              onPressed: () {
+                Get.back();
+                if (audioItem.value case DetailItem(
+                  :final arc,
+                  :final owner,
+                )) {
+                  try {
+                    PageUtils.pmShare(
+                      context,
+                      content: {
+                        "id": oid.toString(),
+                        "title": arc.title,
+                        "headline": arc.title,
+                        "source": 5,
+                        "thumb": arc.cover,
+                        "author": owner.name,
+                        "author_id": owner.mid.toString(),
+                      },
+                    );
+                  } catch (e) {
+                    SmartDialog.showToast(e.toString());
                   }
-                },
-              ),
-          ],
-        ),
+                }
+              },
+            ),
+        ],
       ),
     );
   }
 
-  void playOrPause() {
-    if (player case final player?) {
-      if ((duration.value - position.value).inMilliseconds < 50) {
-        player.seek(Duration.zero).whenComplete(player.play);
-      } else {
-        player.playOrPause();
-      }
-    }
+  Future<void>? playOrPause() {
+    return player?.playOrPause();
   }
 
   bool playPrev() {
@@ -871,7 +915,7 @@ class AudioController extends GetxController
 
   /// 播放结束处理（由 completed 事件或 position 检测触发）
   void _handleCompletion() {
-    _videoDetailController?.playedTime = duration.value;
+    _videoDetailController?.playedTime = Duration(seconds: duration.value);
     if (shutdownTimerService.isWaiting) {
       shutdownTimerService.handleWaiting();
     } else {
@@ -890,7 +934,9 @@ class AudioController extends GetxController
           if (!playNext(nextPart: true)) {
             if (index != null && index != 0 && playlist != null) {
               playIndex(0);
-            } else if (index != null && offlineEntries != null && offlineEntries!.isNotEmpty) {
+            } else if (index != null &&
+                offlineEntries != null &&
+                offlineEntries!.isNotEmpty) {
               playOfflineIndex(0);
             } else {
               onPlay();
@@ -987,18 +1033,20 @@ class AudioController extends GetxController
 
   /// 推荐切换历史（上一曲回退栈）
   final List<
-      ({
-        int aid,
-        int cid,
-        String bvid,
-        String title,
-        String cover,
-        String ownerName,
-        String ownerFace,
-        String desc,
-        int pubdate,
-        int view,
-      })> _relatedHistory = [];
+    ({
+      int aid,
+      int cid,
+      String bvid,
+      String title,
+      String cover,
+      String ownerName,
+      String ownerFace,
+      String desc,
+      int pubdate,
+      int view,
+    })
+  >
+  _relatedHistory = [];
 
   void _pushRelatedHistory() {
     final bv = bvid;
@@ -1038,7 +1086,8 @@ class AudioController extends GetxController
       int favourite,
       int reply,
       int share,
-    })? stat,
+    })?
+    stat,
   }) async {
     oid = Int64(aid);
     subId = [Int64(cid)];
@@ -1215,7 +1264,6 @@ class AudioController extends GetxController
     });
   }
 
-
   /// 离线播放：从本地缓存文件切歌
   Future<void> playOfflineIndex(int index) async {
     if (offlineEntries == null || index >= offlineEntries!.length) return;
@@ -1284,12 +1332,6 @@ class AudioController extends GetxController
       );
     }
   }
-  void setSpeed(double speed) {
-    if (player case final player?) {
-      this.speed = speed;
-      player.setRate(speed);
-    }
-  }
 
   @override
   (Object, int) get getFavRidType => (oid, isUgc ? 2 : 12);
@@ -1345,8 +1387,9 @@ class AudioController extends GetxController
         final currentIdx = offlineEntries!.indexWhere(
           (e) => e.avid == currentAvid,
         );
-        final BiliDownloadEntryInfo? current =
-            currentIdx != -1 ? offlineEntries![currentIdx] : null;
+        final BiliDownloadEntryInfo? current = currentIdx != -1
+            ? offlineEntries![currentIdx]
+            : null;
         if (current != null) {
           final rest = offlineEntries!
               .where((e) => e.avid != currentAvid)
@@ -1385,7 +1428,10 @@ class AudioController extends GetxController
         for (final entry in (data['searchResults'] as Map).entries) {
           LyricsSource? source;
           for (final s in LyricsSource.values) {
-            if (s.name == entry.key) { source = s; break; }
+            if (s.name == entry.key) {
+              source = s;
+              break;
+            }
           }
           if (source == null) continue;
           final items = (entry.value as List).map((i) {
@@ -1405,7 +1451,10 @@ class AudioController extends GetxController
         for (final entry in (data['results'] as Map).entries) {
           LyricsSource? source;
           for (final s in LyricsSource.values) {
-            if (s.name == entry.key) { source = s; break; }
+            if (s.name == entry.key) {
+              source = s;
+              break;
+            }
           }
           if (source == null) continue;
           final r = entry.value as Map;
@@ -1430,7 +1479,10 @@ class AudioController extends GetxController
       if (data['selectedSource'] is String) {
         LyricsSource? selected;
         for (final s in LyricsSource.values) {
-          if (s.name == data['selectedSource']) { selected = s; break; }
+          if (s.name == data['selectedSource']) {
+            selected = s;
+            break;
+          }
         }
         if (selected != null) {
           selectedSource.value = selected;
@@ -1449,21 +1501,32 @@ class AudioController extends GetxController
         return MapEntry(k.name, {
           'source': v.source,
           'plainText': v.plainText,
-          'syncedLines': v.syncedLines?.map((l) => {
-            'time': l.time.inMilliseconds,
-            'text': l.text,
-          }).toList(),
+          'syncedLines': v.syncedLines
+              ?.map(
+                (l) => {
+                  'time': l.time.inMilliseconds,
+                  'text': l.text,
+                },
+              )
+              .toList(),
           'error': v.error,
         });
       }),
       'searchResults': lyricsSearchResults.map((k, v) {
-        return MapEntry(k.name, v.map((i) => {
-          'title': i.title,
-          'artist': i.artist,
-          'subtitle': i.subtitle,
-          'neteaseSongId': i.neteaseSongId,
-          'kugouFileHash': i.kugouFileHash,
-        }).toList());
+        return MapEntry(
+          k.name,
+          v
+              .map(
+                (i) => {
+                  'title': i.title,
+                  'artist': i.artist,
+                  'subtitle': i.subtitle,
+                  'neteaseSongId': i.neteaseSongId,
+                  'kugouFileHash': i.kugouFileHash,
+                },
+              )
+              .toList(),
+        );
       }),
     };
     GStorage.localCache.put(_lyricsCacheKey, jsonEncode(data));
@@ -1474,12 +1537,60 @@ class AudioController extends GetxController
   List<VideoTagItem>? _detailTags;
 
   /// 常见非歌名标签（用于从 B 站标签里过滤出歌曲名候选）
-  static const Set<String> _tagSongBlacklist = {    '音乐', '翻唱', '原创', 'ACG', '电音', '纯音乐', 'VOCALOID', '中文', '日语',
-    '英语', '每日推荐', '自制', 'MV', 'OP', 'ED', 'OST', 'BGM', '治愈', '伤感',
-    '古风', '流行', '摇滚', '民谣', '说唱', '电子', '现场', '国语', '粤语', '日系',
-    '动漫', '游戏', '搞笑', '日常', '生活', '学习', '科技', '数码', '美食', '影视',
-    '音乐现场', '翻唱歌曲', '音乐推荐', '单曲循环', '好听', '新歌', '经典', '怀旧',
-    'vocaloid', 'V家', '中文VOCALOID', '日文歌', '英文歌', '纯音乐推荐',
+  static const Set<String> _tagSongBlacklist = {
+    '音乐',
+    '翻唱',
+    '原创',
+    'ACG',
+    '电音',
+    '纯音乐',
+    'VOCALOID',
+    '中文',
+    '日语',
+    '英语',
+    '每日推荐',
+    '自制',
+    'MV',
+    'OP',
+    'ED',
+    'OST',
+    'BGM',
+    '治愈',
+    '伤感',
+    '古风',
+    '流行',
+    '摇滚',
+    '民谣',
+    '说唱',
+    '电子',
+    '现场',
+    '国语',
+    '粤语',
+    '日系',
+    '动漫',
+    '游戏',
+    '搞笑',
+    '日常',
+    '生活',
+    '学习',
+    '科技',
+    '数码',
+    '美食',
+    '影视',
+    '音乐现场',
+    '翻唱歌曲',
+    '音乐推荐',
+    '单曲循环',
+    '好听',
+    '新歌',
+    '经典',
+    '怀旧',
+    'vocaloid',
+    'V家',
+    '中文VOCALOID',
+    '日文歌',
+    '英文歌',
+    '纯音乐推荐',
   };
 
   /// 获取 B 站视频标签，从中提取可能的歌曲名（过滤常见非歌名标签）。
@@ -1621,8 +1732,10 @@ class AudioController extends GetxController
         keywords.add(sname);
         // 有 B 站官方歌名（"发现《歌名》"）→ 只用歌名相关关键词，
         // 不带泛标签（否则"歌手名/类别"标签会搜出一堆不相干的歌污染候选列表）
-        searchAllPlatformsMulti(keywords).then((searchResults) => _onSearchDone(
-          searchResults, tags, songInfo, title, seq));
+        searchAllPlatformsMulti(keywords).then(
+          (searchResults) =>
+              _onSearchDone(searchResults, tags, songInfo, title, seq),
+        );
         return;
       }
     }
@@ -1630,8 +1743,10 @@ class AudioController extends GetxController
       if (!keywords.contains(t)) keywords.add(t);
       if (keywords.length >= 5) break;
     }
-    searchAllPlatformsMulti(keywords).then((searchResults) => _onSearchDone(
-      searchResults, tags, songInfo, title, seq));
+    searchAllPlatformsMulti(keywords).then(
+      (searchResults) =>
+          _onSearchDone(searchResults, tags, songInfo, title, seq),
+    );
   }
 
   /// 搜索结果就绪后的统一处理（有/无官方歌名共用）
@@ -1648,7 +1763,9 @@ class AudioController extends GetxController
 
       // 检查是否有已记忆的匹配，尝试从搜索结果中匹配
       final remembered = LyricsMemory.getRemembered(
-          audioTitle.value, audioArtist.value);
+        audioTitle.value,
+        audioArtist.value,
+      );
       if (remembered != null) {
         final (rememberedSource, rememberedItem) = remembered;
 
@@ -1685,12 +1802,20 @@ class AudioController extends GetxController
           // 可能是搜索词太长/格式不同导致 API 返回不同结果
           // → 按已记忆的歌名+歌手单独搜
           _searchAndUseRemembered(
-            rememberedSource, rememberedItem, title, searchResults);
+            rememberedSource,
+            rememberedItem,
+            title,
+            searchResults,
+          );
           return;
         }
         // 该源无搜索结果 → 按已记忆的歌名+歌手单独搜
         _searchAndUseRemembered(
-          rememberedSource, rememberedItem, title, searchResults);
+          rememberedSource,
+          rememberedItem,
+          title,
+          searchResults,
+        );
         return;
       }
 
@@ -1768,21 +1893,23 @@ class AudioController extends GetxController
         }
       }
       // 全部完成后更新 UI
-      Future.wait(fetches).then((_) {
-        isLoadingLyrics.value = false;
-        _saveLyricsCache();
-        final current = lyricsResults[selectedSource.value];
-        if (current == null || !current.isSuccess) {
-          for (final entry in lyricsResults.entries) {
-            if (entry.value.isSuccess) {
-              selectedSource.value = entry.key;
-              break;
+      Future.wait(fetches)
+          .then((_) {
+            isLoadingLyrics.value = false;
+            _saveLyricsCache();
+            final current = lyricsResults[selectedSource.value];
+            if (current == null || !current.isSuccess) {
+              for (final entry in lyricsResults.entries) {
+                if (entry.value.isSuccess) {
+                  selectedSource.value = entry.key;
+                  break;
+                }
+              }
             }
-          }
-        }
-      }).catchError((e) {
-        isLoadingLyrics.value = false;
-      });
+          })
+          .catchError((e) {
+            isLoadingLyrics.value = false;
+          });
     }
   }
 
@@ -1796,7 +1923,10 @@ class AudioController extends GetxController
     if (result.isSuccess) {
       // 初始化锁定 & 全局默认状态
       dmLocked.value = LyricsMemory.isRememberedSource(
-          audioTitle.value, audioArtist.value, LyricsSource.danmaku);
+        audioTitle.value,
+        audioArtist.value,
+        LyricsSource.danmaku,
+      );
       dmDefault.value = LyricsMemory.defaultDanmaku;
       // 自动切换到弹幕歌词的条件（按优先级，同 CC 字幕）：
       // 1. 单曲锁定（remembered）
@@ -1837,7 +1967,9 @@ class AudioController extends GetxController
     if (result.isSuccess) {
       // 初始化锁定 & 全局默认状态
       ccLocked.value = LyricsMemory.isRememberedCc(
-          audioTitle.value, audioArtist.value);
+        audioTitle.value,
+        audioArtist.value,
+      );
       ccDefault.value = LyricsMemory.defaultCc;
       // 自动切换到 CC 字幕的条件（按优先级）：
       // 1. 单曲锁定（rememberedCc）
@@ -1854,7 +1986,10 @@ class AudioController extends GetxController
   }
 
   /// 从搜索结果列表中选择指定项并取歌词
-  Future<void> fetchLyricsForSourceItem(LyricsSource source, LyricsSearchItem item) async {
+  Future<void> fetchLyricsForSourceItem(
+    LyricsSource source,
+    LyricsSearchItem item,
+  ) async {
     try {
       selectedSearchItems[source] = item;
       final result = await fetchLyricsForItem(source, item);
@@ -1873,10 +2008,12 @@ class AudioController extends GetxController
   void updateLyricsLine() {
     final result = lyricsResults[selectedSource.value];
     if (result != null && result.isSuccess) {
-      final idx = result.getCurrentLineIndex(position.value);
+      final idx = result.getCurrentLineIndex(Duration(seconds: position.value));
       currentLineIndex.value = idx;
       // 推送歌词到通知栏（OPPO 流体云 / 动态岛）
-      if (idx >= 0 && result.syncedLines != null && idx < result.syncedLines!.length) {
+      if (idx >= 0 &&
+          result.syncedLines != null &&
+          idx < result.syncedLines!.length) {
         final text = result.syncedLines![idx].text;
         final nextText = idx + 1 < result.syncedLines!.length
             ? result.syncedLines![idx + 1].text
@@ -1925,8 +2062,8 @@ class AudioController extends GetxController
         update();
         return;
       }
-      final coverUrl = videoPlayerServiceHandler?.mediaItem.value?.artUri
-              ?.toString() ??
+      final coverUrl =
+          videoPlayerServiceHandler?.mediaItem.value?.artUri?.toString() ??
           _fallbackCover;
       if (coverUrl == null || coverUrl.isEmpty) {
         lyricsResults[LyricsSource.ocr] = LyricsResult(
@@ -1982,16 +2119,15 @@ class AudioController extends GetxController
   BlockConfigMixin get blockConfig => this;
 
   @override
-  int get currPosInMilliseconds => position.value.inMilliseconds;
+  int get currPosInMilliseconds => player?.state.position.inMilliseconds ?? 0;
+
+  @override
+  int? get timeLength => player?.state.duration.inMilliseconds ?? 0;
 
   @override
   Future<void>? seekTo(Duration duration, {required bool isSeek}) =>
       onSeek(duration);
 
-  @override
-  int? get timeLength => duration.value.inMilliseconds;
-
-  /// 记忆匹配在搜索结果中没找到 → 按歌名+歌手单独搜该平台
   void _searchAndUseRemembered(
     LyricsSource source,
     LyricsSearchItem rememberedItem,
@@ -2040,6 +2176,7 @@ class AudioController extends GetxController
     isBackgroundPlaying = false;
     DesktopLyricsService.hide();
     WakelockPlus.disable();
+    _stopStatusTimer();
     shutdownTimerService
       ..onPause = null
       ..isPlaying = null
@@ -2048,11 +2185,13 @@ class AudioController extends GetxController
       ?..onPlay = null
       ..onPause = null
       ..onSeek = null
-      ..onVideoDetailDispose(hashCode.toString());
+      ..onSkipToNext = null
+      ..onSkipToPrevious = null
+      ..onVideoDetailDispose(hashCode.toString())
+      ..clearIfNeeded();
     _subscriptions?.forEach((e) => e.cancel());
     _subscriptions?.clear();
     _subscriptions = null;
-    _mediaControl.disable();
     player?.dispose();
     player = null;
     animController.dispose();

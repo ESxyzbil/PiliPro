@@ -1,5 +1,5 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get_navigation/src/routes/circular_reveal_clipper.dart';
 
 abstract class LeftToRightFadeTransition {

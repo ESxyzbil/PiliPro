@@ -20,14 +20,14 @@ import 'dart:math';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 
 ///
 /// created by bggRGjQaUbCoE on 2025/6/27
 ///
 
-enum RichTextType { text, composing, at, emoji, vote, common }
+enum RichTextType { text, composing, at, emoji, vote, common, latex }
 
 class Emote {
   late String url;
@@ -576,7 +576,7 @@ class RichTextEditingController extends TextEditingController {
     }
     final buffer = StringBuffer();
     for (final e in items) {
-      if (e.type == RichTextType.at) {
+      if (e.type == RichTextType.at || e.type == RichTextType.latex) {
         buffer.write(e.text);
       } else {
         buffer.write(e.rawText);
@@ -657,6 +657,9 @@ class RichTextEditingController extends TextEditingController {
         }
 
       case TextEditingDeltaNonTextUpdate e:
+        if (!_isSelectionValid(e.selection, items.lastOrNull?.range.end ?? 0)) {
+          return;
+        }
         newSelection = e.selection;
         if (newSelection.isCollapsed) {
           final newPos = dragOffset(newSelection.base);
@@ -687,6 +690,10 @@ class RichTextEditingController extends TextEditingController {
         items.remove(item);
       }
     }
+  }
+
+  static bool _isSelectionValid(TextSelection selection, int length) {
+    return selection.start <= length && selection.end <= length;
   }
 
   TextStyle? composingStyle;
@@ -742,7 +749,7 @@ class RichTextEditingController extends TextEditingController {
               text: e.text,
               style: composingRegionOutOfRange ? null : composingStyle,
             );
-          case RichTextType.at || RichTextType.common:
+          case RichTextType.at || RichTextType.common || RichTextType.latex:
             richStyle ??= (style ?? const TextStyle()).copyWith(
               color: Theme.of(context).colorScheme.primary,
             );

@@ -1,6 +1,6 @@
 import 'package:PiliPlus/common/widgets/flutter/fade_previous_page_transitions_builder.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 import 'package:get/get_navigation/src/routes/default_transitions.dart';
 

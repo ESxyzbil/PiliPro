@@ -5,8 +5,8 @@ import 'package:PiliPlus/pages/history/widgets/item.dart';
 import 'package:PiliPlus/pages/history_search/controller.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class HistorySearchPage extends StatefulWidget {
   const HistorySearchPage({super.key});
@@ -17,18 +17,13 @@ class HistorySearchPage extends StatefulWidget {
 
 class _HistorySearchPageState
     extends
-        CommonSearchPageState<
-          HistorySearchPage,
-          HistoryData,
-          HistoryItemModel
-        > {
+        CommonSearchPageState<HistorySearchPage, HistoryData, HistoryItemModel>
+    with GridMixin {
   @override
   final HistorySearchController controller = Get.put(
     HistorySearchController(),
     tag: Utils.generateRandomString(8),
   );
-
-  late final gridDelegate = Grid.videoCardHDelegate(context, minHeight: 110);
 
   @override
   Widget buildList(List<HistoryItemModel> list) {

@@ -74,7 +74,6 @@ app.*.map.json
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
-**/android/gradle/wrapper/dists/
 *.jks
 
 # iOS/XCode related
@@ -184,3 +183,5 @@ upstream_changed.txt
 # memory-bank migration helpers (root-scoped; tracked scripts live in lib/scripts/)
 /*.cmd
 /*.ps1
+# Flutter SDK / pub-cache patch dump produced by lib/scripts/patch.ps1
+/_flutter_sdk_local_patch.diff

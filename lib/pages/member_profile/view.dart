@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io' show File;
 
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/loading_widget.dart';
+import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -23,12 +25,12 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:dio/dio.dart';
 import 'package:easy_debounce/easy_throttle.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:mime/mime.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -61,8 +63,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
+    return SimpleScaffold(
       appBar: AppBar(title: const Text('账号资料')),
       body: _buildBody(theme, _loadingState),
     );
@@ -247,17 +248,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Widget _sexDialog(int current) {
-    return AlertDialog(
+    return SimpleDialog(
       clipBehavior: Clip.hardEdge,
       contentPadding: const EdgeInsets.symmetric(vertical: 12),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _sexDialogItem(1, current, '男'),
-          _sexDialogItem(0, current, '保密'),
-          _sexDialogItem(2, current, '女'),
-        ],
-      ),
+      children: [
+        _sexDialogItem(1, current, '男'),
+        _sexDialogItem(0, current, '保密'),
+        _sexDialogItem(2, current, '女'),
+      ],
     );
   }
 
@@ -533,7 +531,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               .then((res) {
                 if (res.data['code'] == 0) {
                   SmartDialog.showToast('修改成功');
-                  Future.delayed(const Duration(milliseconds: 500), () {
+                  Timer(const Duration(milliseconds: 500), () {
                     if (mounted) {
                       _getInfo();
                     }

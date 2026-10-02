@@ -5,15 +5,18 @@ abstract final class GrpcUrl {
 
   // dynamic
   static const dynV1 = '/bilibili.app.dynamic.v1.Dynamic';
-  // static const dynV2 = '/bilibili.app.dynamic.v2.Dynamic';
+  static const dynV2 = '/bilibili.app.dynamic.v2.Dynamic';
   static const opusV2 = '/bilibili.app.dynamic.v2.Opus';
   static const dynRed = '$dynV1/DynRed';
   static const opusSpaceFlow = '$opusV2/OpusSpaceFlow';
   static const opusDetail = '$opusV2/OpusDetail';
   // static const dynSpace = '$dynV2/DynSpace';
+  static const likeList = '$dynV2/LikeList';
+  static const repostList = '$dynV2/RepostList';
 
   // danmaku
   static const dmSegMobile = '/bilibili.community.service.dm.v1.DM/DmSegMobile';
+  static const dmView = '/bilibili.community.service.dm.v1.DM/DmView';
 
   // reply
   static const reply = '/bilibili.main.community.reply.v1.Reply';
@@ -43,6 +46,7 @@ abstract final class GrpcUrl {
   static const keywordBlockingDelete = '$im2/KeywordBlockingDelete';
   static const syncFetchSessionMsgs = '$im/SyncFetchSessionMsgs';
   static const getTotalUnread = '$im/GetTotalUnread';
+  static const sessionDetail = '$im/SessionDetail';
 
   // view
   static const viewunite = '/bilibili.app.viewunite.v1.View';

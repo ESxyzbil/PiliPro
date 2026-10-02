@@ -12,8 +12,8 @@ import 'package:PiliPlus/pages/dynamics_tab/controller.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/waterfall.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:waterfall_flow/waterfall_flow.dart'
     hide SliverWaterfallFlowDelegateWithMaxCrossAxisExtent;
 
@@ -28,9 +28,7 @@ class DynamicsTabPage extends StatefulWidget {
 
 class _DynamicsTabPageState extends State<DynamicsTabPage>
     with AutomaticKeepAliveClientMixin, DynMixin {
-  StreamSubscription? _listener;
-
-  DynamicsController dynamicsController = Get.putOrFind(DynamicsController.new);
+  final dynamicsController = Get.putOrFind(DynamicsController.new);
   late final DynamicsTabController controller;
 
   @override
@@ -39,38 +37,22 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
   @override
   void initState() {
     controller = Get.putOrFind(
-      () =>
-          DynamicsTabController(dynamicsType: widget.dynamicsType)
-            ..mid = dynamicsController.mid.value,
+      () => DynamicsTabController(dynamicsType: widget.dynamicsType),
       tag: widget.dynamicsType.name,
     );
     super.initState();
-    if (widget.dynamicsType == DynamicsTabType.up) {
-      _listener = dynamicsController.mid.listen((mid) {
-        if (mid != -1) {
-          controller
-            ..mid = mid
-            ..onReload();
-        }
-      });
-    }
   }
 
-  @override
-  void dispose() {
-    _listener?.cancel();
-    dynamicsController.mid.close();
-    super.dispose();
+  Future<void> onRefresh() {
+    dynamicsController.singleRefresh();
+    return controller.onRefresh();
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     return refreshIndicator(
-      onRefresh: () {
-        dynamicsController.queryFollowUp();
-        return controller.onRefresh();
-      },
+      onRefresh: onRefresh,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         controller: controller.scrollController,
@@ -105,41 +87,13 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
                   ? SliverWaterfallFlow(
                       gridDelegate: dynGridDelegate,
                       delegate: SliverChildBuilderDelegate(
-                        (_, index) {
-                          if (index == response.length - 1) {
-                            controller.onLoadMore();
-                          }
-                          final item = response[index];
-                          return _wrapDynCard(
-                            DynamicPanel(
-                              item: item,
-                              onRemove: (idStr) =>
-                                  controller.onRemove(index, idStr),
-                              onBlock: () => controller.onBlock(index),
-                              onUnfold: () =>
-                                  controller.onUnfold(item, index),
-                            ),
-                          );
-                        },
+                        (_, index) => _itemBuilder(response, index),
                         childCount: response.length,
                       ),
                     )
                   : SliverList.builder(
-                      itemBuilder: (context, index) {
-                        if (index == response.length - 1) {
-                          controller.onLoadMore();
-                        }
-                        final item = response[index];
-                        return _wrapDynCard(
-                          DynamicPanel(
-                            item: item,
-                            onRemove: (idStr) =>
-                                controller.onRemove(index, idStr),
-                            onBlock: () => controller.onBlock(index),
-                            onUnfold: () => controller.onUnfold(item, index),
-                          ),
-                        );
-                      },
+                      itemBuilder: (context, index) =>
+                          _itemBuilder(response, index),
                       itemCount: response.length,
                     )
             : HttpError(onReload: controller.onReload),
@@ -148,5 +102,20 @@ class _DynamicsTabPageState extends State<DynamicsTabPage>
         onReload: controller.onReload,
       ),
     };
+  }
+
+  Widget _itemBuilder(List<DynamicItemModel> list, int index) {
+    if (index == list.length - 1) {
+      controller.onLoadMore();
+    }
+    final item = list[index];
+    return _wrapDynCard(
+      DynamicPanel(
+        item: item,
+        onRemove: (idStr) => controller.onRemove(index, idStr),
+        onBlock: () => controller.onBlock(index),
+        onUnfold: () => controller.onUnfold(item, index),
+      ),
+    );
   }
 }

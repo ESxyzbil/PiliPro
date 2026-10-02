@@ -1,5 +1,5 @@
 import 'package:PiliPlus/models/common/search/search_type.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 
 class SearchResultController extends GetxController {

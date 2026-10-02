@@ -1,8 +1,8 @@
-﻿import 'package:PiliPlus/common/widgets/flutter/page/tabs.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/keep_alive_wrapper.dart';
-import 'package:PiliPlus/common/widgets/scroll_physics.dart';
-import 'package:PiliPlus/common/widgets/selectable_text.dart';
+import 'package:PiliPlus/common/widgets/scroll_physics.dart'
+    show tabBarScrollPhysics;
+import 'package:PiliPlus/common/widgets/selection_text.dart';
 import 'package:PiliPlus/common/widgets/stat/stat.dart';
 import 'package:PiliPlus/models/common/stat_type.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
@@ -12,8 +12,8 @@ import 'package:PiliPlus/pages/pgc_review/view.dart';
 import 'package:PiliPlus/pages/search/widgets/search_text.dart';
 import 'package:PiliPlus/utils/extension/scroll_controller_ext.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:flutter/material.dart' hide TabBarView;
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class PgcIntroPanel extends CommonSlidePage {
   final PgcInfoModel item;
@@ -95,11 +95,10 @@ class _IntroDetailState extends State<PgcIntroPanel>
 
   @override
   Widget buildList(ThemeData theme) {
-    return TabBarView<TabBarDragGestureRecognizer>(
+    return TabBarView(
       controller: _tabController,
-      physics: clampingScrollPhysics,
-      horizontalDragGestureRecognizer: () =>
-          TabBarDragGestureRecognizer(isDxAllowed: isDxAllowed),
+      physics: tabBarScrollPhysics,
+      horizontalDragGestureRecognizer: horizontalDragGestureRecognizer,
       children: [
         KeepAliveWrapper(child: _buildInfo(theme)),
         PgcReviewPage(
@@ -128,7 +127,7 @@ class _IntroDetailState extends State<PgcIntroPanel>
         bottom: MediaQuery.viewPaddingOf(context).bottom + 100,
       ),
       children: [
-        selectableText(
+        SelectionText(
           widget.item.title!,
           style: const TextStyle(fontSize: 16),
         ),
@@ -172,7 +171,7 @@ class _IntroDetailState extends State<PgcIntroPanel>
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
-          selectableText(
+          SelectionText(
             widget.item.evaluate!,
             style: textStyle,
           ),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:PiliPlus/utils/storage_pref.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 全局「毛玻璃模糊渐显」状态（返回动效结束后遮罩渐隐）：
 /// - glassRevealActive = true：渐显进行中，所有 GlassContainer 读

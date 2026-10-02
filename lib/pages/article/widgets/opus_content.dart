@@ -1,6 +1,8 @@
 ﻿import 'dart:math' as math;
 
 import 'package:PiliPlus/common/assets.dart';
+import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
+import 'package:PiliPlus/common/widgets/emote_tooltip.dart';
 import 'package:PiliPlus/common/widgets/gesture/tap_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/image/cached_network_svg_image.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -8,7 +10,6 @@ import 'package:PiliPlus/common/widgets/image_grid/image_grid_view.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/hero.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/models/common/image_preview_type.dart';
-import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/models/dynamics/article_content_model.dart'
     show ArticleContentModel, Rich, Style, Word, Node;
 import 'package:PiliPlus/models/dynamics/result.dart';
@@ -19,11 +20,12 @@ import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:re_highlight/languages/all.dart';
 import 'package:re_highlight/re_highlight.dart';
 import 'package:re_highlight/styles/github-dark.dart';
@@ -33,34 +35,70 @@ class OpusContent extends StatelessWidget {
   final List<ArticleContentModel> opus;
   final ValueGetter<List<SourceModel>> images;
   final double maxWidth;
+  final String opusId;
 
   const OpusContent({
     super.key,
     required this.opus,
     required this.images,
     required this.maxWidth,
+    required this.opusId,
   });
 
   static InlineSpan _node2Widget({
     required Node item,
-    required ColorScheme colorScheme,
     bool isQuote = false,
+    required String opusId,
+    required ColorScheme colorScheme,
     required ValueGetter<double> surfaceLuminance,
   }) {
     switch (item.type) {
       case 'TEXT_NODE_TYPE_RICH' when (item.rich != null):
-        Rich rich = item.rich!;
+        final rich = item.rich!;
         switch (rich.type) {
           case 'RICH_TEXT_NODE_TYPE_EMOJI':
             Emoji emoji = rich.emoji!;
             final size = 20.0 * emoji.size;
             return WidgetSpan(
-              child: NetworkImgLayer(
-                width: size,
-                height: size,
-                src: emoji.url,
-                type: ImageType.emote,
+              rawText: rich.origText,
+              child: emoteTooltipBuilder(
+                url: emoji.url,
+                triggerMode: .tap,
+                emote: rich.origText,
+                jumpUrl: emoji.jumpUrl,
+                colorScheme: colorScheme,
+                child: NetworkImgLayer(
+                  width: size,
+                  height: size,
+                  src: emoji.url,
+                  type: .emote,
+                ),
               ),
+            );
+          case 'RICH_TEXT_NODE_TYPE_LOTTERY':
+            return TextSpan(
+              children: [
+                WidgetSpan(
+                  alignment: .middle,
+                  child: Icon(
+                    Icons.redeem_rounded,
+                    size: 16,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                TextSpan(
+                  text: '${rich.origText} ',
+                  style: TextStyle(color: colorScheme.primary),
+                  recognizer: NoDeadlineTapGestureRecognizer()
+                    ..onTap = () => Get.toNamed(
+                      '/webview',
+                      parameters: {
+                        'url':
+                            'https://www.bilibili.com/h5/lottery/result?business_id=$opusId',
+                      },
+                    ),
+                ),
+              ],
             );
           default:
             return TextSpan(
@@ -177,13 +215,14 @@ class OpusContent extends StatelessWidget {
           switch (element.paraType) {
             case 1 || 4:
               final isQuote = element.paraType == 4;
-              Widget widget = SelectableText.rich(
+              Widget widget = Text.rich(
                 textAlign: element.align == 1 ? TextAlign.center : null,
                 TextSpan(
                   children: element.text?.nodes
                       ?.map(
                         (item) => _node2Widget(
                           item: item,
+                          opusId: opusId,
                           colorScheme: colorScheme,
                           surfaceLuminance: getSurfaceLuminance,
                         ),
@@ -193,12 +232,7 @@ class OpusContent extends StatelessWidget {
               );
               if (isQuote) {
                 widget = Container(
-                  padding: const EdgeInsets.only(
-                    left: 8,
-                    top: 4,
-                    right: 4,
-                    bottom: 4,
-                  ),
+                  padding: const .only(left: 8, top: 4, right: 4, bottom: 4),
                   decoration: BoxDecoration(
                     border: Border(
                       left: BorderSide(
@@ -214,8 +248,9 @@ class OpusContent extends StatelessWidget {
               }
               return widget;
             case 2 when (element.pic != null):
-              if (element.pic!.pics!.length == 1) {
-                final pic = element.pic!.pics!.first;
+              final pics = element.pic!.pics!;
+              if (pics.length == 1) {
+                final pic = pics.first;
                 double? width = pic.width == null
                     ? null
                     : math.min(maxWidth, pic.width!);
@@ -234,7 +269,7 @@ class OpusContent extends StatelessWidget {
                 );
                 if (!(pic.isLongPic ?? false)) {
                   child = fromHero(
-                    tag: pic.url!,
+                    tag: '${pic.url!}$hashCode',
                     child: child,
                   );
                 }
@@ -244,12 +279,13 @@ class OpusContent extends StatelessWidget {
                     imgList: images,
                     initialPage: images.indexWhere((e) => e.url == pic.url),
                     quality: 60,
+                    tag: hashCode.toString(),
                   ),
                   child: child,
                 );
               } else {
                 return ImageGridView(
-                  picArr: element.pic!.pics!
+                  picArr: pics
                       .map(
                         (e) => ImageModel(
                           width: e.width,
@@ -260,27 +296,31 @@ class OpusContent extends StatelessWidget {
                       .toList(),
                 );
               }
-            case 3 when (element.line?.pic != null):
-              final height = element.line!.pic!.height?.toDouble();
-              return CachedNetworkImage(
-                fit: .contain,
-                height: height,
-                width: maxWidth,
-                memCacheWidth: maxWidth.cacheSize(context),
-                imageUrl: ImageUtils.thumbnailUrl(element.line!.pic!.url!),
-                placeholder: (_, _) => const SizedBox.shrink(),
-              );
-            case 5 when (element.list != null):
-              return SelectableText.rich(
+            case 3:
+              if (element.line?.pic case final pic?) {
+                final height = pic.height?.toDouble();
+                return CachedNetworkImage(
+                  fit: .contain,
+                  height: height,
+                  width: maxWidth,
+                  memCacheWidth: maxWidth.cacheSize(context),
+                  imageUrl: ImageUtils.thumbnailUrl(pic.url!),
+                  placeholder: (_, _) => const SizedBox.shrink(),
+                );
+              } else {
+                return const Divider();
+              }
+            case 5 when (element.list?.items?.isNotEmpty == true):
+              return Text.rich(
                 TextSpan(
-                  children: element.list!.items?.indexed.map((entry) {
+                  children: element.list!.items!.mapIndexed((i, entry) {
                     return TextSpan(
                       children: [
                         const WidgetSpan(
                           child: Icon(MdiIcons.circleMedium),
                           alignment: .middle,
                         ),
-                        ...entry.$2.nodes!.map((item) {
+                        ...entry.nodes!.map((item) {
                           if (item.word != null) {
                             return _getSpan(
                               item.word,
@@ -307,7 +347,7 @@ class OpusContent extends StatelessWidget {
                           }
                           return const TextSpan();
                         }),
-                        if (entry.$1 < element.list!.items!.length - 1)
+                        if (i < element.list!.items!.length - 1)
                           const TextSpan(text: '\n'),
                       ],
                     );
@@ -588,39 +628,51 @@ class OpusContent extends StatelessWidget {
                       ? null
                       : () {
                           try {
+                            final card = element.linkCard!.card!;
                             if (type == 'LINK_CARD_TYPE_VOTE') {
                               showVoteDialog(
                                 context,
-                                element.linkCard!.card!.vote?.voteId ??
-                                    int.parse(element.linkCard!.card!.oid!),
+                                card.vote?.voteId ?? int.parse(card.oid!),
                               );
                               return;
                             }
                             if (type == 'LINK_CARD_TYPE_ITEM_NULL') {
-                              switch (element.linkCard?.card?.itemNull?.text) {
-                                case '视频':
-                                  PiliScheme.videoPush(
-                                    int.parse(element.linkCard!.card!.oid!),
-                                    null,
-                                  );
-                                default:
-                                  PageUtils.pushDynFromId(
-                                    id: element.linkCard!.card!.oid!,
-                                  );
-                              }
+                              showDialog(
+                                context: context,
+                                builder: (context) => SimpleDialog(
+                                  clipBehavior: .hardEdge,
+                                  contentPadding: const .symmetric(
+                                    vertical: 12,
+                                  ),
+                                  children: [
+                                    DialogOption(
+                                      onPressed: () {
+                                        Get.back();
+                                        PiliScheme.videoPush(
+                                          int.parse(card.oid!),
+                                          null,
+                                        );
+                                      },
+                                      child: const Text('视频'),
+                                    ),
+                                    DialogOption(
+                                      onPressed: () {
+                                        Get.back();
+                                        PageUtils.pushDynFromId(id: card.oid!);
+                                      },
+                                      child: const Text('动态/专栏'),
+                                    ),
+                                  ],
+                                ),
+                              );
                               return;
                             }
-                            String? url = switch (type) {
-                              'LINK_CARD_TYPE_UGC' =>
-                                element.linkCard!.card!.ugc!.jumpUrl,
-                              'LINK_CARD_TYPE_COMMON' =>
-                                element.linkCard!.card!.common!.jumpUrl,
-                              'LINK_CARD_TYPE_LIVE' =>
-                                element.linkCard!.card!.live!.jumpUrl,
-                              'LINK_CARD_TYPE_OPUS' =>
-                                element.linkCard!.card!.opus!.jumpUrl,
-                              'LINK_CARD_TYPE_MUSIC' =>
-                                element.linkCard!.card!.music!.jumpUrl,
+                            final url = switch (type) {
+                              'LINK_CARD_TYPE_UGC' => card.ugc!.jumpUrl,
+                              'LINK_CARD_TYPE_COMMON' => card.common!.jumpUrl,
+                              'LINK_CARD_TYPE_LIVE' => card.live!.jumpUrl,
+                              'LINK_CARD_TYPE_OPUS' => card.opus!.jumpUrl,
+                              'LINK_CARD_TYPE_MUSIC' => card.music!.jumpUrl,
                               _ => null,
                             };
                             if (url != null && url.isNotEmpty) {
@@ -659,15 +711,16 @@ class OpusContent extends StatelessWidget {
                   color: colorScheme.onInverseSurface,
                 ),
                 width: .infinity,
-                child: SelectableText.rich(renderer.span!),
+                child: Text.rich(renderer.span!),
               );
             case 8 when (element.heading?.nodes?.isNotEmpty == true):
-              return SelectableText.rich(
+              return Text.rich(
                 TextSpan(
                   children: element.heading!.nodes!
                       .map(
                         (e) => _node2Widget(
                           item: e,
+                          opusId: opusId,
                           colorScheme: colorScheme,
                           surfaceLuminance: getSurfaceLuminance,
                         ),
@@ -678,7 +731,7 @@ class OpusContent extends StatelessWidget {
             default:
               if (kDebugMode) debugPrint('unknown type ${element.paraType}');
               if (element.text?.nodes?.isNotEmpty == true) {
-                return SelectableText.rich(
+                return Text.rich(
                   textAlign: element.align == 1 ? TextAlign.center : null,
                   TextSpan(
                     children: element.text!.nodes!
@@ -693,7 +746,7 @@ class OpusContent extends StatelessWidget {
                 );
               }
 
-              return SelectableText(
+              return Text(
                 '不支持的类型 (${element.paraType})',
                 style: const TextStyle(
                   fontWeight: .bold,
@@ -702,7 +755,7 @@ class OpusContent extends StatelessWidget {
               );
           }
         } catch (e, s) {
-          return SelectableText(
+          return Text(
             '错误的类型 $e${kDebugMode ? '\n$s' : ''}',
             style: const TextStyle(
               fontWeight: .bold,

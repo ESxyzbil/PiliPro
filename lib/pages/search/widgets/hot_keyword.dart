@@ -3,13 +3,13 @@ import 'package:PiliPlus/models_new/search/search_trending/list.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show
         ContainerRenderObjectMixin,
         MultiChildLayoutParentData,
         RenderBoxContainerDefaultsMixin,
         BoxHitTestResult;
+import 'package:material_ui/material_ui.dart';
 
 class SliverHotKeyword extends StatelessWidget {
   final List<SearchTrendingItemModel> hotSearchList;
@@ -38,22 +38,22 @@ class SliverHotKeyword extends StatelessWidget {
         children: hotSearchList
             .map(
               (i) => Material(
-                type: MaterialType.transparency,
-                borderRadius: const BorderRadius.all(Radius.circular(3)),
+                type: .transparency,
+                borderRadius: const .all(.circular(3)),
                 child: InkWell(
-                  borderRadius: const BorderRadius.all(Radius.circular(3)),
+                  borderRadius: const .all(.circular(3)),
                   onTap: () => onClick?.call(i.keyword),
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 2, right: 10),
+                    padding: const .only(left: 2, right: 10),
                     child: Tooltip(
-                      message: i.keyword,
+                      message: i.showName,
                       child: Row(
                         children: [
                           Flexible(
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(6, 5, 0, 5),
+                              padding: const .fromLTRB(6, 5, 0, 5),
                               child: Text(
-                                i.keyword!,
+                                i.showName,
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
                                 style: const TextStyle(fontSize: 14),
@@ -62,7 +62,7 @@ class SliverHotKeyword extends StatelessWidget {
                           ),
                           if (!i.icon.isNullOrEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(left: 4),
+                              padding: const .only(left: 4),
                               child: CachedNetworkImage(
                                 height: 15,
                                 memCacheHeight: cacheHeight,
@@ -72,7 +72,7 @@ class SliverHotKeyword extends StatelessWidget {
                             )
                           else if (i.showLiveIcon == true)
                             Padding(
-                              padding: const EdgeInsets.only(left: 4),
+                              padding: const .only(left: 4),
                               child: Image.asset(
                                 Assets.livingRect,
                                 width: 48,

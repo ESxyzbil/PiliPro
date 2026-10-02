@@ -110,6 +110,9 @@ class RxList<E> extends ListMixin<E>
     return _value;
   }
 
+  /// Backing list without registering an observer dependency (unlike [value]).
+  List<E> get rawValue => _value;
+
   @override
   set length(int newLength) {
     _value.length = newLength;

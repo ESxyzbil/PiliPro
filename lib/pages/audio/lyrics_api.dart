@@ -568,7 +568,7 @@ Future<String?> _getBilibiliSubtitleUrl(int aid, int cid) async {
   return null;
 }
 
-/// 从字幕 URL 直取 JSON body 解析（不依赖 vttSubtitles）
+/// 从字幕 URL 直取 JSON body 解析（不依赖 getSubtitles）
 Future<List<LyricsLine>?> _fetchSubtitleJsonDirect(String subtitleUrl) async {
   try {
     final url = subtitleUrl.startsWith('//') ? 'https:$subtitleUrl' : subtitleUrl;
@@ -605,11 +605,11 @@ Future<List<LyricsLine>?> _fetchSubtitleJsonDirect(String subtitleUrl) async {
 Future<List<LyricsLine>?> _parseBilibiliSubtitleJson(String subtitleUrl) async {
   if (subtitleUrl.isEmpty) return null;
 
-  // 尝试 A: 用现有的 vttSubtitles（走 Request 包装，含 WBI/auth 等）
+  // 尝试 A: 用现有的 getSubtitles（走 Request 包装，含 WBI/auth 等）
   try {
-    final res = await VideoHttp.vttSubtitles(subtitleUrl);
+    final res = await VideoHttp.getSubtitles(subtitleUrl);
     if (res != null && res.isNotEmpty) {
-      // vttSubtitles 返回 VTT 格式文本：
+      // getSubtitles 返回 VTT 格式文本：
       //   WEBVTT\n\n
       //   MM:SS.mmm --> MM:SS.mmm\n   (or HH:MM:SS.mmm --> HH:MM:SS.mmm)
       //   字幕文本\n\n
@@ -653,7 +653,7 @@ Future<List<LyricsLine>?> _parseBilibiliSubtitleJson(String subtitleUrl) async {
     }
   } catch (_) {}
 
-  // 尝试 B: vttSubtitles 失败（或返回空），直取 JSON body
+  // 尝试 B: getSubtitles 失败（或返回空），直取 JSON body
   return _fetchSubtitleJsonDirect(subtitleUrl);
 }
 

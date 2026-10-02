@@ -1,10 +1,13 @@
 import 'package:PiliPlus/common/skeleton/video_reply.dart';
+import 'package:PiliPlus/common/sliver_single_child_delegate.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
+import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
+import 'package:PiliPlus/common/widgets/selection_text.dart';
 import 'package:PiliPlus/common/widgets/sliver/sliver_floating_header.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/image_type.dart';
@@ -14,14 +17,13 @@ import 'package:PiliPlus/pages/pgc_review/child/controller.dart';
 import 'package:PiliPlus/pages/pgc_review/post/view.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
-import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
-import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class PgcReviewChildPage extends StatefulWidget {
   const PgcReviewChildPage({
@@ -89,101 +91,92 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
     ThemeData theme,
     LoadingState<List<PgcReviewItemModel>?> loadingState,
   ) {
-    late final divider = Divider(
-      height: 1,
-      color: theme.colorScheme.outline.withValues(alpha: 0.1),
-    );
-    return switch (loadingState) {
-      Loading() => SliverPrototypeExtentList.builder(
-        prototypeItem: const VideoReplySkeleton(),
-        itemBuilder: (_, _) => const VideoReplySkeleton(),
-        itemCount: 8,
-      ),
-      Success(:final response) =>
-        response != null && response.isNotEmpty
-            ? SliverList.separated(
-                itemBuilder: (context, index) {
-                  if (index == response.length - 1) {
-                    _controller.onLoadMore();
-                  }
-                  return _itemWidget(theme, index, response[index]);
-                },
-                itemCount: response.length,
-                separatorBuilder: (context, index) => divider,
-              )
-            : HttpError(onReload: _controller.onReload),
-      Error(:final errMsg) => HttpError(
-        errMsg: errMsg,
-        onReload: _controller.onReload,
-      ),
-    };
+    switch (loadingState) {
+      case Loading():
+        return const SliverPrototypeExtentList(
+          prototypeItem: VideoReplySkeleton(),
+          delegate: SliverSingleChildDelegate(
+            count: 8,
+            child: VideoReplySkeleton(),
+          ),
+        );
+      case Success(:final response):
+        if (response != null && response.isNotEmpty) {
+          final divider = Divider(
+            height: 1,
+            color: theme.colorScheme.outline.withValues(alpha: 0.1),
+          );
+          return SliverList.separated(
+            itemBuilder: (context, index) {
+              if (index == response.length - 1) {
+                _controller.onLoadMore();
+              }
+              return _itemWidget(theme, index, response[index]);
+            },
+            itemCount: response.length,
+            separatorBuilder: (context, index) => divider,
+          );
+        }
+        return HttpError(onReload: _controller.onReload);
+      case Error(:final errMsg):
+        return HttpError(
+          errMsg: errMsg,
+          onReload: _controller.onReload,
+        );
+    }
   }
 
   Widget _itemWidget(ThemeData theme, int index, PgcReviewItemModel item) {
+    final author = item.author!;
     void showMore() => showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => SimpleDialog(
         clipBehavior: Clip.hardEdge,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (item.author!.mid == Accounts.main.mid) ...[
-              ListTile(
-                dense: true,
-                title: const Text(
-                  '编辑',
-                  style: TextStyle(fontSize: 14),
-                ),
-                onTap: () {
-                  Get.back();
-                  showModalBottomSheet(
-                    context: context,
-                    useSafeArea: true,
-                    isScrollControlled: true,
-                    builder: (context) {
-                      return PgcReviewPostPanel(
-                        name: widget.name,
-                        mediaId: widget.mediaId,
-                        reviewId: item.reviewId,
-                        content: item.content,
-                        score: item.score,
-                      );
-                    },
-                  );
-                },
-              ),
-              ListTile(
-                dense: true,
-                title: const Text(
-                  '删除',
-                  style: TextStyle(fontSize: 14),
-                ),
-                onTap: () {
-                  Get.back();
-                  showConfirmDialog(
-                    context: context,
-                    title: const Text('删除短评，同时删除评分？'),
-                    onConfirm: () => _controller.onDel(index, item.reviewId!),
-                  );
-                },
-              ),
-            ],
-            ListTile(
-              dense: true,
-              title: const Text(
-                '举报',
-                style: TextStyle(fontSize: 14),
-              ),
-              onTap: () {
+        children: [
+          if (author.mid == Accounts.main.mid) ...[
+            DialogOption(
+              child: const Text('编辑', style: TextStyle(fontSize: 14)),
+              onPressed: () {
                 Get.back();
-                PageUtils.toWebview(
-                  'https://www.bilibili.com/appeal/?reviewId=${item.reviewId}&type=shortComment&mediaId=${widget.mediaId}',
+                showModalBottomSheet(
+                  context: context,
+                  useSafeArea: true,
+                  isScrollControlled: true,
+                  builder: (context) {
+                    return PgcReviewPostPanel(
+                      name: widget.name,
+                      mediaId: widget.mediaId,
+                      reviewId: item.reviewId,
+                      content: item.content,
+                      score: item.score,
+                    );
+                  },
+                );
+              },
+            ),
+            DialogOption(
+              child: const Text('删除', style: TextStyle(fontSize: 14)),
+              onPressed: () {
+                Get.back();
+                showConfirmDialog(
+                  context: context,
+                  title: const Text('删除短评，同时删除评分？'),
+                  onConfirm: () => _controller.onDel(index, item.reviewId!),
                 );
               },
             ),
           ],
-        ),
+          DialogOption(
+            child: const Text('举报', style: TextStyle(fontSize: 14)),
+            onPressed: () {
+              Get.back();
+              PageUtils.toWebview(
+                'https://www.bilibili.com/appeal/?reviewId=${item.reviewId}&type=shortComment&mediaId=${widget.mediaId}',
+              );
+            },
+          ),
+        ],
       ),
     );
 
@@ -207,14 +200,14 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => PageUtils.toMemberPage(mid: item.author!.mid),
+                onTap: () => PageUtils.toMemberPage(mid: author.mid),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     NetworkImgLayer(
                       height: 34,
                       width: 34,
-                      src: item.author!.avatar,
+                      src: author.avatar,
                       type: ImageType.avatar,
                     ),
                     const SizedBox(width: 10),
@@ -228,21 +221,20 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              item.author!.uname!,
+                              author.uname!,
                               style: TextStyle(
                                 color:
-                                    item.author?.vip?.status != null &&
-                                        item.author!.vip!.status > 0 &&
-                                        item.author!.vip!.type == 2
+                                    author.vip != null &&
+                                        author.vip!.status > 0 &&
+                                        author.vip!.type == 2
                                     ? theme.colorScheme.vipColor
                                     : theme.colorScheme.outline,
                                 fontSize: 13,
                               ),
                             ),
-                            Image.asset(
-                              BiliUtils.levelName(item.author!.level!),
+                            BiliUtils.levelPicture(
+                              author.level!,
                               height: 11,
-                              cacheHeight: 11.cacheSize(context),
                             ),
                           ],
                         ),
@@ -298,7 +290,7 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
                   style: const TextStyle(height: 1.75),
                 )
               else
-                SelectableText(
+                SelectionText(
                   item.content!,
                   style: const TextStyle(height: 1.75),
                 ),
@@ -320,7 +312,12 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
                         SizedBox(
                           height: 32,
                           child: TextButton(
-                            style: style,
+                            style: const ButtonStyle(
+                              visualDensity: .compact,
+                              tapTargetSize: .shrinkWrap,
+                              padding: WidgetStatePropertyAll(.zero),
+                              minimumSize: WidgetStatePropertyAll(.square(40)),
+                            ),
                             onPressed: () => _controller.onDislike(
                               item,
                               isDislike,
@@ -383,7 +380,7 @@ class _PgcReviewChildPageState extends State<PgcReviewChildPage>
     child: Padding(
       padding: const EdgeInsets.fromLTRB(12, 2.5, 6, 2.5),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: .spaceBetween,
         children: [
           Obx(
             () {

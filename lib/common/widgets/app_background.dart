@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:PiliPlus/common/widgets/glass.dart'
     show glassRevealActive, glassRevealProgress, startGlassRevealPush;
 import 'package:PiliPlus/utils/storage_pref.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 
 /// 背景层全局刷新通知。

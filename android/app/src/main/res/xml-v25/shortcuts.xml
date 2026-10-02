@@ -17,13 +17,4 @@
             android:action="com.example.piliplus.SHORTCUT"
             android:data="bilibili://download" />
     </shortcut>
-    <shortcut
-        android:icon="@drawable/ic_shortcut_fav"
-        android:shortcutId="favorite"
-        android:shortcutLongLabel="@string/favorite"
-        android:shortcutShortLabel="@string/favorite">
-        <intent
-            android:action="com.example.piliplus.SHORTCUT"
-            android:data="bilibili://favorite" />
-    </shortcut>
 </shortcuts>

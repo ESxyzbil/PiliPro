@@ -8,8 +8,8 @@ import 'package:PiliPlus/models_new/space/space_audio/item.dart';
 import 'package:PiliPlus/pages/member_audio/controller.dart';
 import 'package:PiliPlus/pages/member_audio/widgets/item.dart';
 import 'package:PiliPlus/utils/grid.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MemberAudio extends StatefulWidget {
   const MemberAudio({
@@ -26,7 +26,7 @@ class MemberAudio extends StatefulWidget {
 }
 
 class _MemberAudioState extends State<MemberAudio>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, GridMixin {
   late final MemberAudioController _controller;
 
   @override
@@ -43,6 +43,7 @@ class _MemberAudioState extends State<MemberAudio>
     super.build(context);
     final colorScheme = ColorScheme.of(context);
     return refreshIndicator(
+      isClampingScrollPhysics: true,
       onRefresh: _controller.onRefresh,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -62,13 +63,6 @@ class _MemberAudioState extends State<MemberAudio>
 
   @override
   bool get wantKeepAlive => true;
-
-  late final gridDelegate = SliverGridDelegateWithExtentAndRatio(
-    mainAxisSpacing: 2,
-    maxCrossAxisExtent: Grid.smallCardWidth * 2,
-    childAspectRatio: Style.aspectRatio * 2.6,
-    minHeight: MediaQuery.textScalerOf(context).scale(90),
-  );
 
   Widget _buildBody(
     ColorScheme colorScheme,

@@ -24,9 +24,9 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:flutter/material.dart' hide ListTile;
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:material_ui/material_ui.dart' hide ListTile;
 
 class MinePage extends StatefulWidget {
   const MinePage({super.key, this.showBackBtn = false});
@@ -121,7 +121,7 @@ class _MediaPageState extends CommonPageState<MinePage>
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(size: e.size, e.icon, color: primary),
+                        Icon(e.icon, color: primary),
                         Text(
                           e.title,
                           style: const TextStyle(fontSize: 13),
@@ -143,7 +143,9 @@ class _MediaPageState extends CommonPageState<MinePage>
     const style = ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap);
     return Row(
       spacing: 5,
-      mainAxisAlignment: Pref.circularScreen ? MainAxisAlignment.center : MainAxisAlignment.end,
+      mainAxisAlignment: Pref.circularScreen
+          ? MainAxisAlignment.center
+          : MainAxisAlignment.end,
       children: [
         if (widget.showBackBtn)
           const Expanded(
@@ -204,7 +206,7 @@ class _MediaPageState extends CommonPageState<MinePage>
               iconSize: iconSize,
               padding: padding,
               style: style,
-              tooltip: '切换至${controller.nextThemeType.desc}主题',
+              tooltip: '切换至${controller.nextThemeType.label}主题',
               onPressed: controller.onChangeTheme,
               icon: controller.themeType.value.icon,
             );
@@ -310,13 +312,10 @@ class _MediaPageState extends CommonPageState<MinePage>
                       ),
                       const SizedBox(height: 4),
                       if (levelInfo != null) ...[
-                        Image.asset(
-                          BiliUtils.levelName(
-                            levelInfo.currentLevel ?? 0,
-                            isSeniorMember: userInfo.isSeniorMember == 1,
-                          ),
+                        BiliUtils.levelPicture(
+                          levelInfo.currentLevel ?? 0,
+                          isSeniorMember: userInfo.isSeniorMember == 1,
                           height: 12,
-                          cacheHeight: 12.cacheSize(context),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -427,13 +426,11 @@ class _MediaPageState extends CommonPageState<MinePage>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  Image.asset(
-                                    BiliUtils.levelName(
-                                      levelInfo?.currentLevel ?? 0,
-                                      isSeniorMember: userInfo.isSeniorMember == 1,
-                                    ),
+                                  BiliUtils.levelPicture(
+                                    levelInfo?.currentLevel ?? 0,
+                                    isSeniorMember: userInfo.isSeniorMember ==
+                                        1,
                                     height: 10,
-                                    cacheHeight: 10.cacheSize(context),
                                   ),
                                 ],
                               ),
@@ -556,7 +553,7 @@ class _MediaPageState extends CommonPageState<MinePage>
     );
   }
 
-  void _autoRefresh() => Future.delayed(
+  void _autoRefresh() => Timer(
     const Duration(milliseconds: 150),
     () => controller.onRefresh(isManual: false),
   );

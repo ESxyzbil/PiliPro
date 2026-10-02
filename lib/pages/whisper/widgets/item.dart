@@ -3,12 +3,15 @@
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
+import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
 import 'package:PiliPlus/grpc/bilibili/app/im/v1.pb.dart'
-    show Session, SessionId, SessionPageType, SessionType, UnreadStyle;
-import 'package:PiliPlus/models/common/badge_type.dart';
+    show Session, SessionId, SessionPageType;
+import 'package:PiliPlus/grpc/im.dart';
+import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/msg.dart';
 import 'package:PiliPlus/pages/whisper_secondary/view.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -16,9 +19,10 @@ import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:fixnum/fixnum.dart';
-import 'package:flutter/material.dart' hide ListTile;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart' hide ListTile;
 
 class WhisperSessionItem extends StatelessWidget {
   const WhisperSessionItem({
@@ -34,6 +38,28 @@ class WhisperSessionItem extends StatelessWidget {
   final Function(bool isMuted, Int64 talkerUid) onSetMute;
   final ValueChanged<int> onRemove;
 
+  Future<void> _updateAck(BuildContext context) async {
+    final talkerUid = item.id.privateId.talkerUid;
+    final res = await ImGrpc.sessionDetail(talkerId: talkerUid, sessionType: 1);
+    if (res case Success(:final response)) {
+      final res = await MsgHttp.ackSessionMsg(
+        talkerId: talkerUid.toInt(),
+        ackSeqno: response.ackSeqno.toInt(),
+      );
+      if (res.isSuccess) {
+        SmartDialog.showToast('已标为已读');
+        item.clearUnread();
+        if (context.mounted) {
+          (context as Element).markNeedsBuild();
+        }
+      } else {
+        res.toast();
+      }
+    } else {
+      res.toast();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final resource =
@@ -46,7 +72,8 @@ class WhisperSessionItem extends StatelessWidget {
     Map? vipInfo = item.sessionInfo.hasVipInfo()
         ? jsonDecode(item.sessionInfo.vipInfo)
         : null;
-    final ThemeData theme = Theme.of(context);
+
+    final theme = Theme.of(context);
 
     return GlassContainer(
       kind: GlassKind.infoCard,
@@ -60,68 +87,85 @@ class WhisperSessionItem extends StatelessWidget {
           : null,
       onLongPress: () => showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          clipBehavior: Clip.hardEdge,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          content: DefaultTextStyle(
-            style: const TextStyle(fontSize: 14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  dense: true,
-                  onTap: () {
-                    Get.back();
-                    onSetTop(item.isPinned, item.id);
-                  },
-                  title: Text(item.isPinned ? '移除置顶' : '置顶'),
-                ),
-                if (item.id.privateId.hasTalkerUid())
-                  ListTile(
-                    dense: true,
-                    onTap: () {
-                      Get.back();
-                      onSetMute(item.isMuted, item.id.privateId.talkerUid);
-                    },
-                    title: Text('${item.isMuted ? '关闭' : '开启'}免打扰'),
-                  ),
-                if (item.id.privateId.hasTalkerUid())
-                  ListTile(
-                    dense: true,
-                    onTap: () {
-                      Get.back();
-                      showConfirmDialog(
-                        context: context,
-                        title: const Text('确定删除该对话？'),
-                        onConfirm: () =>
-                            onRemove(item.id.privateId.talkerUid.toInt()),
-                      );
-                    },
-                    title: const Text('删除'),
-                  ),
-              ],
+        builder: (_) => SimpleDialog(
+          clipBehavior: .hardEdge,
+          contentPadding: const .symmetric(vertical: 12),
+          children: [
+            DialogOption(
+              onPressed: () {
+                Get.back();
+                onSetTop(item.isPinned, item.id);
+              },
+              child: Text(item.isPinned ? '移除置顶' : '置顶'),
             ),
-          ),
+            if (item.id.privateId.hasTalkerUid()) ...[
+              if (kDebugMode || item.hasUnread())
+                DialogOption(
+                  onPressed: () {
+                    Get.back();
+                    _updateAck(context);
+                  },
+                  child: const Text('标为已读'),
+                ),
+              DialogOption(
+                onPressed: () {
+                  Get.back();
+                  onSetMute(item.isMuted, item.id.privateId.talkerUid);
+                },
+                child: Text('${item.isMuted ? '关闭' : '开启'}免打扰'),
+              ),
+              DialogOption(
+                onPressed: () {
+                  Get.back();
+                  showConfirmDialog(
+                    context: context,
+                    title: const Text('确定删除该对话？'),
+                    onConfirm: () =>
+                        onRemove(item.id.privateId.talkerUid.toInt()),
+                  );
+                },
+                child: const Text('删除'),
+              ),
+            ],
+          ],
         ),
       ),
       onSecondaryTapUp: PlatformUtils.isDesktop
           ? (details) => showMenu(
               context: context,
               position: PageUtils.menuPosition(details.globalPosition),
-              items: [
+              items: <PopupMenuEntry<Never>>[
                 PopupMenuItem(
                   height: 42,
                   onTap: () => onSetTop(item.isPinned, item.id),
                   child: Text(item.isPinned ? '移除置顶' : '置顶'),
                 ),
-                if (item.id.privateId.hasTalkerUid())
+                if (item.id.privateId.hasTalkerUid()) ...[
+                  if (kDebugMode || item.hasUnread())
+                    PopupMenuItem(
+                      height: 42,
+                      onTap: () => _updateAck(context),
+                      child: const Text('标为已读'),
+                    ),
+                  // if (kDebugMode)
+                  //   PopupMenuItem(
+                  //     height: 42,
+                  //     onTap: () {
+                  //       item.unread = Unread(
+                  //         style: .UNREAD_STYLE_NUMBER,
+                  //         number: .ONE,
+                  //       );
+                  //       (context as Element).markNeedsBuild();
+                  //     },
+                  //     child: const Text('标为未读'),
+                  //   ),
                   PopupMenuItem(
                     height: 42,
                     onTap: () =>
                         onSetMute(item.isMuted, item.id.privateId.talkerUid),
                     child: Text('${item.isMuted ? '关闭' : '开启'}免打扰'),
                   ),
-                if (item.id.privateId.hasTalkerUid())
+                  const PopupMenuDivider(height: 10),
                   PopupMenuItem(
                     height: 42,
                     onTap: () => showConfirmDialog(
@@ -130,8 +174,12 @@ class WhisperSessionItem extends StatelessWidget {
                       onConfirm: () =>
                           onRemove(item.id.privateId.talkerUid.toInt()),
                     ),
-                    child: const Text('删除'),
+                    child: Text(
+                      '删除',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
                   ),
+                ],
               ],
             )
           : null,
@@ -159,24 +207,15 @@ class WhisperSessionItem extends StatelessWidget {
 
         if (item.id.foldId.hasType()) {
           SessionPageType? sessionPageType = switch (item.id.foldId.type) {
-            SessionType.SESSION_TYPE_UNKNOWN =>
-              SessionPageType.SESSION_PAGE_TYPE_UNKNOWN,
-            SessionType.SESSION_TYPE_GROUP =>
-              SessionPageType.SESSION_PAGE_TYPE_GROUP,
-            SessionType.SESSION_TYPE_GROUP_FOLD =>
-              SessionPageType.SESSION_PAGE_TYPE_GROUP,
-            SessionType.SESSION_TYPE_UNFOLLOWED =>
-              SessionPageType.SESSION_PAGE_TYPE_UNFOLLOWED,
-            SessionType.SESSION_TYPE_STRANGER =>
-              SessionPageType.SESSION_PAGE_TYPE_STRANGER,
-            SessionType.SESSION_TYPE_DUSTBIN =>
-              SessionPageType.SESSION_PAGE_TYPE_DUSTBIN,
-            SessionType.SESSION_TYPE_CUSTOMER_FOLD =>
-              SessionPageType.SESSION_PAGE_TYPE_CUSTOMER,
-            SessionType.SESSION_TYPE_AI_FOLD =>
-              SessionPageType.SESSION_PAGE_TYPE_AI,
-            SessionType.SESSION_TYPE_CUSTOMER_ACCOUNT =>
-              SessionPageType.SESSION_PAGE_TYPE_CUSTOMER,
+            .SESSION_TYPE_UNKNOWN => .SESSION_PAGE_TYPE_UNKNOWN,
+            .SESSION_TYPE_GROUP => .SESSION_PAGE_TYPE_GROUP,
+            .SESSION_TYPE_GROUP_FOLD => .SESSION_PAGE_TYPE_GROUP,
+            .SESSION_TYPE_UNFOLLOWED => .SESSION_PAGE_TYPE_UNFOLLOWED,
+            .SESSION_TYPE_STRANGER => .SESSION_PAGE_TYPE_STRANGER,
+            .SESSION_TYPE_DUSTBIN => .SESSION_PAGE_TYPE_DUSTBIN,
+            .SESSION_TYPE_CUSTOMER_FOLD => .SESSION_PAGE_TYPE_CUSTOMER,
+            .SESSION_TYPE_AI_FOLD => .SESSION_PAGE_TYPE_AI,
+            .SESSION_TYPE_CUSTOMER_ACCOUNT => .SESSION_PAGE_TYPE_CUSTOMER,
             _ => null,
           };
           if (sessionPageType != null) {
@@ -194,18 +233,18 @@ class WhisperSessionItem extends StatelessWidget {
 
         if (item.id.hasSystemId()) {
           switch (item.id.systemId.type) {
-            case SessionType.SESSION_TYPE_SYSTEM:
+            case .SESSION_TYPE_SYSTEM:
               Get.toNamed('/sysMsg');
-            case SessionType.SESSION_TYPE_AI_FOLD:
-            case SessionType.SESSION_TYPE_CUSTOMER_ACCOUNT:
-            case SessionType.SESSION_TYPE_CUSTOMER_FOLD:
-            case SessionType.SESSION_TYPE_DUSTBIN:
-            case SessionType.SESSION_TYPE_GROUP:
-            case SessionType.SESSION_TYPE_GROUP_FOLD:
-            case SessionType.SESSION_TYPE_PRIVATE:
-            case SessionType.SESSION_TYPE_STRANGER:
-            case SessionType.SESSION_TYPE_UNFOLLOWED:
-            case SessionType.SESSION_TYPE_UNKNOWN:
+            case .SESSION_TYPE_AI_FOLD:
+            case .SESSION_TYPE_CUSTOMER_ACCOUNT:
+            case .SESSION_TYPE_CUSTOMER_FOLD:
+            case .SESSION_TYPE_DUSTBIN:
+            case .SESSION_TYPE_GROUP:
+            case .SESSION_TYPE_GROUP_FOLD:
+            case .SESSION_TYPE_PRIVATE:
+            case .SESSION_TYPE_STRANGER:
+            case .SESSION_TYPE_UNFOLLOWED:
+            case .SESSION_TYPE_UNKNOWN:
               SmartDialog.showToast(item.id.systemId.type.name);
           }
         }
@@ -260,7 +299,7 @@ class WhisperSessionItem extends StatelessWidget {
                   child: Text(
                     item.sessionInfo.sessionName,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    overflow: .ellipsis,
                     style: TextStyle(
                       fontSize: 15,
                       color:
@@ -275,8 +314,8 @@ class WhisperSessionItem extends StatelessWidget {
                 if (item.sessionInfo.userLabel.style.borderedLabel.hasText())
                   PBadge(
                     isStack: false,
-                    type: PBadgeType.line_secondary,
-                    size: PBadgeSize.small,
+                    type: .line_secondary,
+                    size: .small,
                     fontSize: 10,
                     isBold: false,
                     text: item.sessionInfo.userLabel.style.borderedLabel.text,
@@ -286,7 +325,7 @@ class WhisperSessionItem extends StatelessWidget {
                     Assets.livingRect,
                     height: 15,
                     cacheHeight: 15.cacheSize(context),
-                    filterQuality: FilterQuality.low,
+                    filterQuality: .low,
                   ),
               ],
             ),
@@ -307,7 +346,7 @@ class WhisperSessionItem extends StatelessWidget {
             child: Text(
               item.msgSummary.rawMsg,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              overflow: .ellipsis,
               style: theme.textTheme.labelMedium!.copyWith(
                 color: theme.colorScheme.outline,
               ),
@@ -319,10 +358,9 @@ class WhisperSessionItem extends StatelessWidget {
               Icons.notifications_off,
               color: theme.colorScheme.outline,
             )
-          else if (item.hasUnread() &&
-              item.unread.style != UnreadStyle.UNREAD_STYLE_NONE)
+          else if (item.hasUnread() && item.unread.style != .UNREAD_STYLE_NONE)
             Badge(
-              label: item.unread.style == UnreadStyle.UNREAD_STYLE_NUMBER
+              label: item.unread.style == .UNREAD_STYLE_NUMBER
                   ? Text(item.unread.number.toString())
                   : null,
             ),

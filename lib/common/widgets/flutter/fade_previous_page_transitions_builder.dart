@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:material_ui/material_ui.dart';
 
 /// 过渡动画：新页面淡入 + 轻微上滑；旧页面先淡出。
 /// 错开时序：前 50% 旧页淡出（新页透明），后 50% 新页淡入（旧页已透明），

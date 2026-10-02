@@ -1,3 +1,6 @@
+import 'package:PiliPlus/common/widgets/svg/level_icon.dart';
+import 'package:material_ui/material_ui.dart';
+
 abstract final class BiliUtils {
   static bool isDefaultFav(int? attr) {
     if (attr == null) {
@@ -21,8 +24,26 @@ abstract final class BiliUtils {
     return tagid != null && tagid != 0 && tagid != -10 && tagid != -2;
   }
 
-  static String levelName(
-    Object level, {
+  // https://s1.hdslb.com/bfs/svg-next/font/2025-10-27/freshspace-zpjpp3aqht.css
+  static Widget levelPicture(
+    int level, {
     bool isSeniorMember = false,
-  }) => 'assets/images/lv/lv${isSeniorMember ? '6_s' : level}.png';
+    double height = 11,
+  }) {
+    return UserLevel(level, height: height, flash: isSeniorMember);
+  }
+
+  static const _liveGuard1 =
+      'https://i0.hdslb.com/bfs/live/a454275dea465ac15a03f121f0d7edaf96e30bcf.png';
+  static const _liveGuard2 =
+      'https://i0.hdslb.com/bfs/live/3b46129e796df42ec7356fcba77c8a79d47db682.png';
+  static const _liveGuard3 =
+      'https://i0.hdslb.com/bfs/live/80f732943cc3367029df65e267960d56736a82ee.png';
+
+  static String? liveGuardPendant(int guardLevel) => switch (guardLevel) {
+    1 => _liveGuard1,
+    2 => _liveGuard2,
+    3 => _liveGuard3,
+    _ => null,
+  };
 }

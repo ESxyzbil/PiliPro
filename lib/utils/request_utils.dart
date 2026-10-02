@@ -1,8 +1,9 @@
-import 'dart:async';
-import 'dart:convert';
+import 'dart:convert' show jsonEncode;
 import 'dart:math';
 
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
+import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
+import 'package:PiliPlus/common/widgets/selection_text.dart';
 import 'package:PiliPlus/grpc/bilibili/im/type.pbenum.dart';
 import 'package:PiliPlus/grpc/bilibili/main/community/reply/v1.pb.dart'
     show ReplyInfo;
@@ -39,10 +40,10 @@ import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LengthLimitingTextInputFormatter;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 abstract final class RequestUtils {
   static Future<void> syncHistoryStatus() async {
@@ -170,99 +171,84 @@ abstract final class RequestUtils {
         String text = isSpecialFollowed ? '移除特别关注' : '加入特别关注';
         showDialog(
           context: context,
-          builder: (context) => AlertDialog(
+          builder: (context) => SimpleDialog(
             clipBehavior: Clip.hardEdge,
             contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  dense: true,
-                  onTap: () async {
-                    Get.back();
-                    final res = await MemberHttp.specialAction(
-                      fid: mid,
-                      isAdd: !isSpecialFollowed,
-                    );
-                    if (res.isSuccess) {
-                      SmartDialog.showToast('$text成功');
-                      afterMod?.call(isSpecialFollowed ? 2 : -10);
-                    } else {
-                      res.toast();
-                    }
-                  },
-                  title: Text(
-                    text,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                ),
-                ListTile(
-                  dense: true,
-                  onTap: () async {
-                    Get.back();
-                    final result = await showModalBottomSheet<Set<int>>(
-                      context: context,
-                      useSafeArea: true,
-                      isScrollControlled: true,
-                      constraints: BoxConstraints(
-                        maxWidth: min(640, context.mediaQueryShortestSide),
-                      ),
-                      builder: (BuildContext context) {
-                        final maxChildSize =
-                            PlatformUtils.isMobile &&
-                                !context.mediaQuerySize.isPortrait
-                            ? 1.0
-                            : 0.7;
-                        return DraggableScrollableSheet(
-                          minChildSize: 0,
-                          maxChildSize: 1,
-                          snap: true,
-                          expand: false,
-                          snapSizes: [maxChildSize],
-                          initialChildSize: maxChildSize,
-                          builder: (context, scrollController) {
-                            return GroupPanel(
-                              mid: mid,
-                              tags: followStatus!.tag,
-                              scrollController: scrollController,
-                            );
-                          },
-                        );
-                      },
-                    );
-                    if (result != null) {
-                      followStatus!.tag = result.toList();
-                      afterMod?.call(result.contains(-10) ? -10 : 2);
-                    }
-                  },
-                  title: const Text(
-                    '设置分组',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-                ListTile(
-                  dense: true,
-                  onTap: () async {
-                    Get.back();
-                    final res = await VideoHttp.relationMod(
-                      mid: mid,
-                      act: 2,
-                      reSrc: 11,
-                    );
-                    if (res.isSuccess) {
-                      SmartDialog.showToast('取消关注成功');
-                      afterMod?.call(0);
-                    } else {
-                      res.toast();
-                    }
-                  },
-                  title: const Text(
-                    '取消关注',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
+            children: [
+              DialogOption(
+                onPressed: () async {
+                  Get.back();
+                  final res = await MemberHttp.specialAction(
+                    fid: mid,
+                    isAdd: !isSpecialFollowed,
+                  );
+                  if (res.isSuccess) {
+                    SmartDialog.showToast('$text成功');
+                    afterMod?.call(isSpecialFollowed ? 2 : -10);
+                  } else {
+                    res.toast();
+                  }
+                },
+                child: Text(text, style: const TextStyle(fontSize: 14)),
+              ),
+              DialogOption(
+                onPressed: () async {
+                  Get.back();
+                  final result = await showModalBottomSheet<Set<int>>(
+                    context: context,
+                    useSafeArea: true,
+                    isScrollControlled: true,
+                    constraints: BoxConstraints(
+                      maxWidth: min(640, context.mediaQueryShortestSide),
+                    ),
+                    builder: (BuildContext context) {
+                      final maxChildSize =
+                          PlatformUtils.isMobile &&
+                              !context.mediaQuerySize.isPortrait
+                          ? 1.0
+                          : 0.7;
+                      return DraggableScrollableSheet(
+                        minChildSize: 0,
+                        maxChildSize: 1,
+                        snap: true,
+                        expand: false,
+                        snapSizes: [maxChildSize],
+                        initialChildSize: maxChildSize,
+                        builder: (context, scrollController) {
+                          return GroupPanel(
+                            mid: mid,
+                            tags: followStatus!.tag,
+                            scrollController: scrollController,
+                          );
+                        },
+                      );
+                    },
+                  );
+                  if (result != null) {
+                    followStatus!.tag = result.toList();
+                    afterMod?.call(result.contains(-10) ? -10 : 2);
+                  }
+                },
+                child: const Text('设置分组', style: TextStyle(fontSize: 14)),
+              ),
+              DialogOption(
+                onPressed: () async {
+                  Get.back();
+                  final res = await VideoHttp.relationMod(
+                    mid: mid,
+                    act: 2,
+                    reSrc: 11,
+                  );
+                  if (res.isSuccess) {
+                    SmartDialog.showToast('取消关注成功');
+                    afterMod?.call(0);
+                  } else {
+                    res.toast();
+                  }
+                },
+                child: const Text('取消关注', style: TextStyle(fontSize: 14)),
+              ),
+            ],
           ),
         );
       }
@@ -312,7 +298,7 @@ abstract final class RequestUtils {
   static Future<void> insertCreatedDyn(dynamic id) async {
     if (id != null) {
       try {
-        await Future.delayed(const Duration(milliseconds: 450));
+        await Future.pause(const Duration(milliseconds: 450));
         final res = await DynamicsHttp.dynamicDetail(id: id);
         if (res case final Success<DynamicItemModel> e) {
           final ctr = Get.find<DynamicsTabController>(tag: 'all');
@@ -338,45 +324,71 @@ abstract final class RequestUtils {
       try {
         if (id != null) {
           if (!isManual) {
-            await Future.delayed(const Duration(seconds: 5));
+            await Future.pause(const Duration(seconds: 5));
           }
           final res = await DynamicsHttp.dynamicDetail(
             id: id,
             clearCookie: true,
           );
           final isSuccess = res.isSuccess;
-          final theme = ThemeUtils.theme;
-          final actions = [
-            if (!isSuccess)
-              TextButton(
-                onPressed: () {
-                  Get.back();
-                  Utils.copyText('https://www.bilibili.com/opus/$id');
-                  PageUtils.toWebview(
-                    'https://www.bilibili.com/h5/comment/appeal?${ThemeUtils.themeUrl(theme.isDark)}',
-                  );
-                },
-                child: const Text('申诉'),
-              ),
-            if (!isManual)
-              TextButton(
-                onPressed: Get.back,
-                child: Text(
-                  '关闭',
-                  style: TextStyle(color: theme.colorScheme.outline),
-                ),
-              ),
-          ];
           showDialog(
             context: Get.context!,
             barrierDismissible: isManual,
-            builder: (context) => AlertDialog(
-              title: const Text('动态检查结果'),
-              content: SelectableText(
-                '${isSuccess ? '无账号状态下找到了你的动态，动态正常！' : '你的动态被shadow ban（仅自己可见）！'}${dynText != null ? ' \n\n动态内容: $dynText' : ''}',
-              ),
-              actions: actions.isEmpty ? null : actions,
-            ),
+            builder: (context) {
+              final colorScheme = ColorScheme.of(context);
+              final color = isSuccess ? colorScheme.primary : colorScheme.error;
+              final actions = [
+                if (!isSuccess)
+                  TextButton(
+                    onPressed: () {
+                      Get.back();
+                      Utils.copyText('https://www.bilibili.com/opus/$id');
+                      PageUtils.toWebview(
+                        'https://www.bilibili.com/h5/comment/appeal?${ThemeUtils.themeUrl(colorScheme.isDark)}',
+                      );
+                    },
+                    child: const Text('申诉'),
+                  ),
+                if (!isManual)
+                  TextButton(
+                    onPressed: Get.back,
+                    child: Text(
+                      '关闭',
+                      style: TextStyle(color: colorScheme.outline),
+                    ),
+                  ),
+              ];
+              return AlertDialog(
+                title: Text.rich(
+                  TextSpan(
+                    children: [
+                      WidgetSpan(
+                        alignment: .middle,
+                        child: isSuccess
+                            ? Icon(
+                                size: 22,
+                                color: color,
+                                Icons.check_circle_outline_rounded,
+                              )
+                            : Icon(
+                                size: 22,
+                                color: color,
+                                Icons.highlight_off_outlined,
+                              ),
+                      ),
+                      TextSpan(
+                        text: ' 动态检查结果',
+                        style: TextStyle(color: color),
+                      ),
+                    ],
+                  ),
+                ),
+                content: SelectionText(
+                  '${isSuccess ? '无账号状态下找到了你的动态，动态正常！' : '你的动态被shadow ban（仅自己可见）！'}${dynText != null ? ' \n\n动态内容: $dynText' : ''}',
+                ),
+                actions: actions.isEmpty ? null : actions,
+              );
+            },
           );
         }
       } catch (e) {
@@ -467,11 +479,14 @@ abstract final class RequestUtils {
                 TextButton(
                   onPressed: () {
                     if (checkedId != null) {
-                      final removeList = ctr.allChecked.toSet();
+                      final isFav = ctr is BaseFavController;
+                      final removeList = isFav
+                          ? ctr.allChecked.toList().reversed.toSet()
+                          : ctr.allChecked.toSet();
                       SmartDialog.showLoading();
                       FavHttp.copyOrMoveFav(
                         isCopy: isCopy,
-                        isFav: ctr is BaseFavController,
+                        isFav: isFav,
                         srcMediaId: mediaId,
                         tarMediaId: checkedId,
                         resources: removeList
@@ -491,6 +506,11 @@ abstract final class RequestUtils {
                             ctr.loadingState
                               ..value.data!.removeWhere(removeList.contains)
                               ..refresh();
+                            if (isFav) {
+                              (ctr as BaseFavController).updateCount?.call(
+                                removeList.length,
+                              );
+                            }
                           }
                           SmartDialog.dismiss();
                           SmartDialog.showToast('${isCopy ? '复制' : '移动'}成功');
@@ -570,7 +590,7 @@ abstract final class RequestUtils {
     }
 
     final json = await GeetestWebviewDialog.geetest(gt!, challenge!);
-    if (json is Map) {
+    if (json != null) {
       captchaData
         ..validate = json['geetest_validate']
         ..seccode = json['geetest_seccode']
@@ -589,7 +609,7 @@ abstract final class RequestUtils {
       showDialog(
         context: Get.context!,
         builder: (context) => AlertDialog(
-          title: SelectableText(
+          title: SelectionText(
             show ? response.name! : response.rejectPage?.title ?? '',
           ),
           content: show ? null : Text(response.rejectPage?.text ?? ''),

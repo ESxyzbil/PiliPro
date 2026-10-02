@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/button/more_btn.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/loading_widget.dart';
+import 'package:PiliPlus/common/widgets/scroll_physics.dart'
+    show platformAlwaysClampingPhysics;
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/space/space/data.dart';
 import 'package:PiliPlus/models_new/space/space/tab2.dart';
@@ -18,9 +20,9 @@ import 'package:PiliPlus/pages/member_like_arc/view.dart';
 import 'package:PiliPlus/pages/member_pgc/widgets/pgc_card_v_member_pgc.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/grid.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MemberHome extends StatefulWidget {
   const MemberHome({super.key, this.heroTag});
@@ -52,12 +54,7 @@ class _MemberHomeState extends State<MemberHome>
     mainAxisExtent: MediaQuery.textScalerOf(context).scale(55),
   );
 
-  late final gridDelegateAudio = SliverGridDelegateWithExtentAndRatio(
-    mainAxisSpacing: 2,
-    maxCrossAxisExtent: Grid.smallCardWidth * 2,
-    childAspectRatio: Style.aspectRatio * 2.6,
-    minHeight: MediaQuery.textScalerOf(context).scale(90),
-  );
+  late final gridDelegateAudio = Grid.videoCardHDelegate();
 
   late final gridDelegatePgc = SliverGridDelegateWithExtentAndRatio(
     mainAxisSpacing: Style.cardSpace,
@@ -77,6 +74,7 @@ class _MemberHomeState extends State<MemberHome>
       Success(response: final res) =>
         res != null
             ? CustomScrollView(
+                physics: platformAlwaysClampingPhysics,
                 slivers: [
                   if (res.archive?.item?.isNotEmpty == true) ...[
                     _header(
@@ -114,7 +112,7 @@ class _MemberHomeState extends State<MemberHome>
                     ),
                     SliverToBoxAdapter(
                       child: SizedBox(
-                        height: 98,
+                        height: 110,
                         child: MemberFavItem(
                           item: res.favourite2!.item!.first,
                         ),
@@ -183,7 +181,7 @@ class _MemberHomeState extends State<MemberHome>
                     ),
                     SliverToBoxAdapter(
                       child: SizedBox(
-                        height: 98,
+                        height: 110,
                         child: MemberArticleItem(
                           item: res.article!.item!.first,
                         ),

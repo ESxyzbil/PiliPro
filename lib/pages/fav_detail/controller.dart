@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/common/widgets/dialog/dialog.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -24,6 +23,7 @@ import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pbenum.dart'
     show PlaylistSource;
 import 'package:PiliPlus/pages/common/multi_select/base.dart';
 import 'package:PiliPlus/pages/common/multi_select/multi_select_controller.dart';
+import 'package:PiliPlus/pages/common/page_order_mixin.dart';
 import 'package:PiliPlus/pages/fav_sort/view.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -35,7 +35,7 @@ import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as p;
@@ -97,7 +97,7 @@ mixin BaseFavController
 
 class FavDetailController
     extends MultiSelectController<FavDetailData, FavDetailItemModel>
-    with BaseFavController {
+    with BaseFavController, PageOrderMixin {
   /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.parameters
   final String? mediaIdParam;
   final String? heroTagParam;
@@ -144,6 +144,14 @@ class FavDetailController
   }
 
   @override
+  int get count => folderInfo.value.mediaCount;
+
+  @override
+  int get ps => _ps;
+
+  static const _ps = 20;
+
+  @override
   void onInit() {
     super.onInit();
 
@@ -164,8 +172,15 @@ class FavDetailController
 
   @override
   List<FavDetailItemModel>? getDataList(FavDetailData response) {
-    if (response.hasMore == false) {
+    if (pageDesc) {
+      if (page == 1) {
+        isEnd = true;
+      }
+    } else if (response.hasMore == false) {
       isEnd = true;
+    }
+    if (pageDesc) {
+      return response.medias?.reversed.toList();
     }
     return response.medias;
   }
@@ -219,7 +234,7 @@ class FavDetailController
   Future<LoadingState<FavDetailData>> customGetData() =>
       FavHttp.userFavFolderDetail(
         pn: page,
-        ps: 20,
+        ps: _ps,
         mediaId: mediaId,
         order: order.value,
       );
@@ -683,7 +698,7 @@ class FavDetailController
     final res = await FavHttp.cleanFav(mediaId: mediaId);
     if (res.isSuccess) {
       SmartDialog.showToast('清除成功');
-      Future.delayed(const Duration(milliseconds: 200), onReload);
+      Timer(const Duration(milliseconds: 200), onReload);
     } else {
       res.toast();
     }

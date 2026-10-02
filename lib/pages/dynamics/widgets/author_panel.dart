@@ -1,11 +1,11 @@
-﻿import 'dart:math';
+import 'dart:math';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/dialog/report.dart';
-import 'package:PiliPlus/common/widgets/extra_hit_test_widget.dart';
 import 'package:PiliPlus/common/widgets/pendant_avatar.dart';
+import 'package:PiliPlus/common/widgets/translucent_row.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/reply.dart';
@@ -27,9 +27,9 @@ import 'package:PiliPlus/utils/request_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AuthorPanel extends StatelessWidget {
   final DynamicItemModel item;
@@ -94,49 +94,51 @@ class AuthorPanel extends StatelessWidget {
         );
       }
     }
-    Widget header = GestureDetector(
-      onTap: moduleAuthor.type == 'AUTHOR_TYPE_NORMAL'
-          ? () {
-              feedBack();
-              PageUtils.toMemberPage(mid: moduleAuthor.mid);
-            }
-          : null,
-      child: ExtraHitTestWidget(
-        width: 50,
-        child: Row(
-          spacing: 10,
+    final children = [
+      PendantAvatar(
+        size: 40,
+        moduleAuthor.face,
+        pendantImage: moduleAuthor.pendant?.image,
+      ),
+      Flexible(
+        child: Column(
+          crossAxisAlignment: .start,
           children: [
-            PendantAvatar(
-              size: 40,
-              moduleAuthor.face,
-              pendantImage: moduleAuthor.pendant?.image,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    moduleAuthor.name!,
-                    maxLines: 1,
-                    overflow: .ellipsis,
-                    style: TextStyle(
-                      color:
-                          moduleAuthor.vip != null &&
-                              moduleAuthor.vip!.status > 0 &&
-                              moduleAuthor.vip!.type == 2
-                          ? theme.colorScheme.vipColor
-                          : theme.colorScheme.onSurface,
-                      fontSize: theme.textTheme.titleSmall!.fontSize,
-                    ),
-                  ),
-                  ?pubTs,
-                ],
+            Text(
+              moduleAuthor.name!,
+              maxLines: 1,
+              overflow: .ellipsis,
+              style: TextStyle(
+                color:
+                    moduleAuthor.vip != null &&
+                        moduleAuthor.vip!.status > 0 &&
+                        moduleAuthor.vip!.type == 2
+                    ? theme.colorScheme.vipColor
+                    : theme.colorScheme.onSurface,
+                fontSize: theme.textTheme.titleSmall!.fontSize,
               ),
             ),
+            ?pubTs,
           ],
         ),
       ),
-    );
+    ];
+    Widget header;
+    if (moduleAuthor.type == 'AUTHOR_TYPE_NORMAL') {
+      header = GestureDetector(
+        onTap: () => {
+          feedBack(),
+          PageUtils.toMemberPage(mid: moduleAuthor.mid),
+        },
+        child: TranslucentRow(
+          spacing: 10,
+          extraWidth: 50,
+          children: children,
+        ),
+      );
+    } else {
+      header = Row(spacing: 10, children: children);
+    }
     Widget? moreBtn = isSave
         ? null
         : SizedBox(
@@ -321,7 +323,7 @@ class AuthorPanel extends StatelessWidget {
                 onTap: () {
                   Get.back();
                   ShareUtils.shareText(
-                    '${HttpString.dynamicShareBaseUrl}/${item.idStr}',
+                    '${HttpString.opusBaseUrl}/${item.idStr}',
                   );
                 },
                 minLeadingWidth: 0,
@@ -431,41 +433,37 @@ class AuthorPanel extends StatelessWidget {
                               final reply = response.upReply;
                               final enableReply = reply.status == 1;
 
-                              return AlertDialog(
+                              return SimpleDialog(
                                 clipBehavior: .hardEdge,
                                 contentPadding: const .symmetric(vertical: 12),
-                                content: Column(
-                                  mainAxisSize: .min,
-                                  crossAxisAlignment: .start,
-                                  children: [
-                                    ListTile(
-                                      dense: true,
-                                      enabled: selection.canModify,
-                                      title: Text(
-                                        '${enableSelection ? '停止' : '开启'}评论精选',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                      onTap: () {
-                                        Get.back();
-                                        onSetReplySubject!(
-                                          enableSelection ? 2 : 1,
-                                        );
-                                      },
+                                children: [
+                                  ListTile(
+                                    dense: true,
+                                    enabled: selection.canModify,
+                                    title: Text(
+                                      '${enableSelection ? '停止' : '开启'}评论精选',
+                                      style: const TextStyle(fontSize: 14),
                                     ),
-                                    ListTile(
-                                      dense: true,
-                                      enabled: reply.canModify,
-                                      title: Text(
-                                        '${enableReply ? '关闭' : '恢复'}评论',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                      onTap: () {
-                                        Get.back();
-                                        onSetReplySubject!(enableReply ? 3 : 4);
-                                      },
+                                    onTap: () {
+                                      Get.back();
+                                      onSetReplySubject!(
+                                        enableSelection ? 2 : 1,
+                                      );
+                                    },
+                                  ),
+                                  ListTile(
+                                    dense: true,
+                                    enabled: reply.canModify,
+                                    title: Text(
+                                      '${enableReply ? '关闭' : '恢复'}评论',
+                                      style: const TextStyle(fontSize: 14),
                                     ),
-                                  ],
-                                ),
+                                    onTap: () {
+                                      Get.back();
+                                      onSetReplySubject!(enableReply ? 3 : 4);
+                                    },
+                                  ),
+                                ],
                               );
                             },
                           );
@@ -504,32 +502,29 @@ class AuthorPanel extends StatelessWidget {
 
                       showDialog(
                         context: context,
-                        builder: (context) => AlertDialog(
+                        builder: (context) => SimpleDialog(
                           clipBehavior: Clip.hardEdge,
                           contentPadding: const .symmetric(vertical: 12),
-                          content: Column(
-                            mainAxisSize: .min,
-                            children: [
-                              ListTile(
-                                dense: true,
-                                enabled: isPrivate,
-                                title: const Text(
-                                  '所有用户可见',
-                                  style: TextStyle(fontSize: 14),
-                                ),
-                                onTap: onTap,
+                          children: [
+                            ListTile(
+                              dense: true,
+                              enabled: isPrivate,
+                              title: const Text(
+                                '所有用户可见',
+                                style: TextStyle(fontSize: 14),
                               ),
-                              ListTile(
-                                dense: true,
-                                enabled: !isPrivate,
-                                title: const Text(
-                                  '仅自己可见',
-                                  style: TextStyle(fontSize: 14),
-                                ),
-                                onTap: onTap,
+                              onTap: onTap,
+                            ),
+                            ListTile(
+                              dense: true,
+                              enabled: !isPrivate,
+                              title: const Text(
+                                '仅自己可见',
+                                style: TextStyle(fontSize: 14),
                               ),
-                            ],
-                          ),
+                              onTap: onTap,
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -620,7 +615,7 @@ class AuthorPanel extends StatelessWidget {
                           mid: moduleAuthor.mid!,
                           dynId: item.idStr,
                           reasonType: reasonType,
-                          reasonDesc: reasonType == 0 ? reasonDesc : null,
+                          reasonDesc: reasonDesc,
                         );
                       },
                     );

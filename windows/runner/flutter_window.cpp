@@ -19,8 +19,11 @@ bool FlutterWindow::OnCreate() {
 
   RECT frame = GetClientArea();
 
+  // The size here must match the window dimensions to avoid unnecessary surface
+  // creation / destruction in the startup path.
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
+  // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
@@ -28,22 +31,26 @@ bool FlutterWindow::OnCreate() {
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // flutter_controller_->engine()->SetNextFrameCallback([&]() {
+  //   this->Show();
+  // });
+
+  // Flutter can complete the first frame before the "show window" callback is
+  // registered. The following call ensures a frame is pending to ensure the
+  // window is shown. It is a no-op if the first frame hasn't completed yet.
   flutter_controller_->ForceRedraw();
 
-  // Initialize SMTC — registers this app as a system media source
   smtc_handler_ = std::make_unique<SmtcHandler>();
   smtc_handler_->Init(flutter_controller_->engine()->messenger(),
                       GetHandle());
 
-  // Initialize desktop lyrics overlay (hidden by default)
   lyrics_overlay_ = std::make_unique<LyricsOverlay>();
   lyrics_overlay_->Init(flutter_controller_->engine()->messenger(),
                         GetHandle());
 
-  // 保存到本地：m4s 合并后的 MP4 转码为 H.264 + AAC
   media_transcoder_ = std::make_unique<MediaTranscoder>();
   media_transcoder_->Init(flutter_controller_->engine()->messenger(),
-                         GetHandle());
+                          GetHandle());
 
   return true;
 }
@@ -58,6 +65,7 @@ void FlutterWindow::OnDestroy() {
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
+
   Win32Window::OnDestroy();
 }
 
@@ -70,10 +78,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
 
+  // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
         flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
-                                                       lparam);
+                                                      lparam);
     if (result) {
       return *result;
     }

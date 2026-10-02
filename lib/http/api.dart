@@ -34,7 +34,7 @@ abstract final class Api {
   // 视频详情
   // 竖屏 https://api.bilibili.com/x/web-interface/view?aid=527403921
   // https://api.bilibili.com/x/web-interface/view/detail  获取视频超详细信息(web端)
-  static const String videoIntro = '/x/web-interface/view';
+  static const String videoIntro = '/x/web-interface/wbi/view';
   // 视频详情 超详细
   // https://api.bilibili.com/x/web-interface/view/detail?aid=527403921
 
@@ -261,8 +261,7 @@ abstract final class Api {
   static const String searchDefault = '/x/web-interface/wbi/search/default';
 
   // 搜索关键词
-  static const String searchSuggest =
-      'https://s.search.bilibili.com/main/suggest';
+  static const String searchSuggest = '/x/web-interface/suggest';
 
   // 分类搜索
   static const String searchByType = '/x/web-interface/wbi/search/type';
@@ -815,6 +814,8 @@ abstract final class Api {
 
   static const String topicFeed = '/x/polymer/web-dynamic/v1/feed/topic';
 
+  static const String topicFold = '/x/topic/web/details/fold';
+
   static const String spaceOpus = '/x/polymer/web-dynamic/v1/opus/feed/space';
 
   static const String articleList = '/x/article/list/web/articles';
@@ -1013,4 +1014,11 @@ abstract final class Api {
   static const String bubble = '/x/tribee/v1/dyn/all';
 
   static const String sortFollowTag = '/x/relation/tags/update_sort';
+
+  static const String replyReport = '/x/v2/reply/report';
+
+  static const String dynReaction = '/x/polymer/web-dynamic/v1/detail/reaction';
+
+  static const String liveFeedback =
+      '${HttpString.liveBaseUrl}/xlive/app-interface/v2/index/feedback';
 }

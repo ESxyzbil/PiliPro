@@ -3,7 +3,8 @@ import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/keep_alive_wrapper.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/loading_widget.dart';
-import 'package:PiliPlus/common/widgets/scroll_physics.dart';
+import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
+import 'package:PiliPlus/common/widgets/scroll_physics.dart' show tabBarView;
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/bubble/dyn_list.dart';
 import 'package:PiliPlus/pages/bubble/controller.dart';
@@ -11,9 +12,9 @@ import 'package:PiliPlus/utils/extension/scroll_controller_ext.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/material.dart'
-    hide ListTile, SliverGridDelegateWithMaxCrossAxisExtent;
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart'
+    hide ListTile, SliverGridDelegateWithMaxCrossAxisExtent;
 
 class BubblePage extends StatefulWidget {
   const BubblePage({super.key, this.categoryId});
@@ -71,70 +72,65 @@ class _BubblePageState extends State<BubblePage>
     if (widget.categoryId != null) {
       return child;
     } else {
-      child = Stack(
-        clipBehavior: .none,
-        children: [
-          child,
-          Positioned(
+      child = ScaffoldLayout(
+        body: child,
+        fab: Padding(
+          padding: .only(
             right: kFloatingActionButtonMargin,
             bottom: kFloatingActionButtonMargin + padding.bottom,
-            child: Obx(
-              () {
-                final sortInfo = _controller.sortInfo.value;
-                if (sortInfo == null || sortInfo.showSort != true) {
-                  return const SizedBox.shrink();
-                }
-                final item = sortInfo.sortItems?.firstWhereOrNull(
-                  (e) => e.sortType == sortInfo.curSortType,
-                );
-                if (item != null) {
-                  return FloatingActionButton.extended(
-                    tooltip: '排序',
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        clipBehavior: .hardEdge,
-                        contentPadding: const .symmetric(vertical: 12),
-                        content: Column(
-                          mainAxisSize: .min,
-                          children: sortInfo.sortItems!.map(
-                            (e) {
-                              final isSelected = item.sortType == e.sortType;
-                              return ListTile(
-                                dense: true,
-                                enabled: !isSelected,
-                                onTap: () {
-                                  Get.back();
-                                  if (!isSelected) {
-                                    _controller.onSort(e.sortType);
-                                  }
-                                },
-                                title: Text(
-                                  e.text!,
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                trailing: isSelected
-                                    ? const Icon(size: 22, Icons.check)
-                                    : null,
-                              );
-                            },
-                          ).toList(),
-                        ),
-                      ),
-                    ),
-                    icon: const Icon(Icons.sort, size: 20),
-                    label: Text(item.text!),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
           ),
-        ],
+          child: Obx(
+            () {
+              final sortInfo = _controller.sortInfo.value;
+              if (sortInfo == null || sortInfo.showSort != true) {
+                return const SizedBox.shrink();
+              }
+              final item = sortInfo.sortItems?.firstWhereOrNull(
+                (e) => e.sortType == sortInfo.curSortType,
+              );
+              if (item != null) {
+                return FloatingActionButton.extended(
+                  tooltip: '排序',
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (context) => SimpleDialog(
+                      clipBehavior: .hardEdge,
+                      contentPadding: const .symmetric(vertical: 12),
+                      children: sortInfo.sortItems!.map(
+                        (e) {
+                          final isSelected = item.sortType == e.sortType;
+                          return ListTile(
+                            dense: true,
+                            enabled: !isSelected,
+                            onTap: () {
+                              Get.back();
+                              if (!isSelected) {
+                                _controller.onSort(e.sortType);
+                              }
+                            },
+                            title: Text(
+                              e.text!,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            trailing: isSelected
+                                ? const Icon(size: 22, Icons.check)
+                                : null,
+                          );
+                        },
+                      ).toList(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.sort, size: 20),
+                  label: Text(item.text!),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
       );
     }
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
+    return SimpleScaffold(
       appBar: AppBar(
         title: Obx(() {
           final tribeName = _controller.tribeName.value;

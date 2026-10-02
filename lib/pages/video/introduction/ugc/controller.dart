@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
-import 'package:PiliPlus/common/widgets/scroll_physics.dart';
+import 'package:PiliPlus/common/widgets/scroll_physics.dart' show ReloadMixin;
 import 'package:PiliPlus/http/api.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/init.dart';
@@ -31,6 +31,7 @@ import 'package:PiliPlus/pages/video/reply/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/device_utils.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
@@ -43,16 +44,15 @@ import 'package:PiliPlus/utils/request_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:expandable/expandable.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class UgcIntroController extends CommonIntroController with ReloadMixin {
   UgcIntroController({super.arguments});
 
-  late ExpandableController expandableCtr;
+  late final RxBool expand;
 
   /// 普通视频（无分P/合集/播放全部）的播放历史栈：nextPlay/playRelated 切走时
   /// 记录当前视频，prevPlay 从栈顶「从哪来回哪去」（A→B→上一曲→A）
@@ -82,14 +82,12 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   @override
   void onInit() {
     super.onInit();
-    bool alwaysExpandIntroPanel = Pref.alwaysExpandIntroPanel;
-    expandableCtr = ExpandableController(
-      initialExpanded: alwaysExpandIntroPanel,
-    );
+    final alwaysExpandIntroPanel = Pref.alwaysExpandIntroPanel;
+    expand = RxBool(alwaysExpandIntroPanel);
     if (!alwaysExpandIntroPanel && Pref.expandIntroPanelH) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!expandableCtr.expanded && !DeviceUtils.size.isPortrait) {
-          expandableCtr.toggle();
+        if (!expand.value && !DeviceUtils.size.isPortrait) {
+          expand.toggle();
         }
       });
     }
@@ -299,64 +297,67 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
   @override
   void actionShareVideo(BuildContext context) {
     final videoDetail = this.videoDetail.value;
-    final playedTimePos = videoDetailCtr.playedTimePos;
-    String videoUrl = '${HttpString.baseUrl}/video/$bvid';
+    final cid = this.cid.value;
+    final partIndex = videoDetail.pages?.indexWhere((e) => e.cid == cid);
+    final addIndex = partIndex != null && partIndex > 0;
+    final playedTimePos = videoDetailCtr.playedTimePos(addIndex);
+    final videoUrl =
+        '${HttpString.baseUrl}/video/$bvid/${addIndex ? '?p=${partIndex + 1}' : ''}';
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (_) => SimpleDialog(
         clipBehavior: Clip.hardEdge,
         contentPadding: const EdgeInsets.symmetric(vertical: 12),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        children: [
+          ListTile(
+            dense: true,
+            title: const Text(
+              '复制链接',
+              style: TextStyle(fontSize: 14),
+            ),
+            onTap: () {
+              Get.back();
+              Utils.copyText(videoUrl);
+            },
+            trailing: playedTimePos.isNotEmpty
+                ? iconButton(
+                    tooltip: '精确分享',
+                    icon: const Icon(Icons.timer_outlined),
+                    onPressed: () {
+                      Get.back();
+                      Utils.copyText('$videoUrl$playedTimePos');
+                    },
+                  )
+                : null,
+          ),
+          ListTile(
+            dense: true,
+            title: const Text(
+              '其它app打开',
+              style: TextStyle(fontSize: 14),
+            ),
+            onTap: () {
+              Get.back();
+              PiliAndroidHelper.openUrl(videoUrl);
+            },
+          ),
+          if (PlatformUtils.isMobile)
             ListTile(
               dense: true,
               title: const Text(
-                '复制链接',
+                '分享视频',
                 style: TextStyle(fontSize: 14),
               ),
               onTap: () {
                 Get.back();
-                Utils.copyText(videoUrl);
-              },
-              trailing: playedTimePos.isNotEmpty
-                  ? iconButton(
-                      tooltip: '精确分享',
-                      icon: const Icon(Icons.timer_outlined),
-                      onPressed: () {
-                        Get.back();
-                        Utils.copyText('$videoUrl$playedTimePos');
-                      },
-                    )
-                  : null,
-            ),
-            ListTile(
-              dense: true,
-              title: const Text(
-                '其它app打开',
-                style: TextStyle(fontSize: 14),
-              ),
-              onTap: () {
-                Get.back();
-                PageUtils.launchURL(videoUrl);
+                ShareUtils.shareText(
+                  '${videoDetail.title} '
+                  'UP主: ${videoDetail.owner!.name!}'
+                  ' - $videoUrl',
+                );
               },
             ),
-            if (PlatformUtils.isMobile)
-              ListTile(
-                dense: true,
-                title: const Text(
-                  '分享视频',
-                  style: TextStyle(fontSize: 14),
-                ),
-                onTap: () {
-                  Get.back();
-                  ShareUtils.shareText(
-                    '${videoDetail.title} '
-                    'UP主: ${videoDetail.owner!.name!}'
-                    ' - $videoUrl',
-                  );
-                },
-              ),
+          if (isLogin)
             ListTile(
               dense: true,
               title: const Text(
@@ -379,6 +380,7 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
                 );
               },
             ),
+          if (isLogin)
             ListTile(
               dense: true,
               title: const Text(
@@ -405,8 +407,7 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
                 }
               },
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -461,7 +462,7 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
           followStatus
             ..value.attribute = attribute
             ..refresh();
-          Future.delayed(const Duration(milliseconds: 500), queryFollowStatus);
+          Timer(const Duration(milliseconds: 500), queryFollowStatus);
         },
       );
     }
@@ -527,6 +528,7 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
             cid: cid,
             cover: cover,
             dimension: dimension,
+            title: episode.title,
           );
           return false;
         }
@@ -602,12 +604,6 @@ class UgcIntroController extends CommonIntroController with ReloadMixin {
       if (kDebugMode) debugPrint('ugc onChangeEpisode: $e');
       return false;
     }
-  }
-
-  @override
-  void onClose() {
-    expandableCtr.dispose();
-    super.onClose();
   }
 
   /// 播放上一个

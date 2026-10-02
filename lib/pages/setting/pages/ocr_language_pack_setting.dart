@@ -1,5 +1,5 @@
 import 'package:PiliPlus/services/ocr/ocr_language_pack_manager.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
 
 /// OCR 语言包管理页：选择下载语言（RapidOCR / ONNX）

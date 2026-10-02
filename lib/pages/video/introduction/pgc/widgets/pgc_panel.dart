@@ -11,9 +11,10 @@ import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/utils.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 class PgcPanel extends StatefulWidget {
   const PgcPanel({
@@ -78,10 +79,7 @@ class _PgcPanelState extends State<PgcPanel> {
   void scrollToIndex() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       listViewScrollCtr.animateTo(
-        (currentIndex * 150.0).clamp(
-          listViewScrollCtr.position.minScrollExtent,
-          listViewScrollCtr.position.maxScrollExtent,
-        ),
+        currentIndex * 150.0,
         duration: const Duration(milliseconds: 500),
         curve: Curves.easeInOut,
       );
@@ -213,11 +211,10 @@ class _PgcPanelState extends State<PgcPanel> {
                     if (item.badge?.isNotEmpty == true) ...[
                       const SizedBox(width: 2),
                       if (item.badge == '会员')
-                        Image.asset(
+                        SvgPicture.asset(
                           Assets.vipIcon,
                           height: 16,
-                          cacheHeight: 16.cacheSize(context),
-                          semanticLabel: "大会员",
+                          semanticsLabel: "大会员",
                         )
                       else
                         Text(

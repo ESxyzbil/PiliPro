@@ -25,10 +25,10 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart' show FrictionSimulation;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/services.dart' show HardwareKeyboard;
+import 'package:material_ui/material_ui.dart';
 
 ///
 /// created by dom on 2026/02/14
@@ -236,7 +236,6 @@ class _ViewerState extends State<Viewer> with SingleTickerProviderStateMixin {
   void _handleDoubleTap() {
     if (!mounted) return;
     if (_animationController.isAnimating) return;
-    _stopFling();
     _scaleFrom = _scale;
     _positionFrom = _position;
 
@@ -268,8 +267,6 @@ class _ViewerState extends State<Viewer> with SingleTickerProviderStateMixin {
   }
 
   void _onScaleStart(ScaleStartDetails details) {
-    _stopFling();
-
     if (_animationController.isAnimating) {
       _animationController.stop();
     }
@@ -484,6 +481,7 @@ class _ViewerState extends State<Viewer> with SingleTickerProviderStateMixin {
   }
 
   void _onPointerDown(PointerDownEvent event) {
+    _stopFling();
     _scalePos = event.position;
     _doubleTapGestureRecognizer
       ..onDoubleTapDown = _onDoubleTapDown

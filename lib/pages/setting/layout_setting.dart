@@ -1,6 +1,6 @@
 import 'package:PiliPlus/pages/setting/widgets/info_card_item.dart';
 import 'package:PiliPlus/pages/setting/models/layout_settings.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class LayoutSetting extends StatefulWidget {
   const LayoutSetting({super.key, this.showAppBar = true});

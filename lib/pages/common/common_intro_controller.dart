@@ -21,9 +21,9 @@ import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
 
 abstract class CommonIntroController extends GetxController
     with GetSingleTickerProviderStateMixin, TripleMixin, FavMixin {
@@ -36,7 +36,7 @@ abstract class CommonIntroController extends GetxController
   late String bvid;
 
   // 是否稍后再看
-  final RxBool hasLater = false.obs;
+  late final RxBool hasLater;
 
   final Rx<List<VideoTagItem>?> videoTags = Rx<List<VideoTagItem>?>(null);
 
@@ -84,8 +84,12 @@ abstract class CommonIntroController extends GetxController
     heroTag = args['heroTag'];
     bvid = args['bvid'];
     cid = RxInt(args['cid']);
-    hasLater.value = args['sourceType'] == SourceType.watchLater;
+    hasLater = RxBool(
+      args['viewLater'] ?? args['sourceType'] == SourceType.watchLater,
+    );
 
+    // 通知栏/锁屏的「上一曲 / 下一曲」由简介控制器接管：
+    // prevPlay/nextPlay 会按 分P → 合集 → 播放列表 → 相关推荐 的优先级切歌。
     if (videoPlayerServiceHandler case final handler?) {
       handler
         ..onSkipToNext = () async {
@@ -169,7 +173,7 @@ abstract class CommonIntroController extends GetxController
     final res = await (hasLater.value
         ? UserHttp.toViewDel(aids: IdUtils.bv2av(bvid).toString())
         : UserHttp.toViewLater(bvid: bvid));
-    if (res.isSuccess) hasLater.value = !hasLater.value;
+    if (res.isSuccess) hasLater.toggle();
   }
 }
 
@@ -255,7 +259,7 @@ mixin FavMixin on TripleMixin {
           SmartDialog.dismiss();
           if (result.isSuccess) {
             updateFavCount(hasFav ? -1 : 1);
-            this.hasFav.value = !hasFav;
+            this.hasFav.toggle();
             SmartDialog.showToast('${hasFav ? '取消' : ''}收藏成功');
           } else {
             res.toast();

@@ -34,7 +34,7 @@ import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
-import 'package:flutter/material.dart' hide StatefulBuilder;
+import 'package:material_ui/material_ui.dart' hide StatefulBuilder;
 import 'package:flutter/services.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -204,13 +204,13 @@ List<SettingsModel> get styleSettings => [
   NormalModel(
     title: '动态未读标记',
     leading: const Icon(Icons.motion_photos_on_outlined),
-    getSubtitle: () => '当前标记样式：${Pref.dynamicBadgeType.desc}',
+    getSubtitle: () => '当前标记样式：${Pref.dynamicBadgeType.label}',
     onTap: _showDynBadgeDialog,
   ),
   NormalModel(
     title: '消息未读标记',
     leading: const Icon(MdiIcons.bellBadgeOutline),
-    getSubtitle: () => '当前标记样式：${Pref.msgBadgeMode.desc}',
+    getSubtitle: () => '当前标记样式：${Pref.msgBadgeMode.label}',
     onTap: _showMsgBadgeDialog,
   ),
   NormalModel(
@@ -293,7 +293,7 @@ List<SettingsModel> get styleSettings => [
     onTap: _showThemeTypeDialog,
     leading: const Icon(Icons.flashlight_on_outlined),
     title: '主题模式',
-    getSubtitle: () => '当前模式：${Pref.themeType.desc}',
+    getSubtitle: () => '当前模式：${Pref.themeType.label}',
   ),
   SwitchModel(
     leading: const Icon(Icons.invert_colors),
@@ -703,7 +703,7 @@ Future<void> _showDynBadgeDialog(
     builder: (context) => SelectDialog<DynamicBadgeMode>(
       title: '动态未读标记',
       value: Pref.dynamicBadgeType,
-      values: DynamicBadgeMode.values.map((e) => (e, e.desc)).toList(),
+      values: DynamicBadgeMode.values.map((e) => (e, e.label)).toList(),
     ),
   );
   if (res != null) {
@@ -730,7 +730,7 @@ Future<void> _showMsgBadgeDialog(
     builder: (context) => SelectDialog<DynamicBadgeMode>(
       title: '消息未读标记',
       value: Pref.msgBadgeMode,
-      values: DynamicBadgeMode.values.map((e) => (e, e.desc)).toList(),
+      values: DynamicBadgeMode.values.map((e) => (e, e.label)).toList(),
     ),
   );
   if (res != null) {
@@ -855,7 +855,7 @@ Future<void> _showThemeTypeDialog(
     builder: (context) => SelectDialog<ThemeType>(
       title: '主题模式',
       value: Pref.themeType,
-      values: ThemeType.values.map((e) => (e, e.desc)).toList(),
+      values: ThemeType.values.map((e) => (e, e.label)).toList(),
     ),
   );
   if (res != null) {

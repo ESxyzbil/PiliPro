@@ -8,7 +8,7 @@ import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart'
         gTabBackStartEvent,
         tabBackGestureProgress;
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show SwipeEdge;
 
 /// 标签页切换过渡动画（复用项目统一的过渡动画实现

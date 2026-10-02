@@ -4,9 +4,9 @@ import 'package:PiliPlus/http/reply.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:fixnum/fixnum.dart' as $fixnum;
-import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ZanButtonGrpc extends StatelessWidget {
   const ZanButtonGrpc({
@@ -119,7 +119,12 @@ class ZanButtonGrpc extends StatelessWidget {
         SizedBox(
           height: 32,
           child: TextButton(
-            style: style,
+            style: const ButtonStyle(
+              visualDensity: .compact,
+              tapTargetSize: .shrinkWrap,
+              padding: WidgetStatePropertyAll(.zero),
+              minimumSize: WidgetStatePropertyAll(.square(40)),
+            ),
             onPressed: () => onHateReply(
               context,
               isProcessing,

@@ -4,7 +4,7 @@ import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
 import 'package:PiliPlus/services/shortcut_service.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class FavVideoItem extends StatelessWidget {
   final String heroTag;
@@ -26,9 +26,7 @@ class FavVideoItem extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
-        onLongPress:
-            onLongPress ??
-            () => _showMenu(context),
+        onLongPress: onLongPress ?? () => _showMenu(context),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           child: Row(
@@ -77,21 +75,47 @@ class FavVideoItem extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.add_to_home_screen_outlined),
                 title: const Text('添加到桌面长按菜单'),
-                onTap: () {
+                subtitle: const Text('长按桌面图标后在弹出菜单里选择'),
+                onTap: () async {
                   Navigator.pop(ctx);
-                  ShortcutService.addCollectionShortcut(item.id, item.title);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('已添加到桌面长按菜单'),
-                      duration: Duration(seconds: 2),
-                    ),
+                  final ok = await ShortcutService.addCollectionShortcut(
+                    item.id,
+                    item.title,
                   );
+                  if (!context.mounted) return;
+                  _toast(
+                    context,
+                    ok
+                        ? '已加入长按菜单：${item.title}'
+                        : '系统未登记该快捷方式，请改用「固定到主屏幕」',
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.push_pin_outlined),
+                title: const Text('固定到主屏幕'),
+                subtitle: const Text('弹系统确认框，直接在桌面生成图标'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final ok = await ShortcutService.pinCollectionShortcut(
+                    item.id,
+                    item.title,
+                  );
+                  if (context.mounted && !ok) {
+                    _toast(context, '当前桌面不支持固定快捷方式');
+                  }
                 },
               ),
             ],
           ),
         );
       },
+    );
+  }
+
+  void _toast(BuildContext context, String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), duration: const Duration(seconds: 2)),
     );
   }
 
