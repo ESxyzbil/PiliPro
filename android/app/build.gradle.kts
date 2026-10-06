@@ -70,13 +70,12 @@ android {
         minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode
-        // 版本名：U + 主版本号（3.0.0 → U3；之前 U2.1 是 U+主.次）
-        versionName = "U${flutter.versionName.substringBefore('.')}"
-        // arm64+arm32 一体包：排除 x86_64 插件 so（--target-platform 只约束
-        // libapp/libflutter，插件 so 由 gradle 合并，需用 abiFilters 兜底）
-        ndk {
-            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a"))
-        }
+        // 版本名：U + 主.次（5.1.0 → U5.1）
+        versionName = "U" + flutter.versionName.split('.').take(2).joinToString(".")
+        // ⚠️ 不要在这里用 ndk.abiFilters：CI 走 --split-per-abi 时 Gradle 会报
+        // “Conflicting configuration ... in ndk abiFilters cannot be present
+        // when splits abi filters are set”。排除 x86_64 已由下方
+        // packagingOptions.jniLibs.excludes 兜底（一体化包同样生效）。
     }
 
     packagingOptions {
