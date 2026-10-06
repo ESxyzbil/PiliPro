@@ -16,6 +16,7 @@ import 'package:PiliPlus/pages/download/controller.dart';
 import 'package:PiliPlus/pages/download/detail/view.dart';
 import 'package:PiliPlus/pages/download/detail/widgets/item.dart';
 import 'package:PiliPlus/pages/download/search/view.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/grid.dart';
@@ -52,8 +53,10 @@ class _DownloadPageState extends State<DownloadPage> with GridMixin {
     return Obx(() {
       final enableMultiSelect = _controller.enableMultiSelect.value;
       return popScope(
-        canPop: !enableMultiSelect,
+        // 标签承载时恒 false：阻止系统返回 pop 根路由，返回走 handleBack
+        canPop: TabHostController.tabsEnabled ? false : !enableMultiSelect,
         onPopInvokedWithResult: (didPop, result) {
+          if (TabHostController.handleBack()) return;
           if (enableMultiSelect) {
             _controller.handleSelect();
           }
@@ -91,6 +94,17 @@ class _DownloadPageState extends State<DownloadPage> with GridMixin {
             ],
             child: AppBar(
               title: const Text('离线缓存'),
+              // 标签承载时 AppBar 不会自动生成返回箭头，显式补一个
+              leading: TabHostController.isTabHostedPage
+                  ? IconButton(
+                      tooltip: '返回',
+                      onPressed: () {
+                        if (TabHostController.handleBack()) return;
+                        Get.back();
+                      },
+                      icon: const Icon(Icons.arrow_back_outlined),
+                    )
+                  : null,
               actions: [
                 IconButton(
                   tooltip: '搜索',

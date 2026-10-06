@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
@@ -114,11 +115,14 @@ class VideoCardV extends StatelessWidget {
                       return Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          NetworkImgLayer(
-                            src: videoItem.cover,
-                            width: maxWidth,
-                            height: maxHeight,
-                            borderRadius: const .vertical(top: .circular(12)),
+                          CoverFlightSource(
+                            cover: videoItem.cover,
+                            child: NetworkImgLayer(
+                              src: videoItem.cover,
+                              width: maxWidth,
+                              height: maxHeight,
+                              borderRadius: const .vertical(top: .circular(12)),
+                            ),
                           ),
                           if (videoItem.duration > 0)
                             PBadge(

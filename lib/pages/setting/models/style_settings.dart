@@ -108,6 +108,19 @@ List<SettingsModel> get styleSettings => [
     onTap: _showTransitionDialog,
   ),
   const SwitchModel(
+    title: '封面飞行动画',
+    subtitle: '打开页面/视频时封面飞向目标位置（标签页模式替代 Hero）',
+    leading: Icon(Icons.slow_motion_video_outlined),
+    setKey: SettingBoxKey.coverFlight,
+    defaultVal: true,
+  ),
+  NormalModel(
+    title: '飞行动画轨迹',
+    leading: const Icon(Icons.timeline),
+    getSubtitle: () => Pref.coverFlightCurve ? '曲线' : '直线',
+    onTap: _showCoverFlightCurveDialog,
+  ),
+  const SwitchModel(
     title: '优化平板导航栏',
     leading: Icon(Icons.auto_fix_high),
     setKey: SettingBoxKey.optTabletNav,
@@ -643,6 +656,27 @@ Future<void> _showTransitionDialog(
   if (res != null) {
     Get.rootController.defaultTransition = res;
     await GStorage.setting.put(SettingBoxKey.pageTransition, res.index);
+    setState();
+  }
+}
+
+Future<void> _showCoverFlightCurveDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {
+  final res = await showDialog<bool>(
+    context: context,
+    builder: (context) => SelectDialog<bool>(
+      title: '飞行动画轨迹',
+      value: Pref.coverFlightCurve,
+      values: const [
+        (true, '曲线（Material 标准弧线）'),
+        (false, '直线'),
+      ],
+    ),
+  );
+  if (res != null) {
+    await GStorage.setting.put(SettingBoxKey.coverFlightCurve, res);
     setState();
   }
 }

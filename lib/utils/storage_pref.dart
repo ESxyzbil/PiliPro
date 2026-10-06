@@ -1150,6 +1150,14 @@ abstract final class Pref {
   static bool get enablePlayAll =>
       _setting.get(SettingBoxKey.enablePlayAll, defaultValue: true);
 
+  /// 打开页面/视频时是否播放「封面飞行」动画（标签页模式替代 Hero）
+  static bool get coverFlight =>
+      _setting.get(SettingBoxKey.coverFlight, defaultValue: true);
+
+  /// 封面飞行轨迹：true=曲线（Material 标准弧线），false=直线
+  static bool get coverFlightCurve =>
+      _setting.get(SettingBoxKey.coverFlightCurve, defaultValue: true);
+
   static bool get enableTapDm =>
       _setting.get(SettingBoxKey.enableTapDm, defaultValue: true);
 

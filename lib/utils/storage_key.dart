@@ -36,6 +36,10 @@ abstract final class SettingBoxKey {
       defaultDanmakuLyrics = 'defaultDanmakuLyrics';
 
   static const String enableVerticalExpand = 'enableVerticalExpand', feedBackEnable = 'feedBackEnable', enableLongShowControl = 'enableLongShowControl', horizontalScreen = 'horizontalScreen',
+  /// 打开页面/视频时的「封面飞行」动画开关
+  coverFlight = 'coverFlight',
+  /// 封面飞行轨迹：true=曲线（Material 标准弧线），false=直线
+  coverFlightCurve = 'coverFlightCurve',
   /// 横屏布局模式：0=关，1=自动（按宽高比阈值），2=开（全局应用）
   horizontalLayoutMode = 'horizontalLayoutMode',
   /// 自动模式的宽高比阈值（最长边/最短边 ≥ 该值 → 使用横屏布局）
@@ -154,6 +158,9 @@ abstract final class SettingBoxKey {
       desktopLyricsFontStyle = 'desktopLyricsFontStyle',
       desktopLyricsTextAlign = 'desktopLyricsTextAlign',
       circularScreen = 'circularScreen';
+
+  /// 数据迁移：导出包是否写入系统共享的下载目录
+  static const String migrationToShared = 'migrationToShared';
 }
 
 abstract final class LocalCacheKey {

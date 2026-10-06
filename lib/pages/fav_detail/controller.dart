@@ -14,9 +14,6 @@ import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/models_new/fav/fav_detail/data.dart';
 import 'package:PiliPlus/models_new/fav/fav_detail/media.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
-import 'package:PiliPlus/models_new/video/video_detail/arc.dart';
-import 'package:PiliPlus/models_new/video/video_detail/episode.dart' as ugc;
-import 'package:PiliPlus/models_new/video/video_detail/page.dart';
 import 'package:PiliPlus/pages/audio/view.dart';
 import 'package:PiliPlus/pages/common/common_list_controller.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pbenum.dart'
@@ -25,6 +22,7 @@ import 'package:PiliPlus/pages/common/multi_select/base.dart';
 import 'package:PiliPlus/pages/common/multi_select/multi_select_controller.dart';
 import 'package:PiliPlus/pages/common/page_order_mixin.dart';
 import 'package:PiliPlus/pages/fav_sort/view.dart';
+import 'package:PiliPlus/services/download/download_batch.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/extension/scroll_controller_ext.dart';
@@ -38,7 +36,6 @@ import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
-import 'package:path/path.dart' as p;
 
 mixin BaseFavController
     on
@@ -106,7 +103,7 @@ class FavDetailController
 
   @override
   late int mediaId;
-  late String heroTag;
+  String? heroTag;
   final Rx<FavFolderInfo> folderInfo = FavFolderInfo().obs;
   final RxBool _isOwner = false.obs;
   final Rx<FavOrderType> order = FavOrderType.mtime.obs;
@@ -156,7 +153,7 @@ class FavDetailController
     super.onInit();
 
     mediaId = int.parse(mediaIdParam ?? Get.parameters['mediaId']!);
-    heroTag = heroTagParam ?? Get.parameters['heroTag']!;
+    heroTag = heroTagParam ?? Get.parameters['heroTag'];
 
     if (hasLocalFavCache) {
       // 有离线缓存 → 先显示缓存，再静默尝试在线刷新
@@ -257,7 +254,7 @@ class FavDetailController
   /// 缓存全部视频：弹出画质+音质选择对话框，加载所有页，逐个提交下载
   Future<void> cacheAllVideos() async {
     // 弹出音画质选择
-    final result = await _pickQuality();
+    final result = await pickDownloadQuality();
     if (result == null) return;
     final (VideoQuality videoQa, AudioQuality audioQa) = result;
 
@@ -275,160 +272,34 @@ class FavDetailController
     }
     if (allItems == null || allItems.isEmpty) return;
 
-    final ds = Get.find<DownloadService>();
-
-    int restored = 0;
-    int queued = 0;
-
-    // 如果用户选了非默认音质，临时保存并下载后恢复
-    final oldAudioQa = Pref.defaultAudioQa;
-    if (audioQa.code != oldAudioQa) {
-      await GStorage.setting.put(SettingBoxKey.defaultAudioQa, audioQa.code);
-    }
-
+    // 组装批量缓存目标
+    final targets = <BatchCacheTarget>[];
     for (final item in allItems) {
       final cid = item.ugc?.firstCid;
       final bvid = item.bvid;
       if (cid == null || bvid == null) continue;
-      final avid = IdUtils.bv2av(bvid);
-
-      // 已存在于 downloadList（已完成）
-      if (ds.downloadList.any((e) => e.cid == cid && e.isCompleted)) {
-        continue;
-      }
-      // 已存在于等待队列
-      if (ds.waitDownloadQueue.any((e) => e.cid == cid)) {
-        continue;
-      }
-
-      // 扫描磁盘（重启后 downloadList 可能为空）
-      bool foundOnDisk = false;
-      for (final basePath in {downloadPath, defDownloadPath}) {
-        final entryDirPath = p.join(basePath, avid.toString(), 'c_$cid');
-        final entryFile = File(p.join(entryDirPath, 'entry.json'));
-        if (entryFile.existsSync()) {
-          try {
-            final existingJson = await entryFile.readAsString();
-            final existing = BiliDownloadEntryInfo.fromJson(jsonDecode(existingJson))
-              ..pageDirPath = p.join(basePath, avid.toString())
-              ..entryDirPath = entryDirPath;
-            if (existing.isCompleted) {
-              if (ds.downloadList.indexWhere((e) => e.cid == cid) < 0) {
-                ds.downloadList.add(existing);
-              }
-              restored++;
-              foundOnDisk = true;
-              break;
-            }
-          } catch (_) {}
-        }
-      }
-      if (foundOnDisk) continue;
-
-      // 需要新下载
-      final part = Part(
-        cid: cid,
-        page: 1,
-        from: '',
-        part: item.title,
-        vid: bvid,
-        duration: item.duration,
-      );
-      final episodeItem = ugc.EpisodeItem(
-        aid: avid,
-        cid: cid,
-        bvid: bvid,
-        title: item.title,
-        arc: Arc(
-          aid: avid,
-          pic: item.cover,
-          title: item.title,
+      targets.add(
+        BatchCacheTarget(
+          avid: IdUtils.bv2av(bvid),
+          cid: cid,
+          bvid: bvid,
+          title: item.title ?? '',
+          cover: item.cover,
           duration: item.duration,
-          author: item.upper != null
-              ? Owner(mid: item.upper!.mid, name: item.upper!.name)
-              : null,
+          owner: item.upper,
         ),
-        page: part,
-        pages: [part],
       );
-      ds.downloadVideo(part, null, episodeItem, videoQa);
-      queued++;
     }
 
-    // 恢复原始音质设置
-    if (audioQa.code != oldAudioQa) {
-      await GStorage.setting.put(SettingBoxKey.defaultAudioQa, oldAudioQa);
-    }
+    final res = await queueBatchDownload(
+      targets,
+      videoQa: videoQa,
+      audioQa: audioQa,
+    );
 
     // 保存缓存索引
     _saveFavCache(allItems);
-    SmartDialog.showToast('缓存完成：新增 $queued，已存在 $restored');
-  }
-
-  /// 弹出画质 + 音质选择对话框
-  Future<(VideoQuality, AudioQuality)?> _pickQuality() async {
-    final defaultVideoCode = Pref.defaultVideoQa;
-    final defaultVideo = VideoQuality.values.firstWhereOrNull(
-      (q) => q.code == defaultVideoCode,
-    ) ?? VideoQuality.high1080;
-    final defaultAudio = AudioQuality.fromCode(Pref.defaultAudioQa);
-
-    Rx<VideoQuality> videoQuality = defaultVideo.obs;
-    Rx<AudioQuality> audioQuality = defaultAudio.obs;
-
-    return await showDialog<(VideoQuality, AudioQuality)?>(
-      context: Get.context!,
-      barrierDismissible: false,
-      builder: (context) => SimpleDialog(
-        title: const Text('选择下载画质和音质'),
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 24, top: 8, bottom: 4),
-            child: Text('视频画质', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          for (final q in VideoQuality.values)
-            Obx(
-              () => RadioListTile<VideoQuality>(
-                dense: true,
-                title: Text('${q.desc} (${q.shortDesc})'),
-                value: q,
-                groupValue: videoQuality.value,
-                onChanged: (v) {
-                  if (v == null) return;
-                  videoQuality.value = v;
-                },
-              ),
-            ),
-          const Divider(height: 1),
-          const Padding(
-            padding: EdgeInsets.only(left: 24, top: 8, bottom: 4),
-            child: Text('音频音质', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          for (final q in AudioQuality.values)
-            Obx(
-              () => RadioListTile<AudioQuality>(
-                dense: true,
-                title: Text('${q.desc} (${q.code})'),
-                value: q,
-                groupValue: audioQuality.value,
-                onChanged: (v) {
-                  if (v == null) return;
-                  audioQuality.value = v;
-                },
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 8),
-            child: FilledButton(
-              onPressed: () => Navigator.of(context).pop(
-                (videoQuality.value, audioQuality.value),
-              ),
-              child: const Text('开始缓存'),
-            ),
-          ),
-        ],
-      ),
-    );
+    SmartDialog.showToast('缓存完成：新增 ${res.queued}，已存在 ${res.restored}');
   }
 
   void _saveFavCache(List<FavDetailItemModel> items) {
@@ -631,43 +502,8 @@ class FavDetailController
   }
 
   /// 通过 cid 查找本地缓存（downloadList + 磁盘兜底）
-  Future<BiliDownloadEntryInfo?> _findLocalCache(int avid, int cid) async {
-    try {
-      final ds = Get.find<DownloadService>();
-      await ds.waitForInitialization;
-
-      // 1. downloadList
-      final inList = ds.downloadList.firstWhereOrNull(
-        (e) => e.avid == avid && e.cid == cid && e.isCompleted,
-      );
-      if (inList != null) return inList;
-
-      // 2. 在等待队列中
-      if (ds.waitDownloadQueue.any((e) => e.avid == avid && e.cid == cid)) return null;
-
-      // 3. 扫描磁盘
-      for (final basePath in {downloadPath, defDownloadPath}) {
-        final entryDirPath = p.join(basePath, avid.toString(), 'c_$cid');
-        final entryFile = File(p.join(entryDirPath, 'entry.json'));
-        if (entryFile.existsSync()) {
-          try {
-            final existingJson = await entryFile.readAsString();
-            final existing = BiliDownloadEntryInfo.fromJson(jsonDecode(existingJson))
-              ..pageDirPath = p.join(basePath, avid.toString())
-              ..entryDirPath = entryDirPath;
-            if (existing.isCompleted) {
-              ds.downloadList.add(existing);
-              return existing;
-            }
-          } catch (_) {}
-        }
-      }
-      return null;
-    } catch (e) {
-      SmartDialog.showToast('查找缓存出错：$e');
-      return null;
-    }
-  }
+  Future<BiliDownloadEntryInfo?> _findLocalCache(int avid, int cid) =>
+      findLocalCache(avid, cid);
 
   @override
   Future<void> onReload() {

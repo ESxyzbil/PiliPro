@@ -1,8 +1,8 @@
-﻿import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
+import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
-import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class FavFolderItem extends StatelessWidget {
@@ -20,11 +20,14 @@ class FavFolderItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    BuildContext? coverContext;
     return GestureDetector(
       onTap: () {
         PageUtils.toFavDetailPage(
           mediaId: item.id.toString(),
           heroTag: heroTag,
+          coverFrom: CoverFlight.rectOf(coverContext),
+          cover: item.cover,
         );
       },
       behavior: HitTestBehavior.opaque,
@@ -45,13 +48,18 @@ class FavFolderItem extends StatelessWidget {
                 ),
               ],
             ),
-            child: Hero(
-              tag: heroTag,
-              child: NetworkImgLayer(
-                src: item.cover,
-                width: 180,
-                height: 110,
-              ),
+            child: Builder(
+              builder: (ctx) {
+                coverContext = ctx;
+                return Hero(
+                  tag: heroTag,
+                  child: NetworkImgLayer(
+                    src: item.cover,
+                    width: 180,
+                    height: 110,
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: 8),

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -141,6 +142,15 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   final videoRelatedKey = GlobalKey();
   final videoIntroKey = GlobalKey();
 
+  /// 播放器盒锚点：封面飞行据此实测终点（竖屏/横屏/分栏布局各不相同）
+  final _playerBoxKey = GlobalKey();
+
+  /// 本次打开**专属**的播放器盒锚点（由 toVideoPage 经 arguments 传入）：
+  /// 全局静态锚点会被别的视频标签/隐藏页覆盖，导致量到屏幕外的错误矩形。
+  /// 有专属锚点时，本次飞行的测量只认它。
+  GlobalKey get _flightPlayerKey =>
+      (widget.arguments?['playerBoxKey'] as GlobalKey?) ?? _playerBoxKey;
+
   @override
   void initState() {
     super.initState();
@@ -150,6 +160,8 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       );
     }
 
+    // 注册播放器盒锚点：封面飞行据此实测终点
+    CoverFlight.videoPlayerKey = _playerBoxKey;
     PlPlayerController.setPlayCallBack(playCallBack);
     videoDetailController = Get.put(
       VideoDetailController(arguments: widget.arguments),
@@ -367,6 +379,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
   @override
   void dispose() {
+    if (CoverFlight.videoPlayerKey == _playerBoxKey) {
+      CoverFlight.videoPlayerKey = null;
+    }
     plPlayerController
       ?..removeStatusLister(playerListener)
       ..removePositionListener(positionListener);
@@ -1611,7 +1626,10 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
 
   Widget videoPlayer({required double width, required double height}) {
     final isFullScreen = this.isFullScreen;
-    return Stack(
+    // 封面飞行进行中先隐藏播放器（用户要求：延迟到动效结束再出现），
+    // 通知由 PageUtils.toVideoPage 放入 arguments，飞行结束置 true。
+    final flightVisible = (widget.arguments ?? Get.arguments)?['playerVisible'];
+    final player = Stack(
       clipBehavior: Clip.none,
       children: [
         const Positioned.fill(
@@ -1765,6 +1783,26 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         ),
       ],
     );
+    // 封面飞行结束后再显示播放器
+    late final Widget result;
+    if (flightVisible is ValueNotifier<bool>) {
+      // 用户要求：页面弹出时就带着一份**完全透明、但已就位**的播放器
+      // （已布局、已解码首帧），动效结束时**直接切换**为不透明——
+      // 不用淡入，切换瞬间画面完全一致，做到无缝。
+      // 用户要求：动效还没结束时，点在播放器所在位置也要能直接操作播放器。
+      // 因此**不加 IgnorePointer**（Opacity 0 不影响命中测试）：播放器从弹出
+      // 那一刻就是可交互的，只是暂时不可见；动效结束再切换为不透明。
+      result = ValueListenableBuilder<bool>(
+        valueListenable: flightVisible,
+        builder: (_, visible, child) =>
+            Opacity(opacity: visible ? 1 : 0, child: child),
+        child: player,
+      );
+    } else {
+      result = player;
+    }
+    // 挂锚点：封面飞行据此实测播放器盒（竖屏/横屏/分栏布局各不相同）
+    return KeyedSubtree(key: _flightPlayerKey, child: result);
   }
 
   Widget localIntroPanel({

@@ -27,11 +27,21 @@ import 'package:material_design_icons_flutter/material_design_icons_flutter.dart
 import 'package:material_ui/material_ui.dart';
 
 class FavDetailPage extends StatefulWidget {
-  const FavDetailPage({super.key, this.mediaId, this.heroTag});
+  const FavDetailPage({
+    super.key,
+    this.mediaId,
+    this.heroTag,
+    this.coverKey,
+    this.coverVisible,
+  });
 
   /// 显式传参（桌面端标签页模式）；为 null 时回退读取路由参数 Get.parameters
   final String? mediaId;
   final String? heroTag;
+
+  /// 封面飞行：目标封面的 key，以及「飞行期间是否显示该封面」
+  final GlobalKey? coverKey;
+  final ValueNotifier<bool>? coverVisible;
 
   @override
   State<FavDetailPage> createState() => _FavDetailPageState();
@@ -454,13 +464,33 @@ class _FavDetailPageState extends State<FavDetailPage> with GridMixin {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      Hero(
-                        tag: _favDetailController.heroTag,
-                        child: NetworkImgLayer(
-                          width: 176,
-                          height: 110,
-                          src: folderInfo.cover,
-                        ),
+                      Builder(
+                        builder: (context) {
+                          Widget cover = NetworkImgLayer(
+                            width: 176,
+                            height: 110,
+                            src: folderInfo.cover,
+                          );
+                          // 封面飞行：目标封面挂 key，飞行期间置为不可见
+                          if (widget.coverKey != null) {
+                            cover = KeyedSubtree(
+                              key: widget.coverKey,
+                              child: cover,
+                            );
+                          }
+                          if (widget.coverVisible != null) {
+                            cover = ValueListenableBuilder<bool>(
+                              valueListenable: widget.coverVisible!,
+                              builder: (_, visible, child) =>
+                                  Opacity(opacity: visible ? 1 : 0, child: child),
+                              child: cover,
+                            );
+                          }
+                          final tag = _favDetailController.heroTag;
+                          return tag == null
+                              ? cover
+                              : Hero(tag: tag, child: cover);
+                        },
                       ),
                       Positioned(
                         right: 6,

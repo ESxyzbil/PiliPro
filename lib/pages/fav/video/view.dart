@@ -63,10 +63,12 @@ class _FavVideoPageState extends State<FavVideoPage>
                   return FavVideoItem(
                     heroTag: heroTag,
                     item: item,
-                    onTap: () {
+                    onTap: (coverFrom) {
                       PageUtils.toFavDetailPage(
                         mediaId: item.id.toString(),
                         heroTag: heroTag,
+                        coverFrom: coverFrom,
+                        cover: item.cover,
                       );
                     },
                   );

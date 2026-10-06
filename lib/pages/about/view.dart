@@ -11,6 +11,7 @@ import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/pages/mine/controller.dart';
+import 'package:PiliPlus/pages/setting/pages/data_migration.dart';
 import 'package:PiliPlus/services/logger.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/accounts/account.dart';
@@ -255,6 +256,12 @@ Commit Hash: ${BuildConfig.commitHash}''',
                 }
               },
             ),
+          ),
+          ListTile(
+            title: const Text('数据迁移'),
+            subtitle: const Text('导出为离线数据包，或从数据包导入（可选内容）'),
+            leading: const Icon(Icons.swap_horiz_outlined),
+            onTap: () => Get.to(() => const DataMigrationPage()),
           ),
           ListTile(
             title: const Text('导入/导出设置'),

@@ -46,7 +46,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
     (
       icon: CustomIcons.folderDownloadOutline,
       title: '离线缓存',
-      onTap: () => Get.toNamed('/download'),
+      onTap: PageUtils.toDownloadPage,
     ),
     (
       icon: CustomIcons.history,
@@ -62,7 +62,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
       title: '我的订阅',
       onTap: () {
         if (isLogin) {
-          Get.toNamed('/subscription');
+          PageUtils.toSubPage();
         }
       },
     ),

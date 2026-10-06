@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -7,6 +8,7 @@ import 'package:PiliPlus/http/search.dart';
 import 'package:PiliPlus/models/common/badge_type.dart';
 import 'package:PiliPlus/models/common/stat_type.dart';
 import 'package:PiliPlus/models_new/sub/sub_detail/media.dart';
+import 'package:PiliPlus/pages/subscription_detail/controller.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -18,14 +20,21 @@ class SubVideoCardH extends StatelessWidget {
   final SubDetailItemModel videoItem;
   final int? searchType;
 
+  /// 合集详情控制器：传入后点击走「离线优先」逻辑
+  final SubDetailController? ctr;
+  final int? index;
+
   const SubVideoCardH({
     super.key,
     required this.videoItem,
     this.searchType,
+    this.ctr,
+    this.index,
   });
 
   @override
   Widget build(BuildContext context) {
+    BuildContext? coverContext;
     void onLongPress() => imageSaveDialog(
       title: videoItem.title,
       cover: videoItem.cover,
@@ -35,6 +44,14 @@ class SubVideoCardH extends StatelessWidget {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: () async {
+          if (ctr != null) {
+            await ctr!.onViewItem(
+              videoItem,
+              index,
+              coverFrom: CoverFlight.rectOf(coverContext),
+            );
+            return;
+          }
           final res = await SearchHttp.ab2cWithDimension(bvid: videoItem.bvid);
           final cid = res?.cid;
           if (cid != null) {
@@ -66,10 +83,15 @@ class SubVideoCardH extends StatelessWidget {
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        NetworkImgLayer(
-                          src: videoItem.cover,
-                          width: maxWidth,
-                          height: maxHeight,
+                        Builder(
+                          builder: (ctx) {
+                            coverContext = ctx;
+                            return NetworkImgLayer(
+                              src: videoItem.cover,
+                              width: maxWidth,
+                              height: maxHeight,
+                            );
+                          },
                         ),
                         PBadge(
                           text: DurationUtils.formatDuration(

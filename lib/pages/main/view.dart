@@ -799,6 +799,8 @@ class _MainAppState extends PopScopeState<MainApp>
         final double winW = outerC.maxWidth;
         final double winH = outerC.maxHeight;
         final double contentW = (winW - stripTargetWidth).clamp(0.0, winW);
+        // 供封面飞行预估"标签栏出现带来的剩余位移"
+        tabController.stripTargetWidth = stripTargetWidth;
         // 标签内页面（视频页等）感知实际可用宽度：标签栏/侧栏占用后实际宽度
         // ≠ MediaQuery.size（窗口宽度），视频页横向分栏按窗口宽度布局时右侧
         //（相关视频/评论）会被挤出屏外。
@@ -827,7 +829,9 @@ class _MainAppState extends PopScopeState<MainApp>
             duration: TabStrip.animDuration,
             curve: Curves.easeOutCubic,
             child: tabContent,
-            builder: (context, stripW, child) => Stack(
+            builder: (context, stripW, child) {
+              tabController.stripCurrentWidth = stripW;
+              return Stack(
               fit: StackFit.expand,
               children: [
                 // 内容区：尺寸固定为动画终态，整体按标签栏当前宽度平移
@@ -848,16 +852,20 @@ class _MainAppState extends PopScopeState<MainApp>
                   left: 0,
                   top: 0,
                   bottom: 0,
-                  child: TabStrip(
-                    key: _tabStripKey,
-                    controller: tabController,
-                    isExpanded: isExpanded,
-                    width: stripW,
-                    onExpandedChanged: tabController.setExpanded,
+                  child: KeyedSubtree(
+                    key: TabHostController.stripKey,
+                    child: TabStrip(
+                      key: _tabStripKey,
+                      controller: tabController,
+                      isExpanded: isExpanded,
+                      width: stripW,
+                      onExpandedChanged: tabController.setExpanded,
+                    ),
                   ),
                 ),
               ],
-            ),
+              );
+            },
           ),
         );
       },
@@ -913,7 +921,9 @@ class _MainAppState extends PopScopeState<MainApp>
       // ignore: avoid_print
       print('[PL_TABHOST] $logMsg');
     }
-    return MediaQuery(
+    return SizedBox(
+      key: TabHostController.contentKey,
+      child: MediaQuery(
       data: mq,
       // Stack 保活 + 标签切换过渡动画：
       // 主内容（i==0）淡入淡出；标签页（i>=1）应用设置的
@@ -952,6 +962,8 @@ class _MainAppState extends PopScopeState<MainApp>
                       // 到 0，不走 buildPiliPageTransition 位移
                       // 退场（与 covered 一致）
                       fadeExit: tabs[i - 1].fadeExit,
+                      // 带封面飞行的标签：进入不做位移，避免飞行终点漂移
+                      staticEntrance: tabs[i - 1].staticEntrance,
                       // 替换类返回（source 恢复）时：
                       // active 仍 true 但 closing=true，
                       // 强制播退出动画再替换
@@ -966,6 +978,7 @@ class _MainAppState extends PopScopeState<MainApp>
                     ),
             ),
         ],
+      ),
       ),
     );
   }

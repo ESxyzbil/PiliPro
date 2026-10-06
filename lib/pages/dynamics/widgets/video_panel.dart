@@ -1,5 +1,6 @@
 // 视频or合集
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/svg/play_icon.dart';
@@ -50,11 +51,14 @@ Widget videoSeasonWidget(
             clipBehavior: Clip.none,
             children: [
               LayoutBuilder(
-                builder: (context, constraints) => NetworkImgLayer(
-                  width: constraints.maxWidth,
-                  height: constraints.maxWidth / Style.aspectRatio,
-                  src: cover,
-                  quality: 40,
+                builder: (context, constraints) => CoverFlightSource(
+                  cover: cover,
+                  child: NetworkImgLayer(
+                    width: constraints.maxWidth,
+                    height: constraints.maxWidth / Style.aspectRatio,
+                    src: cover,
+                    quality: 40,
+                  ),
                 ),
               ),
               if (video.badge?.text case final badge?)

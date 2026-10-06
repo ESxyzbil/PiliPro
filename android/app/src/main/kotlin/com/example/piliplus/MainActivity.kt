@@ -26,9 +26,60 @@ class MainActivity : AudioServiceActivity() {
     private val downloadProgressChannel = "com.example.piliplus/download_progress"
     private var downloadProgressManager: DownloadProgressManager? = null
     private var mediaTranscoder: MediaTranscoder? = null
+    private val mediaStoreChannel = "com.example.piliplus/media_store"
+    private var mediaStoreBridge: MediaStoreBridge? = null
+    private val appControlChannel = "com.example.piliplus/app_control"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // 应用控制（导入数据后需要重启才能重新打开 Hive）
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            appControlChannel
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "restartApp" -> {
+                    result.success(true)
+                    try {
+                        val intent = Intent(this, MainActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            )
+                        }
+                        startActivity(intent)
+                    } catch (t: Throwable) {
+                        android.util.Log.e("AppControl", "restart failed", t)
+                    }
+                    android.os.Handler(mainLooper).postDelayed({
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                    }, 300)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 迁移包等大文件导出到系统共享的下载目录（MediaStore）
+        mediaStoreBridge = MediaStoreBridge(this)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            mediaStoreChannel
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "copyToDownloads" -> {
+                    val args = call.arguments as Map<*, *>
+                    mediaStoreBridge?.copyToDownloads(
+                        sourcePath = args["sourcePath"] as? String ?: "",
+                        displayName = args["displayName"] as? String,
+                        subDir = args["subDir"] as? String ?: "",
+                        onProgress = null,
+                        result = result,
+                    )
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // 缓存下载进度通知
         downloadProgressManager = DownloadProgressManager(this)

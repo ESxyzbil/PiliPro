@@ -6,6 +6,7 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/sub/sub/list.dart';
 import 'package:PiliPlus/pages/subscription/controller.dart';
 import 'package:PiliPlus/pages/subscription/widgets/item.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
@@ -23,7 +24,20 @@ class _SubPageState extends State<SubPage> with GridMixin {
   @override
   Widget build(BuildContext context) {
     return SimpleScaffold(
-      appBar: AppBar(title: const Text('我的订阅')),
+      appBar: AppBar(
+        title: const Text('我的订阅'),
+        // 标签承载时 AppBar 不会自动生成返回箭头，显式补一个
+        leading: TabHostController.isTabHostedPage
+            ? IconButton(
+                tooltip: '返回',
+                onPressed: () {
+                  if (TabHostController.handleBack()) return;
+                  Get.back();
+                },
+                icon: const Icon(Icons.arrow_back_outlined),
+              )
+            : null,
+      ),
       body: refreshIndicator(
         onRefresh: _subController.onRefresh,
         child: CustomScrollView(

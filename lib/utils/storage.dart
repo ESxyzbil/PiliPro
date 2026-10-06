@@ -16,6 +16,9 @@ import 'package:hive_ce/hive.dart';
 import 'package:path/path.dart' as path;
 
 abstract final class GStorage {
+  /// Hive 数据目录（数据迁移以整目录为单位备份/替换）
+  static String get hiveDirPath => path.join(appSupportDirPath, 'hive');
+
   static late final Box<UserInfoData> userInfo;
   static late final Box<dynamic> historyWord;
   static late final Box<dynamic> localCache;
@@ -25,9 +28,13 @@ abstract final class GStorage {
   static late final Box<Uint8List>? reply;
 
   static Future<void> init() async {
-    Hive.init(path.join(appSupportDirPath, 'hive'));
+    Hive.init(hiveDirPath);
     regAdapter();
 
+    await _openBoxes();
+  }
+
+  static Future<void> _openBoxes() async {
     await Future.wait([
       // 登录用户信息
       Hive.openBox<UserInfoData>(
@@ -145,6 +152,29 @@ abstract final class GStorage {
       watchProgress.clear(),
       ?reply?.clear(),
     ]);
+  }
+
+  /// 全部 Hive 箱（文件名 → 箱），用于数据迁移打包/备份
+  static Map<String, Box> get boxes => {
+    'userInfo': userInfo,
+    'historyWord': historyWord,
+    'localCache': localCache,
+    'setting': setting,
+    'video': video,
+    'account': Accounts.account,
+    'watchProgress': watchProgress,
+    'reply': ?reply,
+  };
+
+  /// 导出迁移包前把日志落盘并关闭全部箱（避免复制到写了一半的文件）
+  static Future<void> closeForMigration() async {
+    await Hive.close();
+  }
+
+  /// 撤销迁移（导入失败或用户取消）后按原样重开
+  static Future<void> reopenAfterMigration() async {
+    Hive.init(hiveDirPath);
+    await _openBoxes();
   }
 
   static int _intStrDescKeyComparator(dynamic k1, dynamic k2) {

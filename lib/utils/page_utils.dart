@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/fractionally_sized_box.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/gallery_viewer.dart';
 import 'package:PiliPlus/common/widgets/image_viewer/hero_dialog_route.dart';
@@ -13,10 +14,12 @@ import 'package:PiliPlus/models/common/image_preview_type.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/dynamics/result.dart';
 import 'package:PiliPlus/models_new/pgc/pgc_info_model/episode.dart';
+import 'package:PiliPlus/models_new/sub/sub/list.dart';
 import 'package:PiliPlus/models_new/video/video_detail/dimension.dart';
 import 'package:PiliPlus/pages/common/common_intro_controller.dart';
 import 'package:PiliPlus/pages/common/publish/publish_route.dart';
 import 'package:PiliPlus/pages/contact/view.dart';
+import 'package:PiliPlus/pages/download/view.dart';
 import 'package:PiliPlus/pages/dynamics_detail/view.dart';
 import 'package:PiliPlus/pages/fav/view.dart';
 import 'package:PiliPlus/pages/fav_detail/view.dart';
@@ -25,6 +28,8 @@ import 'package:PiliPlus/pages/member/view.dart';
 import 'package:PiliPlus/pages/search/view.dart';
 import 'package:PiliPlus/pages/search_result/view.dart';
 import 'package:PiliPlus/pages/share/view.dart';
+import 'package:PiliPlus/pages/subscription/view.dart';
+import 'package:PiliPlus/pages/subscription_detail/view.dart';
 import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
@@ -607,6 +612,7 @@ abstract final class PageUtils {
     bool isVertical = false,
     Dimension? dimension,
     bool replaceCurrent = false,
+    Rect? coverFrom,
   }) {
     final arguments = {
       'aid': aid ?? IdUtils.bv2av(bvid!),
@@ -639,7 +645,45 @@ abstract final class PageUtils {
         );
       }
       _popToMainIfNeeded();
-      tabHost.openVideo(arguments, replaceCurrent: replaceCurrent);
+      // 封面飞行：显式矩形 > 触点命中的已登记封面（通解）> 触点兜底小矩形
+      final src = CoverFlight.resolveSource(from: coverFrom, cover: cover);
+      CoverFlightSpec? flight;
+      if (src != null) {
+        // 飞行落地前先不显示播放器（用户要求：延迟到动效结束再出现）；
+        // 飞行结束会把该通知置为 true，页面据此淡入播放器。
+        final playerVisible = ValueNotifier<bool>(false);
+        arguments['playerVisible'] = playerVisible;
+        // 本次打开专属的播放器盒锚点：测量只用它，避免被其它视频页覆盖
+        final playerBoxKey = GlobalKey();
+        arguments['playerBoxKey'] = playerBoxKey;
+        flight = CoverFlightSpec(
+          from: src.rect,
+          fromKey: src.key,
+          // 优先用视频页实测的播放器盒（竖屏/横屏/分栏布局各不相同），
+          // 拿不到再退回按口径推算
+          destRect: () =>
+              CoverFlight.rectOf(playerBoxKey.currentContext) ??
+              CoverFlight.rectOf(CoverFlight.videoPlayerKey?.currentContext) ??
+              _videoPlayerBox(dimension: dimension, isVertical: isVertical),
+          cover:
+              src.cover ??
+              (arguments['cover'] is String
+                  ? arguments['cover'] as String
+                  : null),
+          // 本次打开会让标签栏占多宽（0 = 竖屏/已有标签，不影响布局）
+          stripWidthFinal: tabHost.stripWidthForNextOpen,
+          // 视频目标是矩形播放器：飞行封面去圆角
+          square: true,
+          // 页面存活锚点：它消失＝视频页已关闭（打断回位的判据）
+          destAliveKey: playerBoxKey,
+          destVisible: playerVisible,
+        );
+      }
+      tabHost.openVideo(
+        arguments,
+        replaceCurrent: replaceCurrent,
+        flight: flight,
+      );
       return null;
     }
     if (kDebugMode) {
@@ -649,6 +693,40 @@ abstract final class PageUtils {
       '/videoV',
       arguments: arguments,
       preventDuplicates: false,
+    );
+  }
+
+  /// 视频页**播放器盒**的矩形——封面飞行的目标。
+  /// 视频页按“竖屏/横屏”决定盒高（lib/pages/video/view.dart：竖屏取
+  /// maxVideoHeight=屏高 65%，横屏取 minVideoHeight=短边/(16:9)），画面在
+  /// 盒内铺满显示，所以目标是**盒**而不是按宽高比内缩后的画面——
+  /// 内缩会让终点比实际画面两边各窄一条（用户实测）。
+  static Rect? _videoPlayerBox({Dimension? dimension, bool isVertical = false}) {
+    const aspect16x9 = 16 / 9;
+    final content = TabHostController.contentRect;
+    if (content == null || content.isEmpty) return null;
+    final vertical = dimension?.isVertical ?? isVertical;
+    if (vertical) {
+      // 竖屏视频：画面铺满播放器盒（盒高＝屏高 65%）
+      return Rect.fromLTWH(
+        content.left,
+        content.top,
+        content.width,
+        content.height * 0.65,
+      );
+    }
+    // 横屏视频：按 16:9 适配；横屏下内容区更宽更矮，高度先顶满再按比例定宽居中
+    var width = content.width;
+    var height = width / aspect16x9;
+    if (height > content.height) {
+      height = content.height;
+      width = height * aspect16x9;
+    }
+    return Rect.fromLTWH(
+      content.left + (content.width - width) / 2,
+      content.top,
+      width,
+      height,
     );
   }
 
@@ -735,11 +813,92 @@ abstract final class PageUtils {
     );
   }
 
+  /// 打开我的订阅；标签页模式下开成标签
+  static void toSubPage() {
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'page_subscription',
+        title: '我的订阅',
+        icon: const Icon(Icons.subscriptions_outlined, size: 16),
+        childBuilder: (key) => SubPage(key: key),
+      );
+      return;
+    }
+    Get.toNamed('/subscription');
+  }
+
+  /// 打开离线缓存；标签页模式下开成标签
+  static void toDownloadPage() {
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'page_download',
+        title: '离线缓存',
+        icon: const Icon(Icons.download_outlined, size: 16),
+        childBuilder: (key) => DownloadPage(key: key),
+      );
+      return;
+    }
+    Get.toNamed('/download');
+  }
+
+  /// 打开订阅合集详情；标签页模式下开成标签，并可带封面飞行
+  ///
+  /// [coverFrom] 为源封面在屏幕上的矩形（列表项 onTap 时取），[cover] 为
+  /// 封面地址；两者给出时会补一段"封面飞到目标位置"的动画，替代 Hero
+  /// （标签是同一路由内的 Stack，Hero 不会触发）。
+  static void toSubDetailPage({
+    required int id,
+    SubItemModel? subInfo,
+    String? heroTag,
+    Rect? coverFrom,
+    String? cover,
+  }) {
+    final tabHost = TabHostController.instance;
+    if (tabHost != null && _tabsEnabled) {
+      final src = CoverFlight.resolveSource(from: coverFrom, cover: cover);
+      final destKey = GlobalKey();
+      final coverVisible = ValueNotifier<bool>(src == null);
+      _popToMainIfNeeded();
+      tabHost.openPage(
+        id: 'sub_detail_$id',
+        title: subInfo?.title ?? '合集',
+        icon: const Icon(Icons.collections_bookmark_outlined, size: 16),
+        flight: src == null
+            ? null
+            : CoverFlightSpec(
+                from: src.rect,
+                fromKey: src.key,
+                cover: src.cover,
+                destKey: destKey,
+                stripWidthFinal: tabHost.stripWidthForNextOpen,
+                destVisible: coverVisible,
+              ),
+        childBuilder: (key) => SubDetailPage(
+          key: key,
+          id: id,
+          subInfo: subInfo,
+          // 标签模式改用封面飞行，不再挂 Hero（同 tag 会在 '/' 子树重复）
+          heroTag: null,
+          coverKey: destKey,
+          coverVisible: coverVisible,
+        ),
+      );
+      return;
+    }
+    SubDetailPage.toSubDetailPage(id, heroTag: heroTag, subInfo: subInfo);
+  }
+
   /// 打开收藏夹详情；桌面端标签页模式下开成标签
   static void toFavDetailPage({
     required String mediaId,
     String? heroTag,
     bool off = false,
+    Rect? coverFrom,
+    String? cover,
   }) {
     if (off) {
       toDupNamed(
@@ -751,15 +910,31 @@ abstract final class PageUtils {
     }
     final tabHost = TabHostController.instance;
     if (tabHost != null && _tabsEnabled) {
+      final src = CoverFlight.resolveSource(from: coverFrom, cover: cover);
+      final destKey = GlobalKey();
+      final coverVisible = ValueNotifier<bool>(src == null);
       _popToMainIfNeeded();
       tabHost.openPage(
         id: 'fav_detail_$mediaId',
         title: '收藏夹',
         icon: const Icon(Icons.star_outline, size: 16),
+        flight: src == null
+            ? null
+            : CoverFlightSpec(
+                from: src.rect,
+                fromKey: src.key,
+                cover: src.cover,
+                destKey: destKey,
+                stripWidthFinal: tabHost.stripWidthForNextOpen,
+                destVisible: coverVisible,
+              ),
         childBuilder: (key) => FavDetailPage(
           key: key,
           mediaId: mediaId,
-          heroTag: heroTag,
+          // 标签模式改用封面飞行，不再挂 Hero（同 tag 会在 '/' 子树重复）
+          heroTag: null,
+          coverKey: destKey,
+          coverVisible: coverVisible,
         ),
       );
       return;

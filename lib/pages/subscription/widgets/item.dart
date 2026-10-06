@@ -1,14 +1,13 @@
-﻿import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/badge.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models_new/sub/sub/list.dart';
-import 'package:PiliPlus/pages/subscription_detail/view.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
-import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class SubItem extends StatelessWidget {
@@ -23,6 +22,8 @@ class SubItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     String heroTag = Utils.makeHeroTag(item.id);
+    // 封面所在上下文：点击时据此取"源封面矩形"，交给标签宿主做封面飞行
+    BuildContext? coverContext;
     final type = switch (item.type) {
       11 => '收藏夹',
       21 => '合集',
@@ -40,16 +41,21 @@ class SubItem extends StatelessWidget {
             SmartDialog.showToast('该$type已失效');
             return;
           }
+          final coverFrom = CoverFlight.rectOf(coverContext);
           if (item.type == 11) {
             PageUtils.toFavDetailPage(
               mediaId: item.id!.toString(),
               heroTag: heroTag,
+              coverFrom: coverFrom,
+              cover: item.cover,
             );
           } else {
-            SubDetailPage.toSubDetailPage(
-              item.id!,
-              heroTag: heroTag,
+            PageUtils.toSubDetailPage(
+              id: item.id!,
               subInfo: item,
+              heroTag: heroTag,
+              coverFrom: coverFrom,
+              cover: item.cover,
             );
           }
         },
@@ -69,13 +75,18 @@ class SubItem extends StatelessWidget {
                     return Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Hero(
-                          tag: heroTag,
-                          child: NetworkImgLayer(
-                            src: item.cover,
-                            width: maxWidth,
-                            height: maxHeight,
-                          ),
+                        Builder(
+                          builder: (ctx) {
+                            coverContext = ctx;
+                            return Hero(
+                              tag: heroTag,
+                              child: NetworkImgLayer(
+                                src: item.cover,
+                                width: maxWidth,
+                                height: maxHeight,
+                              ),
+                            );
+                          },
                         ),
                         PBadge(
                           right: 6,

@@ -12,7 +12,7 @@ import 'package:PiliPlus/models_new/pgc/pgc_info_model/result.dart';
 import 'package:PiliPlus/models_new/video/video_detail/data.dart';
 import 'package:PiliPlus/models_new/video/video_detail/episode.dart' as ugc;
 import 'package:PiliPlus/models_new/video/video_detail/page.dart';
-import 'package:PiliPlus/pages/download/view.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/page.dart';
@@ -568,9 +568,8 @@ class _DownloadPanelState extends State<DownloadPanel> {
           ),
           _buildBottomBtn(
             text: '查看缓存',
-            onTap: () => Navigator.of(context).push(
-              GetPageRoute(page: () => const DownloadPage()),
-            ),
+            // 离线缓存页统一走标签打开（标签禁用时自动回落路由）
+            onTap: PageUtils.toDownloadPage,
           ),
         ],
       ),

@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/image/image_save.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
@@ -9,7 +10,9 @@ import 'package:material_ui/material_ui.dart';
 class FavVideoItem extends StatelessWidget {
   final String heroTag;
   final FavFolderInfo item;
-  final VoidCallback? onTap;
+
+  /// 点击回调：参数为源封面在屏幕上的矩形（可能为 null），用于标签模式下的封面飞行
+  final void Function(Rect? coverRect)? onTap;
   final VoidCallback? onLongPress;
 
   const FavVideoItem({
@@ -22,10 +25,13 @@ class FavVideoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    BuildContext? coverContext;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
-        onTap: onTap,
+        onTap: onTap == null
+            ? null
+            : () => onTap!(CoverFlight.rectOf(coverContext)),
         onLongPress: onLongPress ?? () => _showMenu(context),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -36,13 +42,18 @@ class FavVideoItem extends StatelessWidget {
                 aspectRatio: Style.aspectRatio,
                 child: LayoutBuilder(
                   builder: (context, boxConstraints) {
-                    return Hero(
-                      tag: heroTag,
-                      child: NetworkImgLayer(
-                        src: item.cover,
-                        width: boxConstraints.maxWidth,
-                        height: boxConstraints.maxHeight,
-                      ),
+                    return Builder(
+                      builder: (ctx) {
+                        coverContext = ctx;
+                        return Hero(
+                          tag: heroTag,
+                          child: NetworkImgLayer(
+                            src: item.cover,
+                            width: boxConstraints.maxWidth,
+                            height: boxConstraints.maxHeight,
+                          ),
+                        );
+                      },
                     );
                   },
                 ),

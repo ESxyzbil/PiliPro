@@ -4,6 +4,7 @@ import 'package:PiliPlus/build_config.dart';
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/back_detector.dart';
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/common/widgets/custom_toast.dart';
 import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
@@ -408,6 +409,17 @@ class MyApp extends StatelessWidget {
       behavior: PlatformUtils.isDesktop
           ? const CustomScrollBehavior()
           : const NoStretchScrollBehavior(),
+      child: child,
+    );
+    // 诊断用根部边界：封面飞行落地时截图（可随时移除）
+    child = RepaintBoundary(
+      key: CoverFlight.debugBoundaryKey,
+      child: child,
+    );
+    // 记录全局按下位置：给"没有明确源封面"的入口（点开视频等）做封面飞行兜底
+    child = Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: CoverFlight.onPointerDown,
       child: child,
     );
     if (PlatformUtils.isDesktop) {

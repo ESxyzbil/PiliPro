@@ -1,3 +1,5 @@
+import 'package:PiliPlus/common/widgets/cover_flight.dart';
+import 'package:PiliPlus/pages/tabhost/tab_strip.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart';
 import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/dynamics/result.dart';
@@ -80,6 +82,9 @@ class TabItem {
   /// 保活标签）：仍在 Stack 中渲染保活（返回时可直接渐显、无需重建），
   /// 但不在标签条显示、不参与常规切换。返回（恢复）时置 false 重新显示。
   bool hidden = false;
+
+  /// 本次进入不做位移（仅淡入）：打开本标签时另有封面飞行
+  bool staticEntrance = false;
 
   /// 本次失去 active 是否因"add 新标签覆盖"（页面内打开新标签压上来，
   /// 如收藏夹文件夹→视频）：true 时退出走**纯透明度淡出**（与 covered
@@ -180,7 +185,41 @@ class TabHostController extends GetxController {
   /// 打开视频标签页（桌面端由 PageUtils.toVideoPage 调用）
   /// [replaceCurrent] 为 true 时：当前有标签则直接替换当前标签
   /// （相关视频/分P 等"页面内派生"场景，而非新开一页）
-  void openVideo(Map arguments, {bool replaceCurrent = false}) {
+  /// 标签内容区的 GlobalKey（供封面飞行取"视频播放器区域"目标矩形）
+  static final GlobalKey contentKey = GlobalKey();
+
+  /// 标签栏当前动画宽度 / 目标宽度（由 MainApp 逐帧写入）：
+  /// 内容区尺寸固定为终态，只按标签栏宽度整体平移——因此
+  /// "标签栏出现把内容区右推多少"可由二者之差精确预知。
+  double stripCurrentWidth = 0;
+  double stripTargetWidth = 0;
+
+  /// 内容区还差多少没被推到最终位置（诊断/备用）
+  double get stripRemainingShift =>
+      (stripTargetWidth - stripCurrentWidth).clamp(0.0, 400.0);
+
+  /// 带封面飞行打开的标签：关闭这些标签时播放“归位”动画
+  final Set<String> _flightOpenedTabs = <String>{};
+
+  /// 标签栏自身的锚点：用于实时读取其当前（动画中）宽度
+  static final GlobalKey stripKey = GlobalKey();
+
+  /// 本次打开标签后，标签栏**最终**会占用的宽度（0 = 本次不影响内容区布局）。
+  /// 依据 main/view.dart 的显示条件：仅桌面或横屏显示标签栏，且需已有标签；
+  /// 已有标签时宽度前后一致，故位移为 0；竖屏恒为 0。
+  double get stripWidthForNextOpen {
+    if (!(PlatformUtils.isDesktop || landscapeMode)) return 0;
+    if (tabs.any((t) => !t.hidden)) return 0;
+    return expanded.value ? TabStrip.expandedWidth : TabStrip.collapsedWidth;
+  }
+
+  static Rect? get contentRect => CoverFlight.rectOf(contentKey.currentContext);
+
+  void openVideo(
+    Map arguments, {
+    bool replaceCurrent = false,
+    CoverFlightSpec? flight,
+  }) {
     final id = 'video_${arguments['aid']}_${arguments['cid']}';
     final title =
         (arguments['title'] as String?) ??
@@ -194,6 +233,7 @@ class TabHostController extends GetxController {
       videoHeroTag: arguments['heroTag'] as String?,
       arguments: arguments,
       replaceCurrent: replaceCurrent,
+      flight: flight,
       childBuilder: (key) => VideoDetailPageV(key: key, arguments: arguments),
     );
   }
@@ -266,12 +306,14 @@ class TabHostController extends GetxController {
     required String title,
     required Widget icon,
     required Widget Function(GlobalKey key) childBuilder,
+    CoverFlightSpec? flight,
   }) {
     _open(
       id: id,
       title: title,
       icon: icon,
       isVideo: false,
+      flight: flight,
       childBuilder: childBuilder,
     );
   }
@@ -285,6 +327,7 @@ class TabHostController extends GetxController {
     String? videoHeroTag,
     Map? arguments,
     bool replaceCurrent = false,
+    CoverFlightSpec? flight,
     required Widget Function(GlobalKey key) childBuilder,
   }) {
     // 只对可见标签去重（hidden 保活层不算"打开的标签"）
@@ -304,13 +347,20 @@ class TabHostController extends GetxController {
       arguments: arguments,
       stateKey: key,
       child: childBuilder(key),
-    );
+    )..staticEntrance = flight != null;
     // 替换当前标签（相关视频/听音频等页面内派生操作）
     if (replaceCurrent && currentIndex.value >= 0) {
       if (kDebugMode) {
         debugPrint('_open replaceCurrent idx=${currentIndex.value} id=$id');
       }
       _replaceTab(currentIndex.value, item);
+      if (flight != null) {
+        _flightOpenedTabs.add(id);
+        // 页面内派生（相关视频/分P 等 replaceCurrent）同样补封面飞行
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => CoverFlight.play(flight),
+        );
+      }
       return;
     }
     if (kDebugMode) {
@@ -327,6 +377,13 @@ class TabHostController extends GetxController {
     } else {
       tabs.insert(0, item);
       select(0, viaAdd: true);
+    }
+    // 新标签已选中：下一帧目标页完成布局后再补封面飞行
+    if (flight != null) {
+      _flightOpenedTabs.add(id);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => CoverFlight.play(flight),
+      );
     }
   }
 
@@ -496,6 +553,12 @@ class TabHostController extends GetxController {
     if (index < 0 || index >= tabs.length) return;
     final tab = tabs[index];
     if (tab.closing) return; // 已在关闭动画中
+    // 用户要求：只在“进入动效进行中被打断”时才飞回；动效结束后再返回不播。
+    // 因此这里判据是“此刻是否仍有飞行在进行”（interruptActive 非空）。
+    if (_flightOpenedTabs.remove(tab.id)) {
+      final interrupt = CoverFlight.interruptActive;
+      if (interrupt != null) interrupt();
+    }
     // 有来源标签（被 replaceCurrent 覆盖保活的下层 A）：返回 = 关闭本标签、
     // 让下层 A 恢复显示（A 一直保活在 tabs 中，active=false 透明；返回时
     // currentIndex 切到 A → TabTransition 从手势位置续播/直接渐显，无需重建，

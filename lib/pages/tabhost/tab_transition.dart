@@ -49,8 +49,13 @@ class TabTransition extends StatefulWidget {
     this.gestureReveal = 0.0,
     this.covered = false,
     this.fadeExit = false,
+    this.staticEntrance = false,
     required this.child,
   });
+
+  /// 本次进入**不做位移**（仅淡入）：该标签打开时另有「封面飞行」动画
+  /// 从源卡片飞到目标位置，页面若同时上滑会让飞行终点一路漂移。
+  final bool staticEntrance;
 
   /// 是否为当前选中的标签页
   final bool active;
@@ -516,13 +521,15 @@ class _TabTransitionState extends State<TabTransition>
             hidden ? 0.0 : (widget.active ? 1.0 : animation.value);
         final double opacity =
             baseOpacity > widget.gestureReveal ? baseOpacity : widget.gestureReveal;
-        final animated = buildPiliPageTransition(
-          route: null,
-          context: context,
-          animation: animation,
-          secondaryAnimation: kAlwaysDismissedAnimation,
-          child: child!,
-        );
+        final animated = widget.staticEntrance && !widget.closing
+            ? child!
+            : buildPiliPageTransition(
+                route: null,
+                context: context,
+                animation: animation,
+                secondaryAnimation: kAlwaysDismissedAnimation,
+                child: child!,
+              );
         _probe('norm-build v=${animation.value} base=$baseOpacity '
             'opacity=$opacity gesture=${widget.gestureReveal} hidden=$hidden');
         return Opacity(opacity: opacity, child: animated);

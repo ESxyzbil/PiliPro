@@ -1,4 +1,4 @@
-﻿import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/loading_widget/http_error.dart';
@@ -6,6 +6,7 @@ import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/sub/sub/list.dart';
 import 'package:PiliPlus/models_new/sub/sub_detail/media.dart';
 import 'package:PiliPlus/pages/subscription_detail/controller.dart';
+import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/pages/subscription_detail/widget/sub_video_card.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
@@ -14,7 +15,23 @@ import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart';
 
 class SubDetailPage extends StatefulWidget {
-  const SubDetailPage({super.key});
+  const SubDetailPage({
+    super.key,
+    this.id,
+    this.subInfo,
+    this.heroTag,
+    this.coverKey,
+    this.coverVisible,
+  });
+
+  /// 显式传参（标签页模式）；为 null 时回退读取 Get.arguments / 路由参数
+  final int? id;
+  final SubItemModel? subInfo;
+  final String? heroTag;
+
+  /// 封面飞行：目标封面的 key，以及「飞行期间是否显示该封面」
+  final GlobalKey? coverKey;
+  final ValueNotifier<bool>? coverVisible;
 
   @override
   State<SubDetailPage> createState() => _SubDetailPageState();
@@ -42,8 +59,12 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
   void initState() {
     super.initState();
     _subDetailController = Get.put(
-      SubDetailController(),
-      tag: Utils.makeHeroTag(Get.parameters['id']),
+      SubDetailController(
+        idParam: widget.id,
+        subInfoParam: widget.subInfo,
+        heroTagParam: widget.heroTag,
+      ),
+      tag: Utils.makeHeroTag(widget.id ?? Get.parameters['id']),
     );
   }
 
@@ -60,6 +81,9 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             _appBar(theme, padding),
+            SliverToBoxAdapter(
+              child: _cacheBar(theme, padding),
+            ),
             SliverPadding(
               padding: EdgeInsets.only(
                 top: 7,
@@ -77,6 +101,35 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
     );
   }
 
+  /// 离线优先开关 + 缓存全部（与收藏夹详情页一致）
+  Widget _cacheBar(ThemeData theme, EdgeInsets padding) {
+    return Obx(() {
+      final isCache = _subDetailController.isPlayFromCache.value;
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 12 + padding.left),
+        color: isCache
+            ? theme.colorScheme.primaryContainer.withOpacity(0.4)
+            : null,
+        child: Row(
+          children: [
+            Text('离线优先', style: theme.textTheme.labelMedium),
+            const SizedBox(width: 16),
+            Switch(
+              value: isCache,
+              onChanged: (v) => _subDetailController.setIsPlayFromCache(v),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              icon: const Icon(Icons.download, size: 18),
+              label: const Text('缓存全部'),
+              onPressed: () => _subDetailController.cacheAllVideos(),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
   Widget _buildBody(LoadingState<List<SubDetailItemModel>?> loadingState) {
     return switch (loadingState) {
       Loading() => gridSkeleton,
@@ -90,6 +143,8 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
                   }
                   return SubVideoCardH(
                     videoItem: response[index],
+                    ctr: _subDetailController,
+                    index: index,
                   );
                 },
                 itemCount: response.length,
@@ -128,6 +183,18 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
       height: 110,
       src: info.cover,
     );
+    // 封面飞行：目标封面挂 key，飞行期间由 CoverFlight 置为不可见
+    if (widget.coverKey != null) {
+      cover = KeyedSubtree(key: widget.coverKey, child: cover);
+    }
+    if (widget.coverVisible != null) {
+      cover = ValueListenableBuilder<bool>(
+        valueListenable: widget.coverVisible!,
+        builder: (_, visible, child) =>
+            Opacity(opacity: visible ? 1 : 0, child: child),
+        child: cover,
+      );
+    }
     if (_subDetailController.heroTag != null) {
       cover = Hero(
         tag: _subDetailController.heroTag!,
@@ -137,6 +204,17 @@ class _SubDetailPageState extends State<SubDetailPage> with GridMixin {
     return SliverAppBar.medium(
       expandedHeight: kToolbarHeight + 132,
       pinned: true,
+      // 标签承载时 AppBar 不会自动生成返回箭头，显式补一个
+      leading: TabHostController.isTabHostedPage
+          ? IconButton(
+              tooltip: '返回',
+              onPressed: () {
+                if (TabHostController.handleBack()) return;
+                Get.back();
+              },
+              icon: const Icon(Icons.arrow_back_outlined),
+            )
+          : null,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
