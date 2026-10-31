@@ -312,3 +312,33 @@ foreach ($patch in $patches_cupertino) {
         throw "$LASTEXITCODE"
     }
 }
+
+# ── fast_paddle_ocr：缺 native 库时不得抛 UnsatisfiedLinkError ──
+# UnsatisfiedLinkError 属于 Error 而非 Exception，会逃出 GeneratedPluginRegistrant 的
+# catch(Exception)，使后续插件（含 media_kit）全部注册失败 → MediaKit.ensureInitialized()
+# 死等 JavaVM → 启动黑屏且 0 CPU。这里给 loadLibrary 加上 Throwable 兜底，幂等。
+$OcrPkg = $null
+foreach ($root in @("$PubCacheDir/hosted/pub.dev", "$PubCacheDir/hosted/pub.flutter-io.cn")) {
+    if (-not $OcrPkg -and (Test-Path $root)) {
+        $OcrPkg = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "fast_paddle_ocr-*" } | Select-Object -Last 1
+    }
+}
+if ($OcrPkg) {
+    $OcrKt = Join-Path $OcrPkg.FullName "android/src/main/kotlin/com/iweka/ocr/PPOCRv5Ncnn.kt"
+    if (Test-Path $OcrKt) {
+        $ocrSrc = Get-Content $OcrKt -Raw
+        if ($ocrSrc -notmatch 'OCR disabled') {
+            $guard = 'try {' + "`n" +
+                '                System.loadLibrary("ppocrv5ncnn")' + "`n" +
+                '            } catch (t: Throwable) {' + "`n" +
+                '                android.util.Log.w("PPOCRv5Ncnn", "libppocrv5ncnn unavailable, OCR disabled", t)' + "`n" +
+                '            }'
+            $ocrSrc = $ocrSrc -replace 'System\.loadLibrary\("ppocrv5ncnn"\)', $guard
+            Set-Content -Path $OcrKt -Value $ocrSrc -NoNewline
+            Write-Host "fast_paddle_ocr: loadLibrary guarded"
+        } else {
+            Write-Host "fast_paddle_ocr: loadLibrary already guarded"
+        }
+    }
+}
