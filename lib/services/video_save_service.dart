@@ -121,8 +121,8 @@ class VideoSaveService extends GetxService {
         await _download(
           url: videoSource,
           path: videoPath,
-          from: 0,
-          to: hasAudio ? 0.9 : 1.0,
+          from: 0.02,
+          to: hasAudio ? 0.75 : 0.85,
         );
         tempFiles.add(videoPath);
         if (hasAudio) {
@@ -130,15 +130,15 @@ class VideoSaveService extends GetxService {
           await _download(
             url: audioSource,
             path: audioPath,
-            from: 0.9,
-            to: 1.0,
+            from: 0.75,
+            to: 0.85,
           );
           tempFiles.add(audioPath);
         }
       }
 
       // 合并：纯 Dart 重封装，样本原样搬运
-      _report(SaveVideoStage.merging, 0);
+      _report(SaveVideoStage.merging, 0.85);
       var savePath = p.join(tmpDir.path, '$baseName.mp4');
       Mp4MergeResult? merged;
       try {
@@ -146,7 +146,7 @@ class VideoSaveService extends GetxService {
           videoPath: videoPath,
           audioPath: audioPath,
           outputPath: savePath,
-          onProgress: (v) => _report(SaveVideoStage.merging, v),
+          onProgress: (v) => _report(SaveVideoStage.merging, _map(v, 0.85, 0.95)),
         );
         tempFiles.add(savePath);
       } on Mp4MuxException catch (e) {
@@ -166,7 +166,8 @@ class VideoSaveService extends GetxService {
             await MediaTranscoder.transcode(
               input: savePath,
               output: target,
-              onProgress: (v) => _report(SaveVideoStage.transcoding, v),
+              onProgress: (v) =>
+                  _report(SaveVideoStage.transcoding, _map(v, 0.95, 0.98)),
             );
             savePath = target;
             tempFiles.add(target);
@@ -180,12 +181,12 @@ class VideoSaveService extends GetxService {
       }
 
       // 写入公共下载目录：原生流式复制，内存 O(1)
-      _report(SaveVideoStage.writing, 0);
+      _report(SaveVideoStage.writing, 0.98);
       final copied = await SharedStorage.copyToDownloads(
         savePath,
         displayName: '$baseName.mp4',
         mimeType: 'video/mp4',
-        onProgress: (v) => _report(SaveVideoStage.writing, v),
+        onProgress: (v) => _report(SaveVideoStage.writing, _map(v, 0.98, 1.0)),
       );
 
       if (copied == null) {
@@ -197,6 +198,8 @@ class VideoSaveService extends GetxService {
       _report(SaveVideoStage.done, 1);
       detail.value = copied.displayPath;
       SmartDialog.showToast('已保存到 ${copied.displayPath}$warning');
+      // 让 100% 的进度条停一会儿，避免保存很快时一闪而过
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
       return true;
     } catch (e, s) {
       if (kDebugMode) debugPrint('save video error: $e\n$s');

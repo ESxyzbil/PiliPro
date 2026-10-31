@@ -5,24 +5,40 @@ import 'package:get/get.dart';
 /// 保存任务进度条：只在有任务时出现，非模态、不挡操作。
 ///
 /// 状态来自全局 [VideoSaveService]，所以切页/切标签回来仍能看到进度。
-class SaveProgressBar extends StatelessWidget {
+///
+/// 两条硬约束（都踩过）：
+/// 1. 不能在 build 期间注册服务——Get.put 会触发依赖注入，视频页在恢复播放时
+///    随启动一起构建，build 里重入会卡死；
+/// 2. 也不能在 build 里「未注册就返回空」——那样这个 widget 根本没订阅任何 Rx，
+///    等任务真正开始时不会有任何重建，进度条永远不出现（表现为点了保存毫无反馈，
+///    直到最后弹一条已完成）。
+/// 所以改成 StatefulWidget：initState 里幂等注册，build 里稳定订阅。
+class SaveProgressBar extends StatefulWidget {
   const SaveProgressBar({super.key});
 
   @override
+  State<SaveProgressBar> createState() => _SaveProgressBarState();
+}
+
+class _SaveProgressBarState extends State<SaveProgressBar> {
+  late final VideoSaveService _svc;
+
+  @override
+  void initState() {
+    super.initState();
+    // initState 不在 build 期间，注册安全；instance 本身幂等（已注册则直接返回）。
+    _svc = VideoSaveService.instance;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 注意：这里绝不能在 build 期间注册服务（Get.put 会触发依赖注入，视频页
-    // 在恢复播放时随启动一起构建，容易在 build 里重入卡死）。只在已注册时展示。
-    if (!Get.isRegistered<VideoSaveService>()) {
-      return const SizedBox.shrink();
-    }
     return Obx(() {
-      final svc = Get.find<VideoSaveService>();
-      if (!svc.busy.value) {
+      if (!_svc.busy.value) {
         return const SizedBox.shrink();
       }
       final scheme = ColorScheme.of(context);
-      final p = svc.progress.value;
-      final detail = svc.detail.value;
+      final p = _svc.progress.value;
+      final detail = _svc.detail.value;
       return Material(
         color: scheme.surface,
         elevation: 8,
@@ -44,7 +60,7 @@ class SaveProgressBar extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      svc.title.value,
+                      _svc.title.value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -77,8 +93,8 @@ class SaveProgressBar extends StatelessWidget {
               const SizedBox(height: 5),
               Text(
                 detail.isEmpty
-                    ? svc.stageLabel
-                    : '${svc.stageLabel} · $detail',
+                    ? _svc.stageLabel
+                    : '${_svc.stageLabel} · $detail',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
