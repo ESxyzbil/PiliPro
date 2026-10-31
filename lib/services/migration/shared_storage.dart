@@ -18,9 +18,14 @@ abstract final class SharedStorage {
   static String get _subDir => Constants.appName;
 
   /// 把 [sourcePath] 复制到公共下载目录，返回落盘位置描述；失败返回 null。
+  ///
+  /// [mimeType] 决定 MediaStore 里登记的类型（视频用 `video/mp4`）；
+  /// [onProgress] 回调复制进度 0~1（Android 由原生侧按已复制字节上报）。
   static Future<SharedCopyResult?> copyToDownloads(
     String sourcePath, {
     String? displayName,
+    String mimeType = 'application/zip',
+    void Function(double progress)? onProgress,
   }) async {
     final src = File(sourcePath);
     final exists = src.existsSync();
@@ -31,6 +36,14 @@ abstract final class SharedStorage {
     final name = displayName ?? p.basename(sourcePath);
 
     if (Platform.isAndroid) {
+      if (onProgress != null) {
+        _channel.setMethodCallHandler((call) async {
+          if (call.method == 'copyProgress' && call.arguments is num) {
+            onProgress((call.arguments as num).toDouble());
+          }
+          return null;
+        });
+      }
       try {
         debugPrint('[SharedStorage] invoking channel media_store …');
         final res = await _channel.invokeMapMethod<String, dynamic>(
@@ -39,22 +52,20 @@ abstract final class SharedStorage {
             'sourcePath': sourcePath,
             'displayName': name,
             'subDir': _subDir,
+            'mimeType': mimeType,
           },
         );
         debugPrint('[SharedStorage] channel returned: $res');
         if (res == null || res['ok'] != true) {
           debugPrint(
-            '[SharedStorage] copy failed: ' +
-                (res?['error']?.toString() ?? 'unknown'),
+            '[SharedStorage] copy failed: ${res?['error']?.toString() ?? 'unknown'}',
           );
           return null;
         }
         debugPrint(
-          '[SharedStorage] copied via ' +
-              (res['method']?.toString() ?? '?') +
-              ' -> ' +
-              (res['uri']?.toString() ?? ''),
+          '[SharedStorage] copied via ${res['method']?.toString() ?? '?'} -> ${res['uri']?.toString() ?? ''}',
         );
+        onProgress?.call(1);
         return SharedCopyResult(
           displayPath: 'Download/$_subDir/$name',
           uri: res['uri'] as String?,
@@ -63,14 +74,18 @@ abstract final class SharedStorage {
         );
       } on PlatformException catch (e) {
         debugPrint(
-          '[SharedStorage] PlatformException: ' + e.message.toString(),
+          '[SharedStorage] PlatformException: ${e.message.toString()}',
         );
         return null;
       } on MissingPluginException catch (e) {
         debugPrint(
-          '[SharedStorage] MissingPluginException: ' + e.toString(),
+          '[SharedStorage] MissingPluginException: $e',
         );
         return null;
+      } finally {
+        if (onProgress != null) {
+          _channel.setMethodCallHandler(null);
+        }
       }
     }
 
@@ -87,6 +102,7 @@ abstract final class SharedStorage {
       if (!dir.existsSync()) await dir.create(recursive: true);
       final dst = p.join(dir.path, name);
       await src.copy(dst);
+      onProgress?.call(1);
       return SharedCopyResult(
         displayPath: dst,
         size: await File(dst).length(),

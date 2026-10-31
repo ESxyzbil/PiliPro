@@ -1,3 +1,4 @@
+import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/cover_flight.dart';
 import 'package:PiliPlus/pages/tabhost/tab_strip.dart';
 import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pb.dart';
@@ -123,6 +124,20 @@ class TabHostController extends GetxController {
       tabsEnabled &&
       !(Get.key.currentState?.canPop() ?? false) &&
       Get.currentRoute == '/';
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 背景层跟随当前标签页：按标签 id 前缀判定页面类型（视频/音频/搜索…），
+    // 而不是按 navbar 下标，避免用户重排 Navbar 后背景错位。
+    ever(currentIndex, (v) {
+      if (v >= 0 && v < tabs.length) {
+        GlobalBgState.setTabSlot(GlobalBgState.slotForTabId(tabs[v].id));
+      } else {
+        GlobalBgState.clearTab();
+      }
+    });
+  }
 
   final RxList<TabItem> tabs = <TabItem>[].obs;
 

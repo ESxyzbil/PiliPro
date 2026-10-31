@@ -85,9 +85,9 @@ class MainController extends GetxController
 
     // tab 切换（点击底栏/侧栏/滑动翻页）都同步全局背景层当前 tab
     ever(selectedIndex, (value) {
-      GlobalBgState.setTabIndex(value);
+      GlobalBgState.setNavSlot(_bgSlotOf(value));
     });
-    GlobalBgState.setTabIndex(selectedIndex.value);
+    GlobalBgState.setNavSlot(_bgSlotOf(selectedIndex.value));
 
     controller = mainTabBarView
         ? TabController(
@@ -319,6 +319,20 @@ class MainController extends GetxController
     }
   }
 
+  /// 主页导航项 → 背景槽位：按 NavigationBarType 而不是下标，
+  /// 用户删改/重排 Navbar 后背景仍对应正确页面。
+  BgSlot _bgSlotOf(int index) {
+    final nav = (index >= 0 && index < navigationBars.length)
+        ? navigationBars[index]
+        : NavigationBarType.home;
+    return switch (nav) {
+      NavigationBarType.home => BgSlot.home,
+      NavigationBarType.dynamics => BgSlot.dynamics,
+      NavigationBarType.mine => BgSlot.mine,
+      NavigationBarType.web => BgSlot.global,
+    };
+  }
+
   void setIndex(int value) {
     feedBack();
 
@@ -332,7 +346,7 @@ class MainController extends GetxController
     if (value != selectedIndex.value) {
       selectedIndex.value = value;
       // 同步全局背景层当前 tab
-      GlobalBgState.tabIndex.value = value;
+      GlobalBgState.setNavSlot(_bgSlotOf(value));
       // 桌面端多页面标签页：点击主界面导航时切回主内容
       TabHostController.instance?.selectMain();
       if (mainTabBarView) {

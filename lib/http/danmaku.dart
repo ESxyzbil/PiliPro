@@ -1,11 +1,162 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:PiliPlus/http/api.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models_new/danmaku/post.dart';
+import 'package:PiliPlus/models_new/dm_command/dm_command.dart';
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 abstract final class DanmakuHttp {
+  /// 获取播放器指令弹幕（打分 / 投票等互动卡片）
+  static Future<LoadingState<List<DmCommand>>> commandDms({
+    required int aid,
+    required int cid,
+  }) async {
+    if (aid <= 0 || cid <= 0) {
+      return const Success([]);
+    }
+    final res = await Request().get(
+      Api.dmWebView,
+      queryParameters: {'type': 1, 'oid': cid, 'pid': aid},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final data = res.data;
+    if (data is! Uint8List) {
+      final msg = data is Map ? data['message'] : null;
+      return Error(msg?.toString() ?? '获取打分/投票弹幕失败');
+    }
+    // 失败时服务端返回 JSON（首字节 '{'）
+    if (data.isNotEmpty && data[0] == 0x7B) {
+      try {
+        final json = jsonDecode(utf8.decode(data, allowMalformed: true));
+        if (json is Map && json['code'] != 0) {
+          return Error(json['message']?.toString() ?? '获取打分/投票弹幕失败');
+        }
+      } catch (_) {}
+      return const Success([]);
+    }
+    return Success(parseDmCommandReply(data));
+  }
+
+  /// 提交打分弹幕
+  ///
+  /// [gradeScore] 为 10 分制最终分（官方 `grade_score`）：播放器按 5 星 × 2 传入。
+  /// 实测 avg_score 上限为 10，传入值须落在 2~10，超出会被判「请求错误」。
+  static Future<LoadingState<void>> gradeScore({
+    required int aid,
+    required int cid,
+    required int gradeId,
+    required int gradeScore,
+    required int progress,
+  }) {
+    final data = {
+      'aid': aid,
+      'cid': cid,
+      'progress': progress,
+      'grade_id': gradeId,
+      'grade_score': gradeScore,
+      'polaris_app_id': 100,
+      'polaris_platform': 5,
+      'spmid': '333.788.0.0',
+      'from_spmid': '333.788.0.0',
+      'statistics': '{"appId":100,"platform":5,"abtest":"","version":""}',
+    };
+    return _postCommand(Api.dmCommandGrade, data);
+  }
+
+  /// 提交投票弹幕
+  ///
+  /// [hasSelfDef] 官方为布尔，但表单提交时服务端按 0/1 解析，故改用 int。
+  static Future<LoadingState<void>> voteOption({
+    required int aid,
+    required int cid,
+    required int progress,
+    required int voteId,
+    required int voteType,
+    required int optionId,
+    int hasSelfDef = 0,
+    String? cmdIdStr,
+  }) {
+    final data = {
+      'aid': aid,
+      'cid': cid,
+      'progress': progress,
+      'vote_id': voteId,
+      'vote_type': voteType,
+      'option_id': optionId,
+      'has_self_def': hasSelfDef,
+      'cmd_id_str': ?cmdIdStr,
+      'polaris_app_id': 100,
+      'polaris_platform': 5,
+      'spmid': '333.788.0.0',
+      'from_spmid': '333.788.0.0',
+      'statistics': '{"appId":100,"platform":5,"abtest":"","version":""}',
+    };
+    return _postCommand(Api.dmCommandVote, data);
+  }
+
+  /// 指令弹幕提交
+  ///
+  /// 2026-10-18 实测：只有 **form-urlencoded + csrf** 能过 CSRF 校验
+  /// （JSON 编码服务端读不到 csrf 字段，恒返 -111；带 access_key 返 -663）。
+  /// 过校验后仍失败即为业务参数问题，因此只发一次并打印完整诊断。
+  static Future<LoadingState<void>> _postCommand(
+    String api,
+    Map<String, dynamic> data,
+  ) async {
+    // CSRF 必须与请求 cookie 里的 bili_jct 完全一致，优先取 cookie 中的现值
+    var csrf = Accounts.main.csrf;
+    try {
+      final cookies = await Accounts.main.cookieJar.loadForRequest(
+        Uri.parse('https://api.bilibili.com$api'),
+      );
+      for (final cookie in cookies) {
+        if (cookie.name == 'bili_jct' && cookie.value.isNotEmpty) {
+          csrf = cookie.value;
+        }
+      }
+      debugPrint(
+        '[DM_CMD] diag csrfLen=${csrf.length} '
+        'cookies=[${cookies.map((e) => e.name).join(',')}]',
+      );
+    } catch (e) {
+      debugPrint('[DM_CMD] diag failed: $e');
+    }
+    final res = await Request().post(
+      api,
+      data: {...data, 'csrf': csrf},
+      options: Options(contentType: Headers.formUrlEncodedContentType),
+    );
+    debugPrint('[DM_CMD] form $api send=${data.keys.join(",")}');
+    debugPrint('[DM_CMD] form $api → ${res.statusCode} ${res.data}');
+    if (res.data is Map && res.data['code'] == 0) {
+      return const Success(null);
+    }
+    return Error(_msgOf(res.data), code: _codeOf(res.data));
+  }
+
+  static int? _codeOf(Object? data) {
+    if (data is Map) {
+      final code = data['code'];
+      if (code is num) return code.toInt();
+    }
+    return null;
+  }
+
+  static String _msgOf(Object? data) {
+    if (data is Map) {
+      final msg = data['message'] ?? data['msg'];
+      if (msg != null && msg.toString().isNotEmpty) {
+        return msg.toString();
+      }
+    }
+    return '操作失败';
+  }
+
   static Future<LoadingState<DanmakuPost>> shootDanmaku({
     int type = 1, //弹幕类选择(1：视频弹幕 2：漫画弹幕)
     required int oid, // 视频cid

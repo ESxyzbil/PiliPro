@@ -418,6 +418,16 @@ abstract final class Api {
 
   // static const String webDanmaku = '/x/v2/dm/web/seg.so';
 
+  // 弹幕指令（打分 / 投票等互动卡片，返回 protobuf）
+  // Get: type=1&oid=cid&pid=aid
+  static const String dmWebView = '/x/v2/dm/web/view';
+
+  // 打分弹幕提交（Post，csrf）
+  static const String dmCommandGrade = '/x/v2/dm/command/grade/post';
+
+  // 投票弹幕提交（Post，csrf）
+  static const String dmCommandVote = '/x/v2/dm/command/vote/post';
+
   // 发送视频弹幕
   //https://github.com/SocialSisterYi/bilibili-API-collect/blob/master/docs/danmaku/action.md
   static const String shootDanmaku = '/x/v2/dm/post';

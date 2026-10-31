@@ -166,6 +166,7 @@ class AccountManager extends Interceptor {
       'history/report',
       'roomEntryAction',
       'seg.so',
+      'dm/web/view',
       'online/total',
       'github',
       'hdslb.com',

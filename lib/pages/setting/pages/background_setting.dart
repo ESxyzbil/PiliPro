@@ -4,7 +4,6 @@ import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
-import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -40,46 +39,22 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
               ),
             ),
           ),
-          _buildItem(
-            theme,
-            icon: Icons.public,
-            title: '全局背景',
-            subtitle: '所有页面的默认背景（含二级页面）',
-            path: Pref.globalBg,
-            opacity: Pref.globalBgOpacity,
-            blur: Pref.globalBgBlur,
-            key: SettingBoxKey.globalBg,
-          ),
-          _buildItem(
-            theme,
-            icon: Icons.home_outlined,
-            title: '首页背景',
-            subtitle: '首页推荐流背景',
-            path: Pref.homeBg,
-            opacity: Pref.homeBgOpacity,
-            blur: Pref.homeBgBlur,
-            key: SettingBoxKey.homeBg,
-          ),
-          _buildItem(
-            theme,
-            icon: Icons.motion_photos_on_outlined,
-            title: '动态背景',
-            subtitle: '动态页背景',
-            path: Pref.dynamicsBg,
-            opacity: Pref.dynamicsBgOpacity,
-            blur: Pref.dynamicsBgBlur,
-            key: SettingBoxKey.dynamicsBg,
-          ),
-          _buildItem(
-            theme,
-            icon: Icons.person_outline,
-            title: '我的背景',
-            subtitle: '我的页背景',
-            path: Pref.mineBg,
-            opacity: Pref.mineBgOpacity,
-            blur: Pref.mineBgBlur,
-            key: SettingBoxKey.mineBg,
-          ),
+          ..._buildGroup(theme, '全局', const [
+            (BgSlot.global, Icons.public, '所有页面的默认背景（含二级页面）'),
+          ]),
+          ..._buildGroup(theme, '主页面', const [
+            (BgSlot.home, Icons.home_outlined, '首页推荐流背景'),
+            (BgSlot.dynamics, Icons.motion_photos_on_outlined, '动态页背景'),
+            (BgSlot.mine, Icons.person_outline, '我的页背景'),
+          ]),
+          ..._buildGroup(theme, '其它页面', const [
+            (BgSlot.video, Icons.play_circle_outline, '视频播放页、视频标签页'),
+            (BgSlot.audio, Icons.music_note_outlined, '音频播放页'),
+            (BgSlot.search, Icons.search_outlined, '搜索页、搜索结果页'),
+            (BgSlot.member, Icons.person_outline, '用户空间页'),
+            (BgSlot.fav, Icons.star_outline, '收藏夹列表、收藏夹详情'),
+            (BgSlot.live, Icons.live_tv_outlined, '直播页、直播间'),
+          ]),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -95,6 +70,37 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
         ],
       ),
     );
+  }
+
+  /// 按分组渲染背景项（槽位顺序即展示顺序）
+  List<Widget> _buildGroup(
+    ThemeData theme,
+    String title,
+    List<(BgSlot, IconData, String)> items,
+  ) {
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        child: Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.primary,
+          ),
+        ),
+      ),
+      ...items.map(
+        (e) => _buildItem(
+          theme,
+          icon: e.$2,
+          title: e.$1.label,
+          subtitle: e.$3,
+          path: Pref.bgPath(e.$1.key),
+          opacity: Pref.bgOpacity(e.$1.key),
+          blur: Pref.bgBlur(e.$1.key),
+          key: e.$1.key,
+        ),
+      ),
+    ];
   }
 
   Widget _buildItem(

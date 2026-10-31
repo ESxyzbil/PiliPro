@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:PiliPlus/common/widgets/glass.dart'
     show glassRevealActive, glassRevealProgress, startGlassRevealPush;
+import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:get/get.dart';
@@ -22,87 +23,127 @@ abstract final class BgRouteState {
   static final ValueNotifier<double> target = ValueNotifier(0.0);
 }
 
+/// 背景槽位：一组「背景图 + 透明度 + 模糊」设置，键为
+/// `<key>` / `<key>Opacity` / `<key>Blur`。
+/// 页面识别一律用槽位，不再用 navbar 下标——用户删改或重排 Navbar 后，
+/// 下标与页面不再对应（原实现按 tabIndex 0/1/2 硬编码首页/动态/我的）。
+enum BgSlot {
+  global(SettingBoxKey.globalBg, '全局背景'),
+  home(SettingBoxKey.homeBg, '首页背景'),
+  dynamics(SettingBoxKey.dynamicsBg, '动态背景'),
+  mine(SettingBoxKey.mineBg, '我的背景'),
+  video(SettingBoxKey.videoBg, '视频页背景'),
+  audio(SettingBoxKey.audioBg, '音频页背景'),
+  search(SettingBoxKey.searchBg, '搜索页背景'),
+  member(SettingBoxKey.memberBg, '用户空间背景'),
+  fav(SettingBoxKey.favBg, '收藏夹背景'),
+  live(SettingBoxKey.liveBg, '直播间背景');
+
+  const BgSlot(this.key, this.label);
+
+  /// 设置键；透明度与模糊按 `<key>Opacity`、`<key>Blur` 派生。
+  final String key;
+  final String label;
+}
+
 /// 全局背景层状态：所有背景统一由 main.dart 的全局层渲染，
-/// 根据「是否在主 tab 页 + 当前 tab」解析背景图，切换时 AnimatedSwitcher 平滑过渡。
+/// 根据「当前页面槽位」解析背景图，切换时 AnimatedSwitcher 平滑过渡。
 abstract final class GlobalBgState {
   /// 是否在主 tab 页（MainApp）。二级页面 push 时 false，pop 回时 true。
   static final RxBool inMainTab = true.obs;
 
-  /// 当前主 tab 索引（0=首页, 1=动态, 2=我的）。
-  static final RxInt tabIndex = 0.obs;
+  /// 主内容当前页面对应的槽位（由 MainController 按 NavigationBarType 设置）。
+  static final Rx<BgSlot> navSlot = BgSlot.home.obs;
 
-  /// 安全更新 inMainTab：路由 observer 回调可能发生在 Navigator
-  /// build/commit 期间，直接改 Rx 会让依赖它的 Obx（GlobalBackgroundLayer）
-  /// 在 build 中被标记（"setState during build"），并连锁触发框架
-  /// GlobalKey retake 断言（_elements.contains）。延迟到帧后更新。
-  static void setInMainTab(bool v) {
-    if (inMainTab.value == v) return;
+  /// 当前标签页内容对应的槽位（标签页系统；普通页面标签为 null）。
+  static final Rx<BgSlot?> tabSlot = Rx<BgSlot?>(null);
+
+  /// 是否打开了标签页（用于区分「主内容」与「无专属背景的标签页」）。
+  static final RxBool tabOpen = false.obs;
+
+  /// 顶层二级路由名（非主 tab 页时用于判定页面类型）。
+  static final RxString routeName = ''.obs;
+
+  /// 安全赋值：路由 observer / 首帧 build 期间直接改 Rx 会让背景层 Obx
+  /// 在 build 中被标记（"setState during build"）并连锁触发框架断言，
+  /// 故统一延迟到帧后。
+  static void _safeSet<T>(Rx<T> target, T value) {
+    if (target.value == value) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (inMainTab.value != v) {
-        inMainTab.value = v;
-      }
+      if (target.value != value) target.value = value;
     });
   }
 
-  /// 安全更新 tabIndex（原因同上：MainController.onInit 在首帧 build 期间
-  /// 触发，直接赋值会让背景层 Obx 在 build 中被标记）。
-  static void setTabIndex(int v) {
-    if (tabIndex.value == v) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (tabIndex.value != v) {
-        tabIndex.value = v;
-      }
-    });
+  static void setInMainTab(bool v) => _safeSet(inMainTab, v);
+
+  static void setNavSlot(BgSlot slot) => _safeSet(navSlot, slot);
+
+  static void setTabSlot(BgSlot? slot) {
+    _safeSet(tabSlot, slot);
+    _safeSet(tabOpen, true);
   }
+
+  static void clearTab() {
+    _safeSet(tabSlot, null);
+    _safeSet(tabOpen, false);
+  }
+
+  static void setRouteName(String? name) => _safeSet(routeName, name ?? '');
+
+  /// 二级路由名 → 槽位
+  static BgSlot? slotForRoute(String? name) => switch (name) {
+    '/videoV' => BgSlot.video,
+    '/audio' => BgSlot.audio,
+    '/search' || '/searchResult' => BgSlot.search,
+    '/member' => BgSlot.member,
+    '/fav' || '/favDetail' => BgSlot.fav,
+    '/liveRoom' => BgSlot.live,
+    _ => null,
+  };
+
+  /// 标签页 id → 槽位（id 规则见 PageUtils / TabHostController）
+  static BgSlot? slotForTabId(String id) {
+    if (id.startsWith('video_')) return BgSlot.video;
+    if (id.startsWith('audio_')) return BgSlot.audio;
+    if (id == 'page_search' || id.startsWith('search_result_')) {
+      return BgSlot.search;
+    }
+    if (id.startsWith('member_')) return BgSlot.member;
+    if (id.startsWith('fav_') || id.startsWith('fav_detail_'))
+      return BgSlot.fav;
+    return null;
+  }
+
+  static (String, double, double) _read(BgSlot slot) => (
+    Pref.bgPath(slot.key),
+    Pref.bgOpacity(slot.key),
+    Pref.bgBlur(slot.key),
+  );
 
   /// 解析当前应显示的背景 (path, opacity, blur)。
+  /// 优先级：页面专属槽位 →（主内容时）主 tab 槽位 → 全局背景 → 兜底。
   static (String, double, double) resolve() {
-    if (inMainTab.value) {
-      switch (tabIndex.value) {
-        case 0:
-          return (
-            Pref.homeBg.isNotEmpty ? Pref.homeBg : Pref.globalBg,
-            Pref.homeBgOpacity,
-            Pref.homeBgBlur,
-          );
-        case 1:
-          return (
-            Pref.dynamicsBg.isNotEmpty ? Pref.dynamicsBg : Pref.globalBg,
-            Pref.dynamicsBgOpacity,
-            Pref.dynamicsBgBlur,
-          );
-        case 2:
-          return (
-            Pref.mineBg.isNotEmpty ? Pref.mineBg : Pref.globalBg,
-            Pref.mineBgOpacity,
-            Pref.mineBgBlur,
-          );
-      }
+    final BgSlot? pageSlot = inMainTab.value
+        ? tabSlot.value
+        : slotForRoute(routeName.value);
+
+    // ① 页面专属背景（标签页内容 / 二级路由）
+    if (pageSlot != null) {
+      final r = _read(pageSlot);
+      if (r.$1.isNotEmpty) return r;
     }
-    // 二级页面：优先全局背景；没有则回退当前 tab 的背景，
-    // 避免 push 页面时背景瞬间变白（globalBg 未设置时 AppBackgroundLayer 铺白色）。
-    if (Pref.globalBg.isNotEmpty) {
-      return (Pref.globalBg, Pref.globalBgOpacity, Pref.globalBgBlur);
+    // ② 主内容页（无标签页、无二级路由覆盖）：主 tab 的专属背景
+    if (inMainTab.value && !tabOpen.value) {
+      final r = _read(navSlot.value);
+      if (r.$1.isNotEmpty) return r;
     }
-    switch (tabIndex.value) {
-      case 1:
-        return (
-          Pref.dynamicsBg,
-          Pref.dynamicsBgOpacity,
-          Pref.dynamicsBgBlur,
-        );
-      case 2:
-        return (
-          Pref.mineBg,
-          Pref.mineBgOpacity,
-          Pref.mineBgBlur,
-        );
-    }
-    return (
-      Pref.homeBg,
-      Pref.homeBgOpacity,
-      Pref.homeBgBlur,
-    );
+    // ③ 全局背景
+    final g = _read(BgSlot.global);
+    if (g.$1.isNotEmpty) return g;
+    // ④ 兜底：主 tab 背景 → 首页背景（避免 push 页面时瞬间露底）
+    final n = _read(navSlot.value);
+    if (n.$1.isNotEmpty) return n;
+    return _read(BgSlot.home);
   }
 }
 
@@ -117,7 +158,10 @@ class GlobalBackgroundLayer extends StatelessWidget {
       // 订阅背景刷新：设置页调节透明度/模糊/换图时实时重建
       BgNotifier.revision.value;
       GlobalBgState.inMainTab.value;
-      GlobalBgState.tabIndex.value;
+      GlobalBgState.navSlot.value;
+      GlobalBgState.tabSlot.value;
+      GlobalBgState.tabOpen.value;
+      GlobalBgState.routeName.value;
       final (path, opacity, blur) = GlobalBgState.resolve();
       return AppBackgroundLayer(path: path, opacity: opacity, blur: blur);
     });
@@ -137,7 +181,10 @@ class BgRouteObserver extends NavigatorObserver {
 
   void _sync(Route<dynamic>? top) {
     if (top is! PageRoute) return;
-    GlobalBgState.setInMainTab(_isMainTab(top));
+    final isMain = _isMainTab(top);
+    GlobalBgState.setInMainTab(isMain);
+    // 二级路由页面按路由名映射背景槽位；回到主 tab 时清空
+    GlobalBgState.setRouteName(isMain ? null : top.settings.name);
   }
 
   @override

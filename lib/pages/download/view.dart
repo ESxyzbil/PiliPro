@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/appbar/appbar.dart';
@@ -17,7 +18,9 @@ import 'package:PiliPlus/pages/download/detail/view.dart';
 import 'package:PiliPlus/pages/download/detail/widgets/item.dart';
 import 'package:PiliPlus/pages/download/search/view.dart';
 import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
+import 'package:PiliPlus/models/migration/migration_manifest.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
+import 'package:PiliPlus/services/migration/migration_service.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
@@ -39,6 +42,126 @@ class _DownloadPageState extends State<DownloadPage> with GridMixin {
   final _downloadService = Get.find<DownloadService>();
   final _controller = Get.put(DownloadPageController());
   final _progress = ChangeNotifier();
+
+  /// 导出所选缓存条目为迁移包（只含选中的视频，可在别的设备导入）
+  Future<void> _exportSelected() async {
+    final pages = _controller.allChecked.toList();
+    if (pages.isEmpty) {
+      SmartDialog.showToast('请先选择要导出的视频');
+      return;
+    }
+    final dirs = <String>{for (final page in pages) page.dirPath}.toList();
+    final count = pages.fold<int>(0, (n, page) => n + page.entries.length);
+    var size = 0;
+    try {
+      size = await MigrationService.estimateDirsSize(dirs);
+    } catch (_) {}
+    if (!mounted) return;
+    final ok = await showConfirmDialog(
+      context: context,
+      title: Text('导出 $count 个缓存视频？'),
+      content: Text(
+        '预计体积：${CacheManager.formatSize(size)}\n'
+        '导出的包会复制到系统「下载」目录，可在其它设备的'
+        '「设置 → 关于 → 数据迁移」里导入。',
+      ),
+    );
+    if (!ok || !mounted) return;
+
+    final progress = ValueNotifier<(double, String)>((0, '准备中…'));
+    SmartDialog.show(
+      builder: (_) => ValueListenableBuilder<(double, String)>(
+        valueListenable: progress,
+        builder: (_, data, _) => AlertDialog(
+          title: const Text('正在导出'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LinearProgressIndicator(value: data.$1),
+              const SizedBox(height: 12),
+              Text(
+                data.$2,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+      clickMaskDismiss: false,
+      maskColor: Colors.black38,
+    );
+    try {
+      final result = await MigrationService.export(
+        scopes: const [MigrationScope.downloads],
+        selectedDirs: dirs,
+        toSharedStorage: PlatformUtils.isMobile,
+        onProgress: (v, label) => progress.value = (v, label),
+      );
+      String? sharedPath;
+      // 移动端应用私有下载目录用户/PC 都读不到，导完立刻搬到系统下载目录
+      if (PlatformUtils.isMobile) {
+        final shared = await MigrationService.copyToShared(result.path);
+        sharedPath = shared?.displayPath;
+        if (sharedPath != null) {
+          try {
+            await File(result.path).delete();
+          } catch (_) {}
+        }
+      }
+      if (_controller.enableMultiSelect.value) {
+        _controller.handleSelect();
+      }
+      SmartDialog.showToast('导出成功');
+      _showExportResult(result, sharedPath);
+    } catch (e) {
+      SmartDialog.showToast('导出失败：$e');
+    } finally {
+      progress.dispose();
+      unawaited(SmartDialog.dismiss<void>());
+    }
+  }
+
+  void _showExportResult(MigrationExportResult result, String? sharedPath) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导出完成'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText(
+                sharedPath != null ? '位置：$sharedPath' : '文件：${result.path}',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              Text('条目：${result.entries}'),
+              Text('体积：${CacheManager.formatSize(result.totalSize)}'),
+              Text(
+                '耗时：${(result.elapsedMs / 1000).toStringAsFixed(1)} 秒',
+              ),
+              if (sharedPath == null)
+                const Text(
+                  '提示：当前落在应用私有目录，电脑与文件管理器都取不到，'
+                  '建议改用「数据迁移」页导出。',
+                  style: TextStyle(fontSize: 12),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -89,6 +212,19 @@ class _DownloadPageState extends State<DownloadPage> with GridMixin {
                 child: Text(
                   '更新',
                   style: TextStyle(color: theme.colorScheme.onSurface),
+                ),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: _exportSelected,
+                child: Text(
+                  '导出',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

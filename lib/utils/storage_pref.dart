@@ -462,6 +462,17 @@ abstract final class Pref {
   static bool get mergeDanmaku =>
       _setting.get(SettingBoxKey.mergeDanmaku, defaultValue: false);
 
+  /// 打分 / 投票等指令弹幕卡片（不影响普通弹幕）
+  static bool get showDmCommand =>
+      _setting.get(SettingBoxKey.showDmCommand, defaultValue: true);
+
+  /// 投票卡是否显示各选项占比（默认否：未投票时看不到票型）
+  static bool get showDmVoteRatio =>
+      _setting.get(SettingBoxKey.showDmVoteRatio, defaultValue: false);
+
+  static void setShowDmVoteRatio(bool value) =>
+      _setting.put(SettingBoxKey.showDmVoteRatio, value);
+
   static bool get showHotRcmd =>
       _setting.get(SettingBoxKey.showHotRcmd, defaultValue: false);
 
@@ -631,6 +642,15 @@ abstract final class Pref {
   static double get mineBgBlur =>
       _setting.get(SettingBoxKey.mineBgBlur, defaultValue: 0.0);
 
+  /// 背景槽位通用读取（槽位定义见 BgSlot）：背景图路径、透明度、模糊
+  static String bgPath(String key) => _setting.get(key, defaultValue: '');
+
+  static double bgOpacity(String key) =>
+      _setting.get('${key}Opacity', defaultValue: 1.0);
+
+  static double bgBlur(String key) =>
+      _setting.get('${key}Blur', defaultValue: 0.0);
+
   static bool get glassTopBar =>
       _setting.get(SettingBoxKey.glassTopBar, defaultValue: false);
 
@@ -754,9 +774,10 @@ abstract final class Pref {
       _setting.put(SettingBoxKey.horizontalLayoutRatio, ratio);
 
   /// 是否允许屏幕旋转（默认跟随旧的横屏适配设置）。
-  static bool get allowScreenRotation =>
-      _setting.get(SettingBoxKey.allowScreenRotation,
-          defaultValue: horizontalScreen);
+  static bool get allowScreenRotation => _setting.get(
+    SettingBoxKey.allowScreenRotation,
+    defaultValue: horizontalScreen,
+  );
 
   static void setAllowScreenRotation(bool value) =>
       _setting.put(SettingBoxKey.allowScreenRotation, value);
@@ -835,8 +856,7 @@ abstract final class Pref {
   static double get uiScale =>
       _setting.get(SettingBoxKey.uiScale, defaultValue: 1.0);
 
-  static int? get targetPpi =>
-      _setting.get(SettingBoxKey.targetPpi);
+  static int? get targetPpi => _setting.get(SettingBoxKey.targetPpi);
 
   static bool get dynamicsWaterfallFlow => _setting.get(
     SettingBoxKey.dynamicsWaterfallFlow,

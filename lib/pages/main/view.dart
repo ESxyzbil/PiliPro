@@ -798,53 +798,46 @@ class _MainAppState extends PopScopeState<MainApp>
       builder: (context, outerC) {
         final double winW = outerC.maxWidth;
         final double winH = outerC.maxHeight;
-        final double contentW = (winW - stripTargetWidth).clamp(0.0, winW);
         // 供封面飞行预估"标签栏出现带来的剩余位移"
         tabController.stripTargetWidth = stripTargetWidth;
-        // 标签内页面（视频页等）感知实际可用宽度：标签栏/侧栏占用后实际宽度
-        // ≠ MediaQuery.size（窗口宽度），视频页横向分栏按窗口宽度布局时右侧
-        //（相关视频/评论）会被挤出屏外。
-        // 注意：主内容（mainContent）保持窗口尺寸（原有布局行为），否则主
-        // 界面布局会受影响（曾导致"什么都没有了"）。
-        final Widget tabContent = Listener(
-          // 手机端：触控标签栏以外的区域自动折叠标签栏
-          onPointerDown: PlatformUtils.isMobile
-              ? (_) => tabController.setExpanded(false)
-              : null,
-          child: _buildTabHostContent(
-            context,
-            mainContent: mainContent,
-            tabs: tabs,
-            current: current,
-            gestureP: gestureP,
-            targetStackIndex: targetStackIndex,
-            contentWidth: contentW,
-            contentHeight: winH,
-            showStrip: showStrip,
-          ),
-        );
         return ClipRect(
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0, end: stripTargetWidth),
             duration: TabStrip.animDuration,
             curve: Curves.easeOutCubic,
-            child: tabContent,
-            builder: (context, stripW, child) {
+            builder: (context, stripW, _) {
               tabController.stripCurrentWidth = stripW;
+              // 用户要求：内容区**按标签栏当前宽度实时变化**（不做"固定终态尺寸
+              // +平移"的优化）。代价是动画期间重内容会随宽度逐帧重排；
+              // 标签内页面（视频页等）按内容区实际宽度布局，MediaQuery 也随之更新。
+              final double liveW = (winW - stripW).clamp(0.0, winW);
+              final Widget tabContent = Listener(
+                // 手机端：触控标签栏以外的区域自动折叠标签栏
+                onPointerDown: PlatformUtils.isMobile
+                    ? (_) => tabController.setExpanded(false)
+                    : null,
+                child: _buildTabHostContent(
+                  context,
+                  mainContent: mainContent,
+                  tabs: tabs,
+                  current: current,
+                  gestureP: gestureP,
+                  targetStackIndex: targetStackIndex,
+                  contentWidth: liveW,
+                  contentHeight: winH,
+                  showStrip: showStrip,
+                ),
+              );
               return Stack(
               fit: StackFit.expand,
               children: [
-                // 内容区：尺寸固定为动画终态，整体按标签栏当前宽度平移
-                //（被标签栏推动/拉回——只重绘，不重排）
+                // 内容区：左边界随标签栏宽度走，宽度实时收缩（不再平移）
                 Positioned(
-                  left: 0,
+                  left: stripW,
                   top: 0,
-                  width: contentW,
+                  width: liveW,
                   height: winH,
-                  child: Transform.translate(
-                    offset: Offset(stripW, 0),
-                    child: child,
-                  ),
+                  child: tabContent,
                 ),
                 // 标签栏浮于上层（宽度由动画值驱动；GlobalKey 保证横竖屏切换
                 // 改变 useBottomNav 分支时元素被搬移而非重建，动画不中断）

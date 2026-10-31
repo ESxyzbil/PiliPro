@@ -46,6 +46,7 @@ import 'package:PiliPlus/pages/video/reply/controller.dart';
 import 'package:PiliPlus/pages/video/reply/view.dart';
 import 'package:PiliPlus/pages/video/view_point/view.dart';
 import 'package:PiliPlus/pages/video/widgets/header_control.dart';
+import 'package:PiliPlus/pages/video/widgets/save_progress_bar.dart';
 import 'package:PiliPlus/pages/video/widgets/intro_layout.dart';
 import 'package:PiliPlus/pages/video/widgets/player_focus.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
@@ -1463,9 +1464,23 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
         child: child,
       );
     }
-    return videoDetailController.plPlayerController.darkVideoPage
+    final Widget content = videoDetailController
+            .plPlayerController
+            .darkVideoPage
         ? Theme(data: theme, child: child)
         : child;
+    // 保存进度条：非模态浮在页面底部，任务挂在全局服务上，切页也不中断
+    return Stack(
+      children: [
+        content,
+        const Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: SafeArea(top: false, child: SaveProgressBar()),
+        ),
+      ],
+    );
   }
 
   Widget buildTabBar({

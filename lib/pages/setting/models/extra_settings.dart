@@ -273,6 +273,13 @@ List<SettingsModel> get extraSettings => [
     defaultVal: false,
   ),
   const SwitchModel(
+    title: '显示打分 / 投票弹幕',
+    subtitle: '视频内出现的评分卡、投票卡，不受普通弹幕开关影响',
+    leading: Icon(Icons.star_outline),
+    setKey: SettingBoxKey.showDmCommand,
+    defaultVal: true,
+  ),
+  const SwitchModel(
     title: '显示热门推荐',
     subtitle: '热门页面显示每周必看等推荐内容入口',
     leading: Icon(Icons.local_fire_department_outlined),

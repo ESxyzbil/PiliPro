@@ -142,6 +142,17 @@ abstract final class MigrationService {
     return total;
   }
 
+  /// 统计选中目录的体积（离线缓存页导出前的预估）
+  static Future<int> estimateDirsSize(List<String> dirs) async {
+    var total = 0;
+    for (final path in dirs) {
+      final dir = Directory(path);
+      if (!dir.existsSync()) continue;
+      total += await _dirSize(dir, skip: _isMigrationPackage);
+    }
+    return total;
+  }
+
   static bool _needHive(List<String> scopes) =>
       scopes.contains(MigrationScope.light) ||
       scopes.contains(MigrationScope.standard);
@@ -192,6 +203,7 @@ abstract final class MigrationService {
     required List<String> scopes,
     bool toSharedStorage = false,
     MigrateProgress? onProgress,
+    List<String>? selectedDirs,
   }) async {
     if (_busy) throw StateError('已有迁移任务在进行中');
     _busy = true;
@@ -228,13 +240,21 @@ abstract final class MigrationService {
       final boxNames = _hiveBoxNames(scopes, hiveFiles.keys.toList());
 
       final downloads = <String>[];
-      if (scopes.contains(MigrationScope.downloads)) {
-        final dir = Directory(downloadPath);
-        if (dir.existsSync()) {
+      final pickedDirs = selectedDirs?.where((d) => d.isNotEmpty).toList();
+      if ((pickedDirs != null && pickedDirs.isNotEmpty) ||
+          scopes.contains(MigrationScope.downloads)) {
+        // pickedDirs 非空＝离线缓存页按选中条目导出；否则＝导出整机缓存。
+        final roots = (pickedDirs != null && pickedDirs.isNotEmpty)
+            ? pickedDirs.map(Directory.new).toList()
+            : [Directory(downloadPath)];
+        for (final dir in roots) {
+          if (!dir.existsSync()) continue;
           await for (final e in dir.list(recursive: true, followLinks: false)) {
-            if (e is File && !_isMigrationPackage(e.path)) {
-              downloads.add(e.path);
-            }
+            if (e is! File) continue;
+            if (_isMigrationPackage(e.path)) continue;
+            // 只收下载目录内的文件：包内路径按 downloadPath 相对计算
+            if (!p.isWithin(downloadPath, e.path)) continue;
+            downloads.add(e.path);
           }
         }
       }

@@ -62,10 +62,12 @@ class MainActivity : AudioServiceActivity() {
 
         // 迁移包等大文件导出到系统共享的下载目录（MediaStore）
         mediaStoreBridge = MediaStoreBridge(this)
-        MethodChannel(
+        val mediaStoreChannelObj = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             mediaStoreChannel
-        ).setMethodCallHandler { call, result ->
+        )
+        val mediaStoreMainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        mediaStoreChannelObj.setMethodCallHandler { call, result ->
             when (call.method) {
                 "copyToDownloads" -> {
                     val args = call.arguments as Map<*, *>
@@ -73,7 +75,15 @@ class MainActivity : AudioServiceActivity() {
                         sourcePath = args["sourcePath"] as? String ?: "",
                         displayName = args["displayName"] as? String,
                         subDir = args["subDir"] as? String ?: "",
-                        onProgress = null,
+                        mimeType = args["mimeType"] as? String ?: "application/zip",
+                        onProgress = { copied, total ->
+                            if (total > 0) {
+                                val p = copied.toDouble() / total.toDouble()
+                                mediaStoreMainHandler.post {
+                                    mediaStoreChannelObj.invokeMethod("copyProgress", p)
+                                }
+                            }
+                        },
                         result = result,
                     )
                 }
