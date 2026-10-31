@@ -25,6 +25,8 @@ class MainActivity : AudioServiceActivity() {
     private var ocrFrameExtractor: OcrFrameExtractor? = null
     private val downloadProgressChannel = "com.example.piliplus/download_progress"
     private var downloadProgressManager: DownloadProgressManager? = null
+    private val saveProgressChannel = "com.example.piliplus/save_progress"
+    private var saveNotificationManager: SaveNotificationManager? = null
     private var mediaTranscoder: MediaTranscoder? = null
     private val mediaStoreChannel = "com.example.piliplus/media_store"
     private var mediaStoreBridge: MediaStoreBridge? = null
@@ -112,6 +114,47 @@ class MainActivity : AudioServiceActivity() {
                 }
                 "stop" -> {
                     downloadProgressManager?.stop()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 保存到本地的实时活动通知 + 通知栏取消按钮
+        saveNotificationManager = SaveNotificationManager(this)
+        val saveChannelObj = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            saveProgressChannel
+        )
+        SaveNotificationManager.cancelListener = {
+            android.os.Handler(mainLooper).post {
+                saveChannelObj.invokeMethod("cancel", null)
+            }
+        }
+        saveChannelObj.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "update" -> {
+                    val args = call.arguments as Map<*, *>
+                    saveNotificationManager?.update(
+                        title = args["title"] as? String ?: "",
+                        stage = args["stage"] as? String ?: "",
+                        detail = args["detail"] as? String ?: "",
+                        percent = (args["percent"] as? Number)?.toDouble() ?: 0.0,
+                        canCancel = args["canCancel"] as? Boolean ?: false,
+                    )
+                    result.success(true)
+                }
+                "finish" -> {
+                    val args = call.arguments as Map<*, *>
+                    saveNotificationManager?.finish(
+                        title = args["title"] as? String ?: "",
+                        text = args["text"] as? String ?: "",
+                        success = args["success"] as? Boolean ?: true,
+                    )
+                    result.success(true)
+                }
+                "dismiss" -> {
+                    saveNotificationManager?.cancel()
                     result.success(true)
                 }
                 else -> result.notImplemented()
