@@ -10,8 +10,8 @@
 ![GitHub Repo stars](https://img.shields.io/github/stars/ESxyzbil/PiliPro)
 ![GitHub all releases](https://img.shields.io/github/downloads/ESxyzbil/PiliPro/total)
 
-    <p>使用 Flutter 开发的 BiliBili 第三方客户端</p>
-    <p><b>本仓库是 <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a> 的下游分支（downstream fork）。上游功能全部保留，另有一批本地改动。</b></p>
+<p>使用 Flutter 开发的 BiliBili 第三方客户端</p>
+<p><b>本仓库是 <a href="https://github.com/bggRGjQaUbCoE/PiliPlus">PiliPlus</a> 的下游分支（downstream fork）。上游功能全部保留，另有一批本地改动。</b></p>
 
 <img src="assets/screenshots/510shots_so.png" width="32%" alt="home" />
 <img src="assets/screenshots/174shots_so.png" width="32%" alt="home" />
