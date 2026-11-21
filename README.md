@@ -102,18 +102,6 @@
 - [x] 离线模式切歌（音频模式，从正确索引开始播放）
 - [x] 合集缓存
 
-### OCR / ASR 字幕工作台（编译期开关）
-
-- [x] 整段识别 → 生成时间轴字幕 → 导出 SRT
-- [x] 模型 / 语言包独立设置页，按需下载
-- [x] 默认不编入，需要时加 `--dart-define=ENABLE_OCR=true --dart-define=ENABLE_ASR=true`
-
-### 构建
-
-- [x] 版本号显示为 `U5.1`（`U` + 主.次），构建号固定 8
-- [x] 修 CI `--split-per-abi` 与 ndk `abiFilters` 的冲突
-- [x] 修 OCR native 库缺失导致的启动黑屏（插件注册被 Error 中断）
-
 <br/>
 
 ## 上游功能
