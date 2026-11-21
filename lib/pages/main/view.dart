@@ -7,7 +7,7 @@ import 'package:PiliPlus/common/widgets/app_background.dart';
 import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/flutter/root_back_gesture_observer.dart'
-    show tabBackGestureProgress;
+    show tabBackGestureProgress, tabBackWindowAnimating;
 import 'package:PiliPlus/common/widgets/glass.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
@@ -543,6 +543,15 @@ class _MainAppState extends PopScopeState<MainApp>
 
   @override
   Widget build(BuildContext context) {
+    // 状态栏高度：改造前由 Scaffold 的 AppBar(toolbarHeight: 0) 把 body 往下
+    // 顶这么多；现在 body 铺满全屏，由内容层自己留出这段（页面布局不变），
+    // 这样预测性返回的整窗卡片才能包含状态栏区域、圆角贴住屏幕四角。
+    final double statusTop = PlatformUtils.isMobile
+        ? MediaQuery.paddingOf(context).top
+        : 0.0;
+    // 状态栏色带颜色：与改造前 AppBar(toolbarHeight: 0) 的底色一致
+    // （毛玻璃顶栏设置 / 纯黑主题都在 appBarTheme 里）。
+    final Color statusBandColor = _statusBarBandColor(context);
     Widget child;
     if (_mainController.mainTabBarView) {
       child = TabBarView(
@@ -594,27 +603,27 @@ class _MainAppState extends PopScopeState<MainApp>
               tabs.isNotEmpty;
           // 预测性返回手势进度：手势中目标页（关闭当前标签后露出的页面）
           // 随手势渐显，与路由 predictiveBackProgress 语义一致。
-          // ⚠️ 必须用 ValueListenableBuilder 监听 tabBackGestureProgress
-          //（ValueNotifier）——Obx 只监听 Rx（tabs/currentIndex），手势进度
-          // 变化不会触发 Obx 重建，目标页渐显会只在松手后（currentIndex
-          // 变化）才发生，而非跟手阶段（用户实测反馈）。
-          return ValueListenableBuilder<double>(
-            valueListenable: tabBackGestureProgress,
-            builder: (context, gestureP, _) {
-              // 目标页 Stack 坐标（0=主内容，i>=1=标签）：关闭当前标签后显示谁
-              // 与 TabHostController.close() 的目标一致：
-              // - source 恢复（replaceCurrent 保活下层 A）：目标是 A 的来源层
-              //   （A 保活在 tabs 中、位于当前标签之前），手势跟手时 A 作为
-              //   下层随手势渐显（与主页渐显同机制，A 一直保活无需重建）。
-              // - 普通关闭：唯一标签 → 主内容(0)；否则关当前标签后显示
-              //   index>0 ? index-1 : 1（标签索引），Stack 坐标 = index+1。
-              final int? srcIdx = (gestureP > 0.001 && current >= 0)
-                  ? _sourceLowerIndex(tabs, current)
-                  : null;
+          // ⚠️ 必须监听 ValueNotifier——Obx 只监听 Rx（tabs/currentIndex），
+          // 手势进度变化不会触发 Obx 重建，目标页渐显会只在松手后
+          //（currentIndex 变化）才发生，而非跟手阶段（用户实测反馈）。
+          // 同时监听 tabBackWindowAnimating：状态栏色带在「整窗卡片动画」
+          // 期间要让位给卡片自绘色带（见 _buildTabHostContent），两者必须
+          // 同一帧切换，否则顶部会闪一下。
+          return ListenableBuilder(
+            listenable: Listenable.merge([
+              tabBackGestureProgress,
+              tabBackWindowAnimating,
+            ]),
+            builder: (context, _) {
+              final double gestureP = tabBackGestureProgress.value;
+              // 目标页 Stack 坐标（0=主内容，i>=1=标签）：必须与
+              // TabHostController.close() 的选中逻辑一致——
+              // 有 source 回到来源层，否则回前一个可见标签，没有则回主页。
+              // ⚠️ 不能再用「标签数>1 就选 current>0 ? current : 2」：
+              // 当前是第一个标签时 close() 会回主内容，而旧写法让第二个
+              // 标签渐显（用户实测：返回后应是主页，下方却渐显某个标签）。
               final int targetStackIndex = (gestureP > 0.001 && current >= 0)
-                  ? (srcIdx != null
-                        ? srcIdx + 1
-                        : (tabs.length <= 1 ? 0 : (current > 0 ? current : 2)))
+                  ? tabController.closeTargetStackIndex(current)
                   : -1;
               return _buildTabHostStack(
                 context,
@@ -626,6 +635,9 @@ class _MainAppState extends PopScopeState<MainApp>
                 targetStackIndex: targetStackIndex,
                 showStrip: showStrip,
                 isExpanded: isExpanded,
+                statusTop: statusTop,
+                statusBandColor: statusBandColor,
+                windowAnimating: tabBackWindowAnimating.value,
               );
             },
           );
@@ -678,7 +690,11 @@ class _MainAppState extends PopScopeState<MainApp>
               PlPlayerController.instance?.isFullScreen.value ?? false;
           return Row(
             children: [
-              if (!isFullScreen) _sideBar(),
+              if (!isFullScreen)
+                Padding(
+                  padding: EdgeInsets.only(top: statusTop),
+                  child: _sideBar(),
+                ),
               if (!isFullScreen)
                 VerticalDivider(
                   width: 1,
@@ -692,7 +708,10 @@ class _MainAppState extends PopScopeState<MainApp>
       } else {
         child = Row(
           children: [
-            _sideBar(),
+            Padding(
+              padding: EdgeInsets.only(top: statusTop),
+              child: _sideBar(),
+            ),
             VerticalDivider(
               width: 1,
               endIndent: _padding.bottom,
@@ -707,30 +726,62 @@ class _MainAppState extends PopScopeState<MainApp>
     child = Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(toolbarHeight: 0),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // 背景已统一由 main.dart 的 GlobalBackgroundLayer 渲染
-          const SizedBox.shrink(),
-          Padding(
-            padding: EdgeInsets.only(
-              left: _mainController.useBottomNav ? _padding.left : 0.0,
-              right: _padding.right,
+      // ⚠️ 不再用 AppBar(toolbarHeight: 0) 把 body 顶下去：那会让内容层的
+      // 坐标原点落在状态栏下方，预测性返回的整窗卡片裁圆角时，上方两个
+      // 圆角也落在状态栏下方、贴不住屏幕四角（用户反馈）。
+      // 现在 body 铺满全屏，状态栏那一段由内容自己绘制：
+      // - 平时：静态色带（和原 AppBar 底色一致）；
+      // - 标签返回手势/续播动画期间：隐藏静态色带，由卡片顶部自绘色带
+      //   承担，卡片缩放/裁圆角时状态栏区域跟着一起动。
+      // body 的 MediaQuery 仍要手动去掉 top padding（原 AppBar 会自动做），
+      // 页面拿到的 padding.top 才能和改造前完全一致。
+      body: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 背景已统一由 main.dart 的 GlobalBackgroundLayer 渲染
+            const SizedBox.shrink(),
+            if (statusTop > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: statusTop,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: tabBackWindowAnimating,
+                  builder: (context, animating, _) => animating
+                      ? const SizedBox.shrink()
+                      : ColoredBox(color: statusBandColor),
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.only(
+                left: _mainController.useBottomNav ? _padding.left : 0.0,
+                right: _padding.right,
+              ),
+              child: child,
             ),
-            child: child,
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: bottomNav,
     );
 
     if (PlatformUtils.isMobile) {
+      // 原来状态栏区域的 AnnotatedRegion 由 AppBar(toolbarHeight: 0) 提供；
+      // 现在没人画 AppBar 了，这里按状态栏色带的亮度决定图标明暗（与
+      // AppBar 默认的 overlayStyle 规则一致，自定义毛玻璃颜色也适用）。
+      final Brightness bandBrightness =
+          ThemeData.estimateBrightnessForColor(statusBandColor);
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarBrightness: _colorScheme.brightness,
-          statusBarIconBrightness: _colorScheme.brightness.reverse,
+          statusBarIconBrightness: bandBrightness == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark,
           systemStatusBarContrastEnforced: false,
           systemNavigationBarColor: Colors.transparent,
           systemNavigationBarIconBrightness: _colorScheme.brightness.reverse,
@@ -742,16 +793,11 @@ class _MainAppState extends PopScopeState<MainApp>
     return child;
   }
 
-  /// 当前标签的保活来源层 index（replaceCurrent 前进时旧标签 A 保活为
-  /// hidden 下层、位于 B 之前）：返回 A 在 tabs 中的 index，供手势跟手时
-  /// 将 A 作为目标层渐显。无来源层返回 null（普通关闭/无来源）。
-  int? _sourceLowerIndex(List<TabItem> tabs, int current) {
-    if (current < 0 || current >= tabs.length) return null;
-    final tab = tabs[current];
-    final source = tab.source;
-    if (source == null) return null;
-    final idx = tabs.indexOf(source);
-    return idx >= 0 ? idx : null;
+  /// 状态栏色带的颜色：与改造前 AppBar(toolbarHeight: 0) 的底色保持一致
+  ///（毛玻璃顶栏颜色 / 纯黑主题的黑色都在 appBarTheme 里配置）。
+  Color _statusBarBandColor(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.appBarTheme.backgroundColor ?? theme.colorScheme.surface;
   }
 
   /// 标签宿主布局：标签栏 + 内容区（Stack 保活 + 切换动画）。
@@ -774,6 +820,9 @@ class _MainAppState extends PopScopeState<MainApp>
     required int targetStackIndex,
     required bool showStrip,
     required bool isExpanded,
+    required double statusTop,
+    required Color statusBandColor,
+    required bool windowAnimating,
   }) {
     if (kDebugMode) {
       debugPrint(
@@ -794,12 +843,50 @@ class _MainAppState extends PopScopeState<MainApp>
     //    影响绘制与命中测试，不触发子树重排）；
     // ③ 重内容以 child 传入 TweenAnimationBuilder，每帧只重建位移与标签栏，
     //    不重建页面本身。
+    // ⚠️ 标签栏**只构造一次**：以前它写在 TweenAnimationBuilder 的 builder 里，
+    // 宽度动画每帧都会重新构造 → TabStrip 每帧重建整列标签（封面/Marquee/
+    // 播放控制），标签一多就是"每帧 N 条一起重建"，鼠标悬停展开极卡
+    // （用户实测：多标签页时展开非常卡）。现在宽度恒取展开态（布局只做一次），
+    // 动画期间只改裁剪矩形（纯重绘，不重建、不重排）。
+    final Widget stripWidget = TabStrip(
+      key: _tabStripKey,
+      controller: tabController,
+      isExpanded: isExpanded,
+      width: TabStrip.expandedWidth,
+      onExpandedChanged: tabController.setExpanded,
+    );
     return LayoutBuilder(
       builder: (context, outerC) {
         final double winW = outerC.maxWidth;
         final double winH = outerC.maxHeight;
         // 供封面飞行预估"标签栏出现带来的剩余位移"
         tabController.stripTargetWidth = stripTargetWidth;
+        // ⚠️ 内容区**一次性**按「动画终态」定尺寸（winW - 目标栏宽）：动画期间
+        // 尺寸恒定 → 视频页等重内容不再逐帧重排（"多标签悬停展开卡顿"的根因之一）。
+        // 位移交给下面的 Transform.translate（只影响绘制与命中测试，不重排子树），
+        // 且内容只构造一次（Frame 之间复用同一 widget 实例，Flutter 走 identical
+        // 快路径直接跳过整棵页面的 rebuild）。
+        final double contentW = (winW - stripTargetWidth).clamp(0.0, winW);
+        final Widget tabContent = Listener(
+          // 手机端：触控标签栏以外的区域自动折叠标签栏
+          onPointerDown: PlatformUtils.isMobile
+              ? (_) => tabController.setExpanded(false)
+              : null,
+          child: _buildTabHostContent(
+            context,
+            mainContent: mainContent,
+            tabs: tabs,
+            current: current,
+            gestureP: gestureP,
+            targetStackIndex: targetStackIndex,
+            contentWidth: contentW,
+            contentHeight: winH,
+            showStrip: showStrip,
+            statusTop: statusTop,
+            statusBandColor: statusBandColor,
+            windowAnimating: windowAnimating,
+          ),
+        );
         return ClipRect(
           child: TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0, end: stripTargetWidth),
@@ -807,52 +894,34 @@ class _MainAppState extends PopScopeState<MainApp>
             curve: Curves.easeOutCubic,
             builder: (context, stripW, _) {
               tabController.stripCurrentWidth = stripW;
-              // 用户要求：内容区**按标签栏当前宽度实时变化**（不做"固定终态尺寸
-              // +平移"的优化）。代价是动画期间重内容会随宽度逐帧重排；
-              // 标签内页面（视频页等）按内容区实际宽度布局，MediaQuery 也随之更新。
-              final double liveW = (winW - stripW).clamp(0.0, winW);
-              final Widget tabContent = Listener(
-                // 手机端：触控标签栏以外的区域自动折叠标签栏
-                onPointerDown: PlatformUtils.isMobile
-                    ? (_) => tabController.setExpanded(false)
-                    : null,
-                child: _buildTabHostContent(
-                  context,
-                  mainContent: mainContent,
-                  tabs: tabs,
-                  current: current,
-                  gestureP: gestureP,
-                  targetStackIndex: targetStackIndex,
-                  contentWidth: liveW,
-                  contentHeight: winH,
-                  showStrip: showStrip,
-                ),
-              );
               return Stack(
-              fit: StackFit.expand,
-              children: [
-                // 内容区：左边界随标签栏宽度走，宽度实时收缩（不再平移）
-                Positioned(
-                  left: stripW,
-                  top: 0,
-                  width: liveW,
-                  height: winH,
-                  child: tabContent,
-                ),
-                // 标签栏浮于上层（宽度由动画值驱动；GlobalKey 保证横竖屏切换
-                // 改变 useBottomNav 分支时元素被搬移而非重建，动画不中断）
+                fit: StackFit.expand,
+                children: [
+                  // 内容区：尺寸固定为动画终态，整体按标签栏当前宽度平移
+                  //（被标签栏推动/拉回——只重绘，不重排、不重建）
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    width: contentW,
+                    height: winH,
+                    child: Transform.translate(
+                      offset: Offset(stripW, 0),
+                      child: tabContent,
+                    ),
+                  ),
+                // 标签栏浮于上层：布局宽度恒定（展开态），只按当前动画宽度裁剪，
+                // 因此每帧不重建、不重排标签列表（GlobalKey 保证横竖屏切换改变
+                // useBottomNav 分支时元素被搬移而非重建）
                 Positioned(
                   left: 0,
-                  top: 0,
+                  // body 铺满全屏后，标签栏仍从状态栏下方开始
+                  top: statusTop,
                   bottom: 0,
                   child: KeyedSubtree(
                     key: TabHostController.stripKey,
-                    child: TabStrip(
-                      key: _tabStripKey,
-                      controller: tabController,
-                      isExpanded: isExpanded,
-                      width: stripW,
-                      onExpandedChanged: tabController.setExpanded,
+                    child: ClipRect(
+                      clipper: _RevealWidthClipper(stripW),
+                      child: stripWidget,
                     ),
                   ),
                 ),
@@ -879,6 +948,9 @@ class _MainAppState extends PopScopeState<MainApp>
     required double contentWidth,
     required double contentHeight,
     required bool showStrip,
+    required double statusTop,
+    required Color statusBandColor,
+    required bool windowAnimating,
   }) {
     final originalMq = MediaQuery.of(context);
     // 覆盖 size（标签内容实际可用宽高）的同时，清掉左右安全区：
@@ -899,6 +971,23 @@ class _MainAppState extends PopScopeState<MainApp>
         right: 0,
       ),
     );
+    // 页面可视区高度 = 整窗高度 - 状态栏。
+    // body 已铺满全屏（见 MainApp 的 Scaffold），状态栏那一段不再挤压
+    // 布局，而是作为「卡片顶部色带」存在：平时由 MainApp 的静态色带绘制，
+    // 预测性返回手势期间由卡片自己绘制——这样卡片缩放/裁圆角时状态栏
+    // 区域跟着一起动，上方两个圆角才能贴住屏幕四角（用户反馈）。
+    // 页面拿到的尺寸仍与改造前一致，布局不变。
+    final double pageHeight = (contentHeight - statusTop).clamp(
+      0.0,
+      contentHeight,
+    );
+    // 标签页 MediaQuery：尺寸 = 内容区可视区（改造前的 body 尺寸）
+    final mqTab = mq.copyWith(size: Size(contentWidth, pageHeight));
+    // 主内容保持改造前的 MediaQuery 语义（宽度取整窗宽、保留左右安全区），
+    // 只把高度换成页面可视区高度
+    final mqMain = originalMq.copyWith(
+      size: Size(originalMq.size.width, pageHeight),
+    );
     // 临时布局诊断日志（release 同样输出到 logcat，tag=flutter）：
     // 标签内容区的实际尺寸 —— 排查"标签页里播放器占满屏幕"时
     // 需要知道标签页拿到的 MediaQuery 尺寸。排查结束可删除。
@@ -907,6 +996,7 @@ class _MainAppState extends PopScopeState<MainApp>
         'x${originalMq.size.height.toStringAsFixed(1)} '
         'content=${contentWidth.toStringAsFixed(1)}'
         'x${contentHeight.toStringAsFixed(1)} '
+        'page=${pageHeight.toStringAsFixed(1)} '
         'tabs=${tabs.length} cur=$current '
         'landscapeMode=${TabHostController.landscapeMode}';
     if (logMsg != _lastTabHostLog) {
@@ -914,9 +1004,39 @@ class _MainAppState extends PopScopeState<MainApp>
       // ignore: avoid_print
       print('[PL_TABHOST] $logMsg');
     }
-    return SizedBox(
-      key: TabHostController.contentKey,
-      child: MediaQuery(
+    // 单张卡片 = 页面（从状态栏下方开始） + 顶部状态栏色带（仅手势期间）。
+    // 色带放在卡片内部而不是页面外，才能被 TabTransition 的
+    // scale/translate/ClipRRect 一起处理。
+    // ⚠️ 树的形状必须稳定（页面始终是同一个 Positioned 子节点）：
+    // 视频全屏会 hide 状态栏 → statusTop 在 S/0 之间切换，若此时改动
+    // 子节点结构，整棵标签页会被重建（播放状态丢失）。
+    Widget card(Widget page) {
+      final bool hasStatusTop = statusTop > 0.5;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: hasStatusTop ? statusTop : 0.0,
+            bottom: 0,
+            child: page,
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: hasStatusTop ? statusTop : 0.0,
+            child: windowAnimating && hasStatusTop
+                ? ColoredBox(color: statusBandColor)
+                : const SizedBox.shrink(),
+          ),
+        ],
+      );
+    }
+
+    final bool mainActive = current == -1;
+    return MediaQuery(
       data: mq,
       // Stack 保活 + 标签切换过渡动画：
       // 主内容（i==0）淡入淡出；标签页（i>=1）应用设置的
@@ -930,16 +1050,22 @@ class _MainAppState extends PopScopeState<MainApp>
               ignoring: i != current + 1,
               child: i == 0
                   ? AnimatedOpacity(
-                      opacity: i == current + 1
-                          ? 1
-                          : (targetStackIndex == 0 ? gestureP : 0),
-                      duration: const Duration(milliseconds: 250),
+                      opacity: mainActive
+                          ? 1.0
+                          : (targetStackIndex == 0 ? gestureP : 0.0),
+                      // 跟手阶段（主内容作为渐显目标）不能走 250ms 缓动，
+                      // 否则目标页比手势慢半拍；松手后仍缓动淡入。
+                      duration: targetStackIndex == 0
+                          ? Duration.zero
+                          : const Duration(milliseconds: 250),
                       curve: Curves.easeOut,
                       child: KeyedSubtree(
                         key: const ValueKey('main-content'),
-                        child: MediaQuery(
-                          data: originalMq,
-                          child: mainContent,
+                        child: card(
+                          MediaQuery(
+                            data: mqMain,
+                            child: mainContent,
+                          ),
                         ),
                       ),
                     )
@@ -966,12 +1092,27 @@ class _MainAppState extends PopScopeState<MainApp>
                       gestureReveal: targetStackIndex == i ? gestureP : 0,
                       child: KeyedSubtree(
                         key: ValueKey(tabs[i - 1].id),
-                        child: tabs[i - 1].child,
+                        child: card(
+                          MediaQuery(
+                            data: mqTab,
+                            child: tabs[i - 1].child,
+                          ),
+                        ),
                       ),
                     ),
             ),
+          // 内容区几何锚点（封面飞行取视频播放器目标矩形用）：
+          // 必须落在页面可视区（不含状态栏色带），与改造前一致。
+          Positioned(
+            left: 0,
+            top: statusTop,
+            width: contentWidth,
+            height: pageHeight,
+            child: IgnorePointer(
+              child: SizedBox.expand(key: TabHostController.contentKey),
+            ),
+          ),
         ],
-      ),
       ),
     );
   }
@@ -1014,4 +1155,20 @@ class _MainAppState extends PopScopeState<MainApp>
       ],
     );
   }
+}
+
+/// 只露出左侧 [width] 的裁剪：标签栏动画期间用它实现"展开/收起"，
+/// 从而**不重建、不重排**标签列表（逐帧重建整列标签是多标签时卡顿的根因）。
+class _RevealWidthClipper extends CustomClipper<Rect> {
+  const _RevealWidthClipper(this.width);
+
+  final double width;
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTWH(0, 0, width.clamp(0.0, size.width), size.height);
+
+  @override
+  bool shouldReclip(_RevealWidthClipper oldClipper) =>
+      oldClipper.width != width;
 }

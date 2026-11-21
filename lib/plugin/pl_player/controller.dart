@@ -1,7 +1,7 @@
 import 'dart:async' show Completer, StreamSubscription, Timer;
 import 'dart:convert' show ascii, utf8;
 import 'dart:io' show Directory, File, Platform;
-import 'dart:math' show max, min;
+import 'dart:math' show max, min, sqrt;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -512,6 +512,13 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
             orientation == .portraitDown)) {
       return;
     }
+    // ⚠️ 单方向锁定只做两种场合：
+    // 1) 全屏内：视频要跟随传感器并且锁在其中一个方向上；
+    // 2) 竖屏布局（非全屏也要保持竖屏）。
+    // 非全屏 + 横屏布局时系统本来就在 fullMode 下自由旋转，这里再按传感器
+    // 逐个锁单方向，会把「跟随传感器」寄托在每一条传感器事件都不丢上；一旦
+    // 漏掉一条（插件按 lastOrientation 去重），屏幕就钉死在最后一个方向，
+    // 表现为退出全屏后怎么转都不动，直到离开播放页（dispose 恢复 fullMode）。
     switch (orientation) {
       case .portraitUp:
         if (!_isVertical && controlsLock.value) return;
@@ -519,23 +526,23 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           if (!isManualFS) {
             triggerFullScreen(status: false, orientation: orientation);
           }
-        } else {
+        } else if (isFullScreen || !horizontalScreen) {
           portraitUpMode();
         }
       case .portraitDown:
-        if (!horizontalScreen) return;
+        if (!horizontalScreen || !isFullScreen) return;
         if (!_isVertical && controlsLock.value) return;
         portraitDownMode();
       case .landscapeLeft:
         if (!horizontalScreen && !isFullScreen) {
           triggerFullScreen(orientation: orientation, isManualFS: false);
-        } else {
+        } else if (isFullScreen) {
           landscapeLeftMode();
         }
       case .landscapeRight:
         if (!horizontalScreen && !isFullScreen) {
           triggerFullScreen(orientation: orientation, isManualFS: false);
-        } else {
+        } else if (isFullScreen) {
           landscapeRightMode();
         }
     }
@@ -1282,6 +1289,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     }
     if (val) {
       if (playerStatus.isPlaying) {
+        // 记下长按前的正常速率，松手时按这个恢复（不依赖 lastPlaybackSpeed
+        // 的连锁覆盖，避免调速率后松手回不到原速）
+        _lpRestoreSpeed = playbackSpeed;
         longPressStatus.value = val;
         HapticFeedback.lightImpact();
         await setPlaybackSpeed(
@@ -1291,8 +1301,111 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     } else {
       // if (kDebugMode) debugPrint('$playbackSpeed');
       longPressStatus.value = val;
-      await setPlaybackSpeed(lastPlaybackSpeed);
+      longPressAdjusting.value = false;
+      longPressAdjustProgress.value = 0;
+      // 让还在飞行中的 adjustLongPressSpeed 作废
+      _lpAdjustGen++;
+      final restore = _lpRestoreSpeed ?? lastPlaybackSpeed;
+      _lpRestoreSpeed = null;
+      _restorePlaybackSpeed(restore);
     }
+  }
+
+  /// 恢复长按前的速率。
+  /// 连发两次：调节时的 setRate 是异步的，可能比这里的恢复晚落地，
+  /// 下一帧再补一次，保证松手后一定回到原速。
+  void _restorePlaybackSpeed(double speed) {
+    void apply() {
+      if (longPressStatus.value) return;
+      if (_videoPlayerController?.state.rate != speed) {
+        _videoPlayerController?.setRate(speed);
+      }
+      _playbackSpeed.value = speed;
+      lastPlaybackSpeed = speed;
+    }
+
+    apply();
+    Future.delayed(const Duration(milliseconds: 60), apply);
+  }
+
+  // ───────── 长按倍速 · 下滑后横滑调速率 ─────────
+  // 长按进入倍速后，手指继续下滑越过阈值 → 进入「横滑调速率」：
+  // 左右位移连续改变当前播放速率（不写回设置里的长按倍速，松手恢复原速）。
+  // 可调范围与手感（线性/平方/根号）在「倍速设置」里配置。
+
+  /// 正在横滑调节长按速率
+  final RxBool longPressAdjusting = false.obs;
+
+  /// 调节中的实时速率（仅 UI 展示用）
+  final RxDouble longPressAdjustSpeed = 1.0.obs;
+
+  /// 横向位移进度：-1..1（胶囊跟随/拉伸用）
+  final RxDouble longPressAdjustProgress = 0.0.obs;
+
+  double _longPressAdjustBase = 1.0;
+  double _longPressAdjustRangePx = 320;
+
+  /// 长按前的正常速率（松手恢复用）
+  double? _lpRestoreSpeed;
+
+  /// 调节代次：松手时自增，作废尚未落地的 setRate
+  int _lpAdjustGen = 0;
+
+  /// 手感曲线：t∈[0,1] → [0,1]
+  double _longPressCurve(double t) {
+    switch (Pref.longPressSpeedCurve) {
+      case 1: // 平方：低速段更稳，越往后加速越快
+        return t * t;
+      case 2: // 根号：起步反应更快，越往后越缓
+        return sqrt(t);
+      default: // 线性
+        return t;
+    }
+  }
+
+  /// 进入调节：以当前（长按后的）速率为基准
+  /// [rangePx] 是从基准滑到上/下限所需的横向距离（由屏幕宽度决定）
+  void beginLongPressSpeedAdjust({double rangePx = 320}) {
+    if (!longPressStatus.value || longPressAdjusting.value) return;
+    _longPressAdjustRangePx = rangePx <= 0 ? 320 : rangePx;
+    final lo = Pref.longPressSpeedMin;
+    final hi = Pref.longPressSpeedMax;
+    _longPressAdjustBase = playbackSpeed.clamp(lo, hi).toDouble();
+    longPressAdjustProgress.value = 0;
+    longPressAdjustSpeed.value = _longPressAdjustBase;
+    longPressAdjusting.value = true;
+    HapticFeedback.lightImpact();
+  }
+
+  /// [dx] 为相对「进入调节时」的横向位移（px），
+  /// 滑到 ±[rangePx] 时到达设置里的下限/上限。
+  Future<void> adjustLongPressSpeed(double dx) async {
+    if (!longPressAdjusting.value || !longPressStatus.value) return;
+    final gen = _lpAdjustGen;
+    final lo = Pref.longPressSpeedMin;
+    final hi = Pref.longPressSpeedMax;
+    final base = _longPressAdjustBase.clamp(lo, hi).toDouble();
+    final t = (dx.abs() / _longPressAdjustRangePx).clamp(0.0, 1.0);
+    final f = _longPressCurve(t);
+    final target = dx >= 0 ? base + (hi - base) * f : base - (base - lo) * f;
+    longPressAdjustProgress.value = (dx / _longPressAdjustRangePx)
+        .clamp(-1.0, 1.0)
+        .toDouble();
+    // 0.05 步进，避免速率抖动
+    final speed = ((target * 20).roundToDouble() / 20).clamp(lo, hi).toDouble();
+    if (speed == longPressAdjustSpeed.value) return;
+    longPressAdjustSpeed.value = speed;
+    // 松手时可能已经作废这一代（_lpAdjustGen 变了），别再覆盖恢复后的速率
+    if (gen != _lpAdjustGen || !longPressStatus.value) return;
+    // 直接改播放器速率：不要走 setPlaybackSpeed，否则会把临时速率写进
+    // 正常倍速（_playbackSpeed）里，松手恢复时对不上
+    await _videoPlayerController?.setRate(speed);
+  }
+
+  void endLongPressSpeedAdjust() {
+    longPressAdjusting.value = false;
+    longPressAdjustProgress.value = 0;
+    _lpAdjustGen++;
   }
 
   bool get isCompleted =>
@@ -1439,10 +1552,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           if (!removeSafeArea) {
             showSystemBar();
           }
-          if (orientation == null && mode == .none) {
-            return;
-          }
-          await resetScreenRotation();
+          // ⚠️ 这里即使 `fullScreenMode == .none`（不改变当前方向）也必须恢复：
+          // 进入全屏时没锁方向，但全屏期间传感器监听会按当前姿态锁过单方向
+          // （见 _onOrientationChanged），不恢复就会一直钉在那个方向上，表现为
+          // 退出全屏后屏幕旋转失效、离开播放页才恢复。
+          // force: 缓存命中会跳过下发，而 Activity 的实际方向可能已经被改过。
+          await resetScreenRotation(force: true);
         } else {
           await exitDesktopFullScreen();
         }
@@ -1543,12 +1658,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   bool _isCloseAll = false;
   bool get isCloseAll => _isCloseAll;
 
-  Future<void>? resetScreenRotation() {
-    if (horizontalScreen) {
-      return fullMode();
-    } else {
-      return portraitUpMode();
-    }
+  /// 把屏幕方向恢复成「应用全局策略」：跟随传感器 or 锁定竖屏。
+  ///
+  /// ⚠️ 判断依据必须是「屏幕旋转」开关 [Pref.allowScreenRotation]，不能用
+  /// 「横屏布局」模式 [horizontalScreen]：布局关闭但允许旋转时，退出全屏会被
+  /// 锁死竖屏，在视频页里怎么转都不动（离开播放页 dispose 恢复全局策略才正常）。
+  Future<void>? resetScreenRotation({bool force = false}) {
+    return Pref.allowScreenRotation
+        ? fullMode(force: force)
+        : portraitUpMode(force: force);
   }
 
   void onCloseAll() {
@@ -1560,7 +1678,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void dispose() {
     // 每次减1，最后销毁
-    resetScreenRotation();
+    // force：离页时把方向无条件恢复到全局策略，清掉全屏期间可能残留的单方向锁定
+    resetScreenRotation(force: true);
     cancelLongPressTimer();
     _cancelSubForSeek();
     if (!_isCloseAll && _playerCount > 1) {

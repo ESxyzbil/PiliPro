@@ -22,6 +22,7 @@ abstract final class DownloadHttp {
     SourceInfo? source,
     PageInfo? pageData,
     EpInfo? ep,
+    bool audioOnly = false,
   }) async {
     final isLogin = Accounts.get(AccountType.video).isLogin;
     final res = await VideoHttp.videoUrl(
@@ -41,6 +42,30 @@ abstract final class DownloadHttp {
     if (res case Success(:final response)) {
       final dash = response.dash;
       if (dash != null) {
+        // 仅音频缓存（收藏夹耳机图标「离线优先但没缓存」时自动触发）：
+        // 不取视频流，目录按音质码区分，视频画面留空。
+        if (audioOnly) {
+          final picked = _pickAudioFiles(dash.audio);
+          if (picked == null) {
+            throw StateError('该视频没有可用的音频流');
+          }
+          entry
+            ..typeTag = picked.id.toString()
+            ..hasDashAudio = true
+            ..qualityPithyDescription =
+                AudioQuality.values
+                    .firstWhereOrNull((e) => e.code == picked.id)
+                    ?.desc ??
+                '${picked.id}';
+          return Type2(
+            duration: dash.duration!,
+            video: const [],
+            audio: picked.files,
+            referer: referer,
+            userAgent: userAgent,
+          );
+        }
+
         final targetVideoQa = response.findAvailableVideoQuality(
           entry.preferedVideoQuality,
         );
@@ -93,43 +118,9 @@ abstract final class DownloadHttp {
           dashDrmType: 0,
         );
         List<Type2File>? audioFileList;
-        final List<AudioItem>? audioDashList = dash.audio;
-        if (audioDashList != null && audioDashList.isNotEmpty) {
-          final preferAudioQa = Pref.defaultAudioQa;
-          final List<int> audioIds = audioDashList
-              .map((map) => map.id)
-              .toList();
-          int closestNumber = audioIds.findClosestTarget(
-            (e) => e <= preferAudioQa,
-            (a, b) => a > b ? a : b,
-          );
-          if (!audioIds.contains(preferAudioQa) &&
-              audioIds.any((e) => e > preferAudioQa)) {
-            closestNumber = AudioQuality.k192.code;
-          }
-          final AudioItem audioDash = audioDashList.firstWhere(
-            (e) => e.id == closestNumber,
-            orElse: () => audioDashList.first,
-          );
-          final audioUrl = VideoUtils.getCdnUrl(
-            audioDash.playUrls,
-            isAudio: true,
-          );
-          audioFileList = [
-            Type2File(
-              id: audioDash.id,
-              baseUrl: audioUrl,
-              bandwidth: audioDash.bandWidth!,
-              codecid: audioDash.codecid!,
-              size: 0,
-              md5: '',
-              noRexcode: false,
-              frameRate: audioDash.frameRate!,
-              width: audioDash.width!,
-              height: audioDash.height!,
-              dashDrmType: 0,
-            ),
-          ];
+        final picked = _pickAudioFiles(dash.audio);
+        if (picked != null) {
+          audioFileList = picked.files;
           entry.hasDashAudio = true;
         }
         return Type2(
@@ -140,6 +131,10 @@ abstract final class DownloadHttp {
           userAgent: userAgent,
         );
       } else {
+        // 仅音频缓存必须走 dash 的独立音频流；durl 只有合并文件，放弃缓存
+        if (audioOnly) {
+          throw StateError('该视频没有可分离的音频流');
+        }
         final first = response.durl!.first;
         final List<Type1Segment> segmentList = [
           Type1Segment(
@@ -204,5 +199,47 @@ abstract final class DownloadHttp {
     } else {
       throw res.toString();
     }
+  }
+
+  /// 按设置里的音质就近挑一条音频流；返回文件信息与音质 code。
+  /// 视频下载与「仅音频」缓公共用同一套挑选逻辑，保证音质一致。
+  static ({List<Type2File> files, int id})? _pickAudioFiles(
+    List<AudioItem>? audioDashList,
+  ) {
+    if (audioDashList == null || audioDashList.isEmpty) {
+      return null;
+    }
+    final preferAudioQa = Pref.defaultAudioQa;
+    final List<int> audioIds = audioDashList.map((map) => map.id).toList();
+    int closestNumber = audioIds.findClosestTarget(
+      (e) => e <= preferAudioQa,
+      (a, b) => a > b ? a : b,
+    );
+    if (!audioIds.contains(preferAudioQa) &&
+        audioIds.any((e) => e > preferAudioQa)) {
+      closestNumber = AudioQuality.k192.code;
+    }
+    final AudioItem audioDash = audioDashList.firstWhere(
+      (e) => e.id == closestNumber,
+      orElse: () => audioDashList.first,
+    );
+    return (
+      files: [
+        Type2File(
+          id: audioDash.id,
+          baseUrl: VideoUtils.getCdnUrl(audioDash.playUrls, isAudio: true),
+          bandwidth: audioDash.bandWidth!,
+          codecid: audioDash.codecid!,
+          size: 0,
+          md5: '',
+          noRexcode: false,
+          frameRate: audioDash.frameRate!,
+          width: audioDash.width!,
+          height: audioDash.height!,
+          dashDrmType: 0,
+        ),
+      ],
+      id: audioDash.id,
+    );
   }
 }

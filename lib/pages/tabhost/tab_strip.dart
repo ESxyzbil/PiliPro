@@ -305,7 +305,14 @@ class _TabStripState extends State<TabStrip> {
   Widget _buildCollapsed(ColorScheme colorScheme) {
     return KeyedSubtree(
       key: const ValueKey('tab-strip-collapsed'),
-      child: Obx(() {
+      // ⚠️ 必须按"收起宽度"定宽并靠左：标签栏为了让展开/收起动画只重绘不重排，
+      // 布局宽度恒取展开态（200），若收起态不定宽，Column 会默认居中 → 图标被
+      // 挤到 x≈100，落在可见区（左侧 52px）之外，表现为"收起状态什么都不显示"。
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: TabStrip.collapsedWidth,
+          child: Obx(() {
         final controller = widget.controller;
         final curIdx = controller.currentIndex.value;
         return Column(
@@ -337,6 +344,8 @@ class _TabStripState extends State<TabStrip> {
           ],
         );
       }),
+        ),
+      ),
     );
   }
 

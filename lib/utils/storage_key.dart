@@ -29,6 +29,8 @@ abstract final class SettingBoxKey {
       pauseOnMinimize = 'pauseOnMinimize',
       pgcSkipType = 'pgcSkipType',
       audioPlayMode = 'audioPlayMode',
+      /// 音频页默认播放顺序（对应 grpc ListOrder 的 value：0无序/1正序/2倒序/3随机）
+      audioListOrder = 'audioListOrder',
       showBatteryLevel = 'showBatteryLevel',
       playerVolume = 'playerVolume',
       maxVolume = 'maxVolume',
@@ -177,6 +179,12 @@ abstract final class VideoBoxKey {
   static const String playRepeat = 'playRepeat',
       playSpeedDefault = 'playSpeedDefault',
       longPressSpeedDefault = 'longPressSpeedDefault',
+      /// 长按倍速「下滑横滑调速率」的范围与手感：
+      /// 范围是 [longPressSpeedMin, longPressSpeedMax]，
+      /// 手感 0=线性 1=平方 2=根号
+      longPressSpeedMin = 'longPressSpeedMin',
+      longPressSpeedMax = 'longPressSpeedMax',
+      longPressSpeedCurve = 'longPressSpeedCurve',
       speedsList = 'speedsList',
       cacheVideoFit = 'cacheVideoFit';
 }

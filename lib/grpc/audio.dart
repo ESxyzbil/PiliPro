@@ -13,6 +13,9 @@ abstract final class AudioGrpc {
     required int itemType,
     int qn = 80,
     int fnval = 4048,
+    /// 1 = 请求响度均衡（voice balance）。个别视频服务端处理不了，会返回
+    /// 空的 playerInfo，此时要用 0 再要一次。
+    int voiceBalance = 1,
   }) {
     return GrpcReq.request(
       GrpcUrl.audioPlayUrl,
@@ -26,7 +29,7 @@ abstract final class AudioGrpc {
           qn: Int64(qn),
           fnval: Int64(fnval),
           forceHost: Int64.TWO,
-          voiceBalance: Int64.ONE,
+          voiceBalance: Int64(voiceBalance),
         ),
       ),
       PlayURLResp.fromBuffer,

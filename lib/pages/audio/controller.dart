@@ -33,10 +33,12 @@ import 'package:PiliPlus/http/browser_ua.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/http/music.dart';
+import 'package:PiliPlus/http/init.dart' show Request;
 import 'package:PiliPlus/http/video.dart';
 import 'package:PiliPlus/models/model_hot_video_item.dart';
 import 'package:PiliPlus/models/model_owner.dart';
 import 'package:PiliPlus/models/common/audio_normalization.dart';
+import 'package:PiliPlus/models/common/video/video_type.dart';
 import 'package:PiliPlus/models/video/play/url.dart' as http_model show Volume;
 import 'package:PiliPlus/pages/common/common_intro_controller.dart'
     show FavMixin;
@@ -44,6 +46,10 @@ import 'package:PiliPlus/pages/dynamics_repost/view.dart';
 import 'package:PiliPlus/pages/main_reply/view.dart';
 import 'package:PiliPlus/pages/sponsor_block/block_mixin.dart';
 import 'package:PiliPlus/services/desktop_lyrics_service.dart';
+import 'package:PiliPlus/services/download/download_batch.dart'
+    show findLocalCache;
+import 'package:PiliPlus/services/download/download_service.dart'
+    show DownloadService;
 import 'package:PiliPlus/pages/video/controller.dart';
 import 'package:PiliPlus/pages/video/introduction/ugc/widgets/triple_mixin.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
@@ -58,6 +64,7 @@ import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
+import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/global_data.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
@@ -86,6 +93,29 @@ class AudioController extends GetxController
   final Map? arguments;
 
   AudioController({this.arguments});
+
+  /// 存活的音频页控制器（每个音频标签一个实例，按 oid 建 GetxController tag）。
+  /// ⚠️ 通知栏/锁屏只有一套控制，控制权**不能**在 onInit 时绑死到某个实例：
+  /// 绑死的那个被关闭后回调会被置空（或指向已 dispose 的 player），通知栏
+  /// 按钮就"偶发失效"；后打开的音频页还会把控制权抢走，按下去操作的是没在
+  /// 播的那个。现在由 audio_handler 在调用时解析（正在播放优先 → 最后注册）。
+  static final List<AudioController> liveInstances = <AudioController>[];
+
+  /// 注册到通知栏调度器（幂等）。⚠️ 必须在 onInit **最开头**调用：onInit 里
+  /// 就会发起播放列表请求并在返回时推送媒体条目，若此刻还没注册，handler
+  /// 解析"当前控制权"时找不到本实例，会把刚推的条目立刻纠回上一个实例。
+  void _registerLive() {
+    if (!liveInstances.contains(this)) liveInstances.add(this);
+    // ignore: avoid_print
+    print('[PL_AUD] reg hash=$hashCode n=${liveInstances.length}');
+  }
+
+  /// 从通知栏调度器注销
+  void _unregisterLive() {
+    liveInstances.remove(this);
+    // ignore: avoid_print
+    print('[PL_AUD] unreg hash=$hashCode n=${liveInstances.length}');
+  }
 
   late Int64 id;
   late Int64 oid;
@@ -124,6 +154,35 @@ class AudioController extends GetxController
   String? _fallbackOwnerName;
   int? _fallbackOwnerMid;
   List<BiliDownloadEntryInfo>? offlineEntries;
+
+  /// 边播边缓存当前音频（收藏夹「离线优先但没缓存」时传入）：
+  /// 只落音频文件，不下载视频画面。
+  bool _autoCacheAudio = false;
+
+  /// 打开页面那一集（[autoCacheAudio] 时必缓存的那一条，防止列表还没回来时漏缓存）
+  int? _autoCacheCid;
+  final _autoCachedAudioCids = <int>{};
+
+  /// 临时诊断开关：`--dart-define=AUDIO_DIAG=true` 时把取流过程写到
+  /// 应用外部目录 `audio_diag.log`（release 下 print 不进 logcat）
+  static const _diagOn = bool.fromEnvironment('AUDIO_DIAG');
+  Future<void> _diagChain = Future<void>.value();
+
+  void _diag(String msg) {
+    if (!_diagOn) return;
+    // 串行追加：并发 writeAsString(append) 会互相覆盖/丢行
+    _diagChain = _diagChain.then((_) async {
+      try {
+        final dir = await getExternalStorageDirectory();
+        if (dir == null) return;
+        await File('${dir.path}/audio_diag.log').writeAsString(
+          '${DateTime.now().toIso8601String()} $msg\n',
+          mode: FileMode.append,
+          flush: true,
+        );
+      } catch (_) {}
+    });
+  }
 
   bool _hasInit = false;
   @override
@@ -167,7 +226,9 @@ class AudioController extends GetxController
   String? _next;
   bool get reachStart => _prev == null;
 
-  ListOrder order = ListOrder.ORDER_NORMAL;
+  /// 播放顺序：打开页面时取「设置 → 音频默认播放顺序」里锁定的那一项
+  ListOrder order =
+      ListOrder.values[Pref.audioListOrder.clamp(0, ListOrder.values.length - 1)];
   final RxBool showCoverInfo = true.obs;
 
   // 歌词相关
@@ -273,6 +334,8 @@ class AudioController extends GetxController
   @override
   void onInit() {
     super.onInit();
+    // 尽早注册：onInit 内就会发起播放列表请求并推送媒体条目
+    _registerLive();
     DesktopLyricsService.show();
     final args = arguments ?? Get.arguments;
     oid = Int64(args['oid']);
@@ -302,6 +365,8 @@ class AudioController extends GetxController
     offlineEntries = (args["offlineEntries"] as List?)
         ?.map((e) => BiliDownloadEntryInfo.fromJson(e as Map<String, dynamic>))
         .toList();
+    _autoCacheAudio = args['autoCacheAudio'] == true;
+    _autoCacheCid = args['autoCacheCid'] as int?;
 
     if (offlineEntries != null && offlineEntries!.isNotEmpty) {
       // 离线模式：不请求 API 播放列表，直接用本地缓存
@@ -323,7 +388,9 @@ class AudioController extends GetxController
         videoPlayerServiceHandler!.onVideoDetailChange(
           entry,
           entry.cid,
-          'audio_offline',
+          // 统一用实例 hashCode 作 heroTag（与 _updateCurrItem 一致），
+          // 便于 onVideoDetailDispose / syncActiveItem 按实例精确匹配条目
+          hashCode.toString(),
         );
       }
     } else {
@@ -348,16 +415,6 @@ class AudioController extends GetxController
         _queryPlayUrl();
       }
     });
-    videoPlayerServiceHandler
-      ?..onPlay = onPlay
-      ..onPause = onPause
-      ..onSeek = onSeek
-      ..onSkipToNext = () async {
-        return playNext();
-      }
-      ..onSkipToPrevious = () async {
-        return playPrev();
-      };
 
     animController = AnimationController(
       vsync: this,
@@ -383,6 +440,21 @@ class AudioController extends GetxController
     return player?.pause();
   }
 
+  /// 通知栏"播放"在播放器尚未创建时调用：先建好播放器再播。
+  /// （open 一个音频页后播放器是异步创建的，这段时间里按钮点了没反应
+  /// = 用户反馈的"打开音频页时有概率不能对应控制"。）
+  Future<void> playWhenReady() async {
+    await _initPlayerIfNeeded();
+    if (isClosed) return;
+    // 之前取流失败过，或播放器里根本没有媒体（弱网只出了声音/什么都没出）
+    // → 先补一次取流再播，让"播放"键本身就能恢复
+    if (playUrlFailed.value || player!.state.duration == Duration.zero) {
+      await retryPlay();
+      if (isClosed) return;
+    }
+    await player?.play();
+  }
+
   Future<void>? onSeek(Duration duration) {
     _updatePlaybackState(position: duration);
     return player?.seek(duration);
@@ -392,6 +464,11 @@ class AudioController extends GetxController
     audioItem.value = item;
     audioTitle.value = item.arc.title;
     audioArtist.value = item.owner.name;
+    // 诊断：自动连播时条目自带的封面字段是否有值（空则通知栏会沿用上一首封面）
+    // ignore: avoid_print
+    print(
+      '[PL_AUD_ITEM] title=${item.arc.title} cover=${item.arc.cover}',
+    );
     // 同步更新音频标签标题（切歌/连播时；用固定 tabOid 只更新自己的
     // 音频标签，多音频标签并存时互不影响）
     TabHostController.instance?.updateCurrentTabTitle(
@@ -413,69 +490,158 @@ class AudioController extends GetxController
     searchLyrics('${item.arc.title} ${item.owner.name}');
   }
 
+  /// 边播边缓存当前音频（仅音频，视频画面留空）。
+  ///
+  /// 只有收藏夹「离线优先但没缓存」打开的那一页会带 `autoCacheAudio`；
+  /// **只缓存当前列表（收藏夹/UP 投稿）里的条目**：相关推荐、下一首队列里
+  /// 点开的视频不缓存，否则会把没收藏的内容也塞进本地。
+  /// 命中已缓存条目则跳过。
+  Future<void> _maybeAutoCacheAudio() async {
+    if (!_autoCacheAudio) return;
+    final cid = subId.firstOrNull?.toInt();
+    if (cid == null) return;
+    final avid = oid.toInt();
+    // 列表可能还在路上：等最多 ~3s 再判定，打开页面那一集不受影响
+    if (playlist == null && cid != _autoCacheCid) {
+      for (var i = 0; i < 15 && playlist == null; i++) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (isClosed) return;
+      }
+    }
+    if (!_isInCurrentPlaylist(avid, cid)) return;
+    if (!_autoCachedAudioCids.add(cid)) return;
+    try {
+      if (await findLocalCache(avid, cid) != null) return;
+      if (isClosed) return;
+      final item = audioItem.value;
+      final title = item?.arc.title.isNotEmpty == true
+          ? item!.arc.title
+          : _fallbackTitle;
+      if (title == null || title.isEmpty) {
+        _autoCachedAudioCids.remove(cid);
+        return;
+      }
+      final cover = item != null && item.arc.cover.isNotEmpty
+          ? item.arc.cover
+          : (_fallbackCover ?? '');
+      await Get.find<DownloadService>().downloadAudioOnly(
+        avid: avid,
+        cid: cid,
+        bvid: bvid ?? IdUtils.av2bv(avid),
+        title: title,
+        cover: cover,
+        ownerId: item?.owner.mid.toInt() ?? _fallbackOwnerMid,
+        ownerName: item?.owner.name.isNotEmpty == true
+            ? item!.owner.name
+            : _fallbackOwnerName,
+        durationMs: (item?.arc.duration.toInt() ?? 0) * 1000,
+      );
+    } catch (_) {
+      _autoCachedAudioCids.remove(cid);
+    }
+  }
+
+  /// 当前播放项是否属于页面打开时的播放列表（收藏夹/UP 投稿）。
+  /// 只有收藏夹列表（USER_FAVOURITE）才整列表缓存；UP 投稿列表里只认打开
+  /// 页面那一集。相关推荐、下一首队列的条目不在 [playlist] 里，一律不缓存。
+  bool _isInCurrentPlaylist(int avid, int cid) {
+    if (cid == _autoCacheCid) return true;
+    if (from != PlaylistSource.USER_FAVOURITE) return false;
+    final list = playlist;
+    if (list == null) return false;
+    return list.any((e) {
+      if (e.item.oid.toInt() != avid) return false;
+      final subs = e.item.subId;
+      return subs.isEmpty || subs.any((s) => s.toInt() == cid);
+    });
+  }
+
   Future<void> _queryPlayList({
     bool isInit = false,
     bool isLoadPrev = false,
     bool isLoadNext = false,
   }) async {
-    final res = await AudioGrpc.audioPlayList(
-      id: id,
-      oid: isInit ? oid : null,
-      subId: isInit ? subId : null,
-      itemType: isInit ? itemType : null,
-      from: isInit ? from : null,
-      next: isLoadPrev
-          ? _prev
-          : isLoadNext
-          ? _next
-          : null,
-      extraId: extraId,
-      order: order,
-    );
-    if (res case Success(:final response)) {
-      if (isInit) {
-        late final paginationReply = response.paginationReply;
-        _prev = response.reachStart ? null : paginationReply.prev;
-        _next = response.reachEnd ? null : paginationReply.next;
-        final index = response.list.indexWhere((e) => e.item.oid == oid);
-        if (index != -1) {
-          this.index = index;
-          _updateCurrItem(response.list[index]);
-          playlist = response.list;
-        }
-      } else if (isLoadPrev) {
-        _prev = response.reachStart ? null : response.paginationReply.prev;
-        if (response.list.isNotEmpty) {
-          index += response.list.length;
-          playlist?.insertAll(0, response.list);
-        }
-      } else if (isLoadNext) {
-        _next = response.reachEnd ? null : response.paginationReply.next;
-        if (response.list.isNotEmpty) {
-          playlist?.addAll(response.list);
-        }
-      }
-      return;
+    if (isInit) {
+      if (_playlistLoading) return;
+      _playlistLoading = true;
     }
-    if (isInit && _fallbackTitle != null) {
-      // offline fallback: use passed metadata
-      audioTitle.value = _fallbackTitle!;
-      if (_fallbackOwnerName != null) {
-        audioArtist.value = _fallbackOwnerName!;
-      }
-      if (_fallbackCover != null) {
-        _mediaControl.updateMetadata(
-          title: _fallbackTitle!,
-          artist: _fallbackOwnerName ?? '',
-          thumbnail: _fallbackCover!,
+    try {
+      // 弱网/被限速时首个请求很容易超时或失败；这里对初始化请求自动重试一次，
+      // 避免"页面什么都没有、只有声音，播完也不能连播"。
+      final attempts = isInit ? 2 : 1;
+      for (var attempt = 0; attempt < attempts; attempt++) {
+        final res = await AudioGrpc.audioPlayList(
+          id: id,
+          oid: isInit ? oid : null,
+          subId: isInit ? subId : null,
+          itemType: isInit ? itemType : null,
+          from: isInit ? from : null,
+          next: isLoadPrev
+              ? _prev
+              : isLoadNext
+              ? _next
+              : null,
+          extraId: extraId,
+          order: order,
         );
+        if (res case Success(:final response)) {
+          playlistFailed.value = false;
+          if (isInit) {
+            late final paginationReply = response.paginationReply;
+            _prev = response.reachStart ? null : paginationReply.prev;
+            _next = response.reachEnd ? null : paginationReply.next;
+            // ⚠️ 先无条件保留列表：以前只有"当前 oid 能在列表里找到"时才
+            // playlist = list，找不到就整份丢弃 → 连播直接失效。
+            playlist = response.list;
+            // 用户要求：任何排序都把「当前播放」放在列表首位，重排后不跳位置
+            _moveCurrentToFirst();
+          } else if (isLoadPrev) {
+            _prev = response.reachStart ? null : response.paginationReply.prev;
+            if (response.list.isNotEmpty) {
+              index += response.list.length;
+              playlist?.insertAll(0, response.list);
+            }
+          } else if (isLoadNext) {
+            _next = response.reachEnd ? null : response.paginationReply.next;
+            if (response.list.isNotEmpty) {
+              playlist?.addAll(response.list);
+            }
+          }
+          return;
+        }
+        // 还没试到最后一轮 → 等一会儿重试
+        if (isInit && attempt + 1 < attempts) {
+          await Future.delayed(const Duration(milliseconds: 700));
+          if (isClosed) return;
+          continue;
+        }
+        // 最终失败
+        if (isInit) {
+          playlistFailed.value = true;
+          if (_fallbackTitle != null) {
+            // 离线/参数兜底：至少把标题、UP、封面填上，页面不至于全空
+            audioTitle.value = _fallbackTitle!;
+            if (_fallbackOwnerName != null) {
+              audioArtist.value = _fallbackOwnerName!;
+            }
+            if (_fallbackCover != null) {
+              _mediaControl.updateMetadata(
+                title: _fallbackTitle!,
+                artist: _fallbackOwnerName ?? '',
+                thumbnail: _fallbackCover!,
+              );
+            }
+            if (_fallbackOwnerName != null) {
+              searchLyrics('$_fallbackTitle $_fallbackOwnerName');
+            }
+          } else {
+            SmartDialog.showToast('列表加载失败，稍后可在页面下拉重试');
+          }
+        }
+        return;
       }
-      if (_fallbackOwnerName != null) {
-        final title = '${_fallbackTitle} ${_fallbackOwnerName}';
-        searchLyrics(title);
-      }
-    } else {
-      res.toast();
+    } finally {
+      if (isInit) _playlistLoading = false;
     }
   }
 
@@ -490,90 +656,441 @@ class AudioController extends GetxController
     }
   }
 
-  Future<bool> _queryPlayUrl() async {
+  /// 取播放地址并开始播放。
+  /// 弱网/被限速时首个请求经常失败：自动重试一次；仍失败则标记
+  /// [playUrlFailed] 并提示可重试，而不是留一个"有内容但点不动"的播放器。
+  Future<bool> _queryPlayUrl({bool retry = true}) async {
     _querySponsorBlock();
-    final res = await AudioGrpc.audioPlayUrl(
-      itemType: itemType,
-      oid: oid,
-      subId: subId,
+    _diag(
+      'queryPlayUrl oid=$oid subId=$subId itemType=$itemType isUgc=$isUgc '
+      'bvid=$bvid from=$from',
     );
-    if (res case Success(:final response)) {
-      _onPlay(response);
-      return true;
-    } else {
-      res.toast();
-      return false;
+    final attempts = retry ? 2 : 1;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      final res = await AudioGrpc.audioPlayUrl(
+        itemType: itemType,
+        oid: oid,
+        subId: subId,
+        // 个别视频（如音乐区新投稿）带 voiceBalance=1 时服务端返回空
+        // playerInfo，重试时关掉响度均衡再来一次。
+        voiceBalance: attempt == 0 ? 1 : 0,
+      );
+      _diag('attempt=$attempt res=${res.runtimeType} ${res is Success ? 'ok' : res}');
+      if (res case Success(:final response)) {
+        final ok = _onPlay(response);
+        _diag('_onPlay=$ok playerInfo=${response.playerInfo.length}');
+        if (ok) {
+          playUrlFailed.value = false;
+          _retryingPlayUrl = false;
+          return true;
+        }
+      }
+      if (attempt + 1 < attempts) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (isClosed) return false;
+      }
     }
+    if (isClosed) return false;
+    // 兜底：个别视频监听器接口就是拿不到音频流（视频页能正常播）——
+    // 改用视频页同一套 playurl 接口取 dash 音频，别一直卡在"加载失败"。
+    final fallback = await _fallbackPlayUrl();
+    _diag('fallback=$fallback');
+    if (fallback) {
+      playUrlFailed.value = false;
+      _retryingPlayUrl = false;
+      return true;
+    }
+    if (isClosed) return false;
+    playUrlFailed.value = true;
+    _retryingPlayUrl = false;
+    SmartDialog.showToast('音频加载失败，网络恢复后可点重试');
+    return false;
   }
 
-  void _onPlay(PlayURLResp data) {
-    final PlayInfo? playInfo = data.playerInfo.values.firstOrNull;
-    if (playInfo != null) {
-      http_model.Volume? volume;
-      if (playInfo.hasVolume()) {
-        final volumeInfo = playInfo.volume;
-        volume = http_model.Volume(
-          measuredI: volumeInfo.measuredI,
-          measuredLra: volumeInfo.measuredLra,
-          measuredTp: volumeInfo.measuredTp,
-          measuredThreshold: volumeInfo.measuredThreshold,
-          targetOffset: volumeInfo.targetOffset,
-          targetI: volumeInfo.targetI,
-          targetTp: volumeInfo.targetTp,
+  /// 用视频页同款 `playurl` 接口取 dash 音频并播放（监听器接口失败时兜底）
+  Future<bool> _fallbackPlayUrl() async {
+    if (!isUgc) {
+      _diag('fallback: not ugc');
+      return false;
+    }
+    final cid = subId.firstOrNull?.toInt();
+    if (cid == null) {
+      _diag('fallback: no cid');
+      return false;
+    }
+    try {
+      final res = await VideoHttp.videoUrl(
+        avid: oid.toInt(),
+        bvid: bvid,
+        cid: cid,
+        qn: Pref.defaultVideoQa,
+        tryLook: !isLogin && Pref.p1080,
+        videoType: VideoType.ugc,
+      );
+      _diag('fallback res=${res.runtimeType} ${res is Success ? 'ok' : res}');
+      if (res case Success(:final response)) {
+        final audios = response.dash?.audio;
+        _diag(
+          'fallback dash=${response.dash != null} audios=${audios?.length} '
+          'ids=${audios?.map((e) => e.id).toList()}',
         );
-      }
-      if (playInfo.hasPlayDash()) {
-        final playDash = playInfo.playDash;
-        final audios = playDash.audio;
-        if (audios.isEmpty) {
-          return;
-        }
-        position.value = 0;
+        if (audios == null || audios.isEmpty) return false;
         final audio = audios.findClosestTarget(
           (e) => e.id <= cacheAudioQa,
           (a, b) => a.id > b.id ? a : b,
         );
-        _onOpenMedia(VideoUtils.getCdnUrl(audio.playUrls), volume: volume);
-      } else if (playInfo.hasPlayUrl()) {
-        final playUrl = playInfo.playUrl;
-        final durls = playUrl.durl;
-        if (durls.isEmpty) {
-          return;
-        }
-        final durl = durls.first;
         position.value = 0;
-        _onOpenMedia(VideoUtils.getCdnUrl(durl.playUrls), volume: volume);
+        // ⚠️ 个别视频的 playurl 只给 mcdn/某些节点，重写成 CDN 偏好主机后
+        // 在这个网络下可能根本连不上（mpv 直接 Failed to open、进度 0:00）。
+        // 逐个探测候选地址（偏好主机 → 原始地址 → 备份地址），取第一个能连的。
+        final candidates = <String>[
+          VideoUtils.getCdnUrl(audio.playUrls, isAudio: true),
+          ...audio.playUrls,
+        ];
+        final url =
+            await _pickReachableAudioUrl(candidates) ?? candidates.first;
+        _diag('fallback url=$url');
+        // 远程地址能取字节不代表 mpv 能打开（实测有节点 dio 200/206、mpv 却
+        // Failed to open）。开着验证打开一次，失败就把音频落到本地再播。
+        if (await _openAndVerify(
+          url,
+          referer: 'https://www.bilibili.com/',
+          extraHeaders: const {'Range': 'bytes=0-'},
+        )) {
+          unawaited(_maybeAutoCacheAudio());
+          return true;
+        }
+        _diag('remote open failed, try local file');
+        // 等上一个 loadfile 的失败事件彻底落地，否则会打断紧接着的本地打开
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (isClosed) return false;
+        final local = await _ensureLocalAudio(cid, url);
+        if (local != null && await _openAndVerify(local)) {
+          unawaited(_maybeAutoCacheAudio());
+          return true;
+        }
+        return false;
+      }
+    } catch (e) {
+      _diag('fallback error: $e');
+    }
+    return false;
+  }
+
+  /// 逐个探测候选音频地址，返回第一个能取到字节的（https）。
+  ///
+  /// 同一条 audio 的 base/backup 会分布在不同 CDN 节点上，某些网络下只有
+  /// 其中一部分可达；不探测就会选中一个连不上的节点，表现为 mpv 打不开、
+  /// 进度停在 0:00（用户反馈的「特定视频音频加载失败」）。
+  Future<String?> _pickReachableAudioUrl(Iterable<String> urls) async {
+    final seen = <String>{};
+    _diag('probe start ${urls.length}');
+    for (final raw in urls) {
+      final url = raw.http2https;
+      if (url.isEmpty || !seen.add(url)) continue;
+      final token = CancelToken();
+      try {
+        // validateStatus 全放行：否则 dio 拦截器会对 403 弹「服务器异常 + URL」
+        // 的全局 toast（探测/CND 兜底属于后台试探，不该打扰用户）
+        final res = await Request.http11Dio.get<ResponseBody>(
+          url,
+          cancelToken: token,
+          options: Options(
+            headers: {
+              'Range': 'bytes=0-0',
+              'Referer': 'https://www.bilibili.com/',
+            },
+            responseType: ResponseType.stream,
+            validateStatus: (_) => true,
+            sendTimeout: const Duration(seconds: 4),
+            receiveTimeout: const Duration(seconds: 4),
+          ),
+        );
+        final code = res.statusCode ?? 0;
+        if (code == 200 || code == 206) {
+          _diag('probe ok ${Uri.parse(url).host} $code');
+          return url;
+        }
+        _diag('probe bad ${Uri.parse(url).host} $code');
+      } catch (e) {
+        _diag('probe fail ${Uri.tryParse(url)?.host} $e');
+      } finally {
+        if (!token.isCancelled) token.cancel();
       }
     }
+    return null;
+  }
+
+  /// 打开媒体并等它真的出数据（拿到时长/开始播放）；报错或超时算失败。
+  ///
+  /// 校验期间临时屏蔽全局 `stream.error → retryPlay` 自愈逻辑，避免两边
+  /// 互相打断（重试风暴）。
+  Future<bool> _openAndVerify(
+    String url, {
+    String? referer,
+    Map<String, String>? extraHeaders,
+    String ua = Constants.userAgentApp,
+    Duration timeout = const Duration(seconds: 6),
+  }) async {
+    // 播放器是懒创建的：这里必须先初始化，否则 player 还是 null，
+    // 下面的校验会直接返回 false（表现为"远程/本地都打不开"）。
+    await _initPlayerIfNeeded();
+    final p = player;
+    if (p == null) return false;
+    final done = Completer<bool>();
+    final subs = <StreamSubscription>[];
+    final prevRetrying = _retryingPlayUrl;
+    _retryingPlayUrl = true;
+    subs.add(
+      p.stream.error.listen((e) {
+        _diag('verify error $e');
+        if (!done.isCompleted) done.complete(false);
+      }),
+    );
+    subs.add(
+      p.stream.duration.listen((d) {
+        if (d > Duration.zero && !done.isCompleted) done.complete(true);
+      }),
+    );
+    // ⚠️ 不能拿 playing=true 当成功：mpv 会先报 playing，再在下一条事件里
+    // 甩出 "stream: Failed to open"（实测 90ms 后），会误判为可播而不走本地兜底。
+    try {
+      await _onOpenMedia(
+        url,
+        ua: ua,
+        referer: referer,
+        extraHeaders: extraHeaders,
+      );
+      final ok = await done.future.timeout(
+        timeout,
+        onTimeout: () => false,
+      );
+      _diag('verify ${Uri.tryParse(url)?.scheme} ${Uri.tryParse(url)?.host} -> $ok');
+      return ok;
+    } finally {
+      for (final s in subs) {
+        await s.cancel();
+      }
+      _retryingPlayUrl = prevRetrying;
+    }
+  }
+
+  /// 远程流打不开时：用本地缓存 / 现场下载一份音频文件来播。
+  Future<String?> _ensureLocalAudio(int cid, String url) async {
+    try {
+      final cached = await findLocalCache(oid.toInt(), cid);
+      if (cached != null) {
+        final dir = cached.typeTag != null && cached.typeTag!.isNotEmpty
+            ? '${cached.entryDirPath}/${cached.typeTag}'
+            : cached.entryDirPath;
+        final f = File(
+          cached.mediaType == 1
+              ? '$dir/${PathUtils.videoNameType1}'
+              : '$dir/${PathUtils.audioNameType2}',
+        );
+        if (f.existsSync() && f.lengthSync() > 0) {
+          _diag('local cache hit ${f.path}');
+          return f.path;
+        }
+      }
+      final file = File('$tmpDirPath/audio_${cid}_tmp.m4s');
+      if (file.existsSync() && file.lengthSync() > 0) {
+        _diag('temp file hit ${file.path}');
+        return file.path;
+      }
+      // 1) 优先走「自动缓存」那条已验证可用的链路：playurl 取地址 +
+      //    DownloadManager 流式下载（HTTP/1.1 + Range，实测这个视频能下满）
+      try {
+        final item = audioItem.value;
+        final title = item?.arc.title.isNotEmpty == true
+            ? item!.arc.title
+            : (_fallbackTitle ?? '');
+        if (title.isNotEmpty) {
+          _diag('cache download start');
+          await Get.find<DownloadService>().downloadAudioOnly(
+            avid: oid.toInt(),
+            cid: cid,
+            bvid: bvid ?? IdUtils.av2bv(oid.toInt()),
+            title: title,
+            cover: item != null && item.arc.cover.isNotEmpty
+                ? item.arc.cover
+                : (_fallbackCover ?? ''),
+            ownerId: item?.owner.mid.toInt() ?? _fallbackOwnerMid,
+            ownerName: item?.owner.name.isNotEmpty == true
+                ? item!.owner.name
+                : _fallbackOwnerName,
+            durationMs: (item?.arc.duration.toInt() ?? 0) * 1000,
+          );
+          for (var i = 0; i < 40; i++) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            if (isClosed) return null;
+            final cached = await findLocalCache(oid.toInt(), cid);
+            if (cached == null) continue;
+            final dir = cached.typeTag != null && cached.typeTag!.isNotEmpty
+                ? '${cached.entryDirPath}/${cached.typeTag}'
+                : cached.entryDirPath;
+            final f = File(
+              cached.mediaType == 1
+                  ? '$dir/${PathUtils.videoNameType1}'
+                  : '$dir/${PathUtils.audioNameType2}',
+            );
+            if (f.existsSync() && f.lengthSync() > 0) {
+              _diag('cache download done ${f.path}');
+              return f.path;
+            }
+          }
+          _diag('cache download timeout');
+        }
+      } catch (e) {
+        _diag('cache download error $e');
+      }
+      _diag('download audio start');
+      // 2) 直接 GET 兜底：只带 Range（与 DownloadManager 一致，B站 CDN 对
+      //    带自定义 UA/Referer 的组合可能直接 403）。
+      final res = await Request.http11Dio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {'range': 'bytes=0-'},
+          validateStatus: (_) => true,
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
+      final code = res.statusCode ?? 0;
+      if (code != 200 && code != 206) {
+        _diag('download audio bad status $code');
+        return null;
+      }
+      final bytes = res.data;
+      if (bytes == null || bytes.isEmpty) return null;
+      await file.writeAsBytes(bytes, flush: true);
+      _diag('download audio done ${bytes.length}');
+      return file.path;
+    } catch (e) {
+      _diag('local audio fallback error: $e');
+      return null;
+    }
+  }
+
+  /// 手动重试（UI 调用）：先补播放地址，再补列表
+  Future<void> retryPlay() async {
+    playUrlFailed.value = false;
+    if (await _queryPlayUrl()) return;
+    if (playlist == null && !_playlistLoading) {
+      await _queryPlayList(isInit: true);
+    }
+  }
+
+  /// 返回是否真的拿到了可播放的媒体地址
+  bool _onPlay(PlayURLResp data) {
+    final PlayInfo? playInfo = data.playerInfo.values.firstOrNull;
+    _diag(
+      'onPlay info=${playInfo != null} '
+      'dash=${playInfo?.hasPlayDash()} '
+      'audios=${playInfo != null && playInfo.hasPlayDash() ? playInfo.playDash.audio.length : -1} '
+      'durl=${playInfo != null && playInfo.hasPlayUrl() ? playInfo.playUrl.durl.length : -1}',
+    );
+    if (playInfo == null) return false;
+    http_model.Volume? volume;
+    if (playInfo.hasVolume()) {
+      final volumeInfo = playInfo.volume;
+      volume = http_model.Volume(
+        measuredI: volumeInfo.measuredI,
+        measuredLra: volumeInfo.measuredLra,
+        measuredTp: volumeInfo.measuredTp,
+        measuredThreshold: volumeInfo.measuredThreshold,
+        targetOffset: volumeInfo.targetOffset,
+        targetI: volumeInfo.targetI,
+        targetTp: volumeInfo.targetTp,
+      );
+    }
+    if (playInfo.hasPlayDash()) {
+      final playDash = playInfo.playDash;
+      final audios = playDash.audio;
+      if (audios.isEmpty) return false;
+      position.value = 0;
+      // 首选不超过偏好码率的流；弱网下若该档取不到，退到最低可用码率
+      final audio = audios.findClosestTarget(
+        (e) => e.id <= cacheAudioQa,
+        (a, b) => a.id > b.id ? a : b,
+      );
+      _onOpenMedia(
+        VideoUtils.getCdnUrl(audio.playUrls).http2https,
+        volume: volume,
+      );
+      unawaited(_maybeAutoCacheAudio());
+      return true;
+    }
+    if (playInfo.hasPlayUrl()) {
+      final durls = playInfo.playUrl.durl;
+      if (durls.isEmpty) return false;
+      position.value = 0;
+      _onOpenMedia(
+        VideoUtils.getCdnUrl(durls.first.playUrls).http2https,
+        volume: volume,
+      );
+      return true;
+    }
+    return false;
   }
 
   Future<void> _onOpenMedia(
     String url, {
     String ua = Constants.userAgentApp,
     String? referer,
+    Map<String, String>? extraHeaders,
     http_model.Volume? volume,
   }) async {
     await _initPlayerIfNeeded();
+    _diag(
+      'openMedia host=${Uri.tryParse(url)?.host} referer=$referer '
+      'ua=${ua.split(' ').first} extra=$extraHeaders',
+    );
     final extras = audioFilterExtras(volume);
     player
       ?..setMediaHeader(
         userAgent: ua,
         // mpv cannot clear referer option
-        headers: {'Referer': ?referer},
+        headers: {'Referer': ?referer, ...?extraHeaders},
       )
       ..open(Media(url, start: _start, extras: extras));
     _start = null;
   }
 
   PlayerStatus _playerStatus = .paused;
+
+  /// 取流（播放地址）是否失败：弱网/被限速时常见，UI 可据此给"重试"
+  final RxBool playUrlFailed = false.obs;
+
+  /// 播放列表（元数据）是否加载失败：失败时"没有内容只出声音、且不能连播"
+  final RxBool playlistFailed = false.obs;
+
+  bool _retryingPlayUrl = false;
+  bool _playlistLoading = false;
+
+  /// 进度条用总时长：优先播放器真实时长；拿不到时退回条目自带时长，
+  /// 避免弱网首帧把总时长显示成 0 或负数（用户反馈"进度条数值不正常"）。
+  int get displayDuration {
+    if (duration.value > 0) return duration.value;
+    final parts = audioItem.value?.parts;
+    if (parts != null && parts.isNotEmpty) {
+      final d = parts.first.duration.toInt();
+      if (d > 0) return d;
+    }
+    return 0;
+  }
+
   void _updatePlaybackState({Duration? position, String? debugLabel}) {
     videoPlayerServiceHandler?.onUpdateState(
       _playerStatus,
       false,
       false,
-      position: position ?? player!.state.position,
+      position: position ?? player?.state.position ?? Duration.zero,
       speed: speed,
       debugLabel: debugLabel,
+      // 多音频实例时只有控制权持有者的状态被采纳（否则后台非播放实例会把
+      // 通知栏反复改成暂停/播放）
+      owner: this,
     );
   }
 
@@ -602,6 +1119,9 @@ class AudioController extends GetxController
       stream.position.listen((position) {
         if (isDragging) return;
         final seconds = position.inSeconds;
+        // 弱网/被限速时 media_kit 可能吐出负值或回跳的瞬时位置，直接写进
+        // RxInt 会让进度条数字乱跳（用户反馈"进度条数值显示不正常"）。
+        if (seconds < 0) return;
         final prevSeconds = this.position.value;
         if (seconds != prevSeconds) {
           if (seconds == 0 && _playerStatus.isPlaying) {
@@ -625,7 +1145,12 @@ class AudioController extends GetxController
         }
       }),
       stream.duration.listen((duration) {
-        this.duration.value = duration.inSeconds;
+        // 只在拿到有效时长时更新：弱网下会先来 0（甚至负值），覆盖上去会让
+        // 进度条总时长变成 0/负数，表现为"数值显示不正常"。
+        final seconds = duration.inSeconds;
+        if (seconds > 0) {
+          this.duration.value = seconds;
+        }
       }),
       stream.playing.listen((playing) {
         isBackgroundPlaying = playing;
@@ -665,6 +1190,26 @@ class AudioController extends GetxController
           // 避免两处各写一遍导致行为不一致（离线列表回绕只在方法里）。
           _handleCompletion();
         }
+      }),
+      // 诊断：mpv 自身的 error/warn 日志（release 下 print 不可见）
+      if (_diagOn)
+        player!.stream.log.listen((log) {
+          if (log.level == 'error' ||
+              log.level == 'fatal' ||
+              log.level == 'warn') {
+            _diag('mpv ${log.level}: ${log.prefix}: ${log.text}');
+          }
+        }),
+      // 媒体打开失败 / 播放中途断流（弱网、被限速很常见）：自动重试一次取流。
+      // 以前这里没有监听，失败是完全静默的——页面有内容但点不动、也没有提示。
+      stream.error.listen((e) {
+        debugPrint('[PL_AUDIO_LOAD] player error: $e');
+        _diag('player error: $e');
+        if (_retryingPlayUrl || isClosed) return;
+        _retryingPlayUrl = true;
+        Future.delayed(const Duration(seconds: 1), () {
+          if (!isClosed && !isPlaying()) retryPlay();
+        });
       }),
     ];
   }
@@ -919,6 +1464,18 @@ class AudioController extends GetxController
     if (shutdownTimerService.isWaiting) {
       shutdownTimerService.handleWaiting();
     } else {
+      // 弱网/被限速：列表可能一直没加载出来 → 播完就停、也不能连播。
+      // 先补拉一次；成功后继续往后播（此时 _playerStatus 仍是 completed）。
+      if (playlist == null && offlineEntries == null) {
+        if (!_playlistLoading) {
+          _queryPlayList(isInit: true).then((_) {
+            if (!isClosed && playlist != null && _playerStatus.isCompleted) {
+              if (!playNext(nextPart: true)) playNext();
+            }
+          });
+        }
+        if (relatedVideos.isEmpty) loadRelated();
+      }
       switch (playMode.value) {
         case PlayRepeat.pause:
           break;
@@ -1132,6 +1689,13 @@ class AudioController extends GetxController
     hasFav.value = false;
     audioTitle.value = title;
     audioArtist.value = ownerName;
+    // 连播（相关推荐）同样要即时更新标签栏标题：过去这里只更新了音频页
+    // 与媒体通知，标签栏标题要等下一次 _updateCurrItem 才变。
+    TabHostController.instance?.updateCurrentTabTitle(
+      title,
+      isAudio: true,
+      audioOid: tabOid.toInt(),
+    );
     _mediaControl.updateMetadata(
       title: title,
       artist: ownerName,
@@ -1152,14 +1716,15 @@ class AudioController extends GetxController
             'duration': duration,
           }),
           cid,
-          'audio_related',
+          // 统一 heroTag（同 _updateCurrItem），多实例下才能精确对应到本实例
+          hashCode.toString(),
         );
       } catch (_) {}
       // 安卓通知兜底：直接更新 mediaItem（不依赖类型分支）
       try {
         handler.setMediaItem(
           MediaItem(
-            id: '${cid}audio_related',
+            id: '${cid}$hashCode',
             title: title,
             artist: ownerName,
             duration: Duration(seconds: duration),
@@ -1194,6 +1759,11 @@ class AudioController extends GetxController
   }
 
   bool playNext({bool nextPart = false}) {
+    // 弱网/被限速：首次列表请求可能还没成功（playlist == null），此时连播
+    // 会直接失效（播完就停）。这里触发一次补拉，本次仍走后续兜底逻辑。
+    if (playlist == null && offlineEntries == null && !_playlistLoading) {
+      _queryPlayList(isInit: true);
+    }
     if (nextPart) {
       if (audioItem.value case DetailItem(:final parts)) {
         if (parts.length > 1) {
@@ -1205,6 +1775,16 @@ class AudioController extends GetxController
             this.subId = [nextPart.subId];
             // 分P 切换后同步 bvid（保持 aid/bvid 一致）
             bvid = IdUtils.av2bv(nextPart.oid.toInt());
+            // 分P 名称即时更新（音频页标题 + 标签栏标题）：BKArcPart 带 title，
+            // 不要等 _queryPlayUrl 成功——否则分P 连播时标题停在上一集。
+            if (nextPart.title.isNotEmpty) {
+              audioTitle.value = nextPart.title;
+              TabHostController.instance?.updateCurrentTabTitle(
+                nextPart.title,
+                isAudio: true,
+                audioOid: tabOid.toInt(),
+              );
+            }
             _queryPlayUrl().then((res) {
               if (res) {
                 _videoDetailController = null;
@@ -1256,10 +1836,13 @@ class AudioController extends GetxController
     // 切歌后同步 bvid（列表项可能无 bvid，用 oid 反推），
     // 否则标题点击跳转会 aid/bvid 不匹配 → 视频不存在(-404)
     bvid = IdUtils.av2bv(item.oid.toInt());
+    // ⚠️ 标题/通知/标签栏先"乐观更新"：_queryPlayUrl 是网络请求（数百 ms
+    // 到数秒，失败时成功分支根本不执行）。过去 _updateCurrItem 放在回调里，
+    // 连播时标签栏标题要等取流成功才变 —— 用户反馈"经常不能及时更新"。
+    _updateCurrItem(audioItem);
     _queryPlayUrl().then((res) {
       if (res) {
         _videoDetailController = null;
-        _updateCurrItem(audioItem);
       }
     });
   }
@@ -1307,6 +1890,12 @@ class AudioController extends GetxController
     // 更新 UI 信息
     audioTitle.value = entry.title;
     audioArtist.value = entry.ownerName ?? '';
+    // 离线切歌同样即时更新标签栏标题（此前只有音频页与通知更新）
+    TabHostController.instance?.updateCurrentTabTitle(
+      entry.title,
+      isAudio: true,
+      audioOid: tabOid.toInt(),
+    );
     if (entry.cover.isNotEmpty) {
       _mediaControl.updateMetadata(
         title: entry.title,
@@ -1328,7 +1917,8 @@ class AudioController extends GetxController
       videoPlayerServiceHandler!.onVideoDetailChange(
         entry,
         entry.cid,
-        'audio_offline',
+        // 同上：统一 heroTag，供 onVideoDetailDispose / syncActiveItem 匹配
+        hashCode.toString(),
       );
     }
   }
@@ -1375,43 +1965,62 @@ class AudioController extends GetxController
     }
   }
 
+  bool _isCurrentPlaylistItem(DetailItem e) {
+    if (e.item.oid != oid) return false;
+    final subs = e.item.subId;
+    if (subs.isEmpty || subId.isEmpty) return true;
+    return subs.any(subId.contains);
+  }
+
+  /// 把「当前播放项」提到播放列表首位（用户要求：任何排序都保持首位）。
+  /// 找不到当前项时保持服务端顺序不动。
+  void _moveCurrentToFirst() {
+    final list = playlist;
+    if (list == null || list.isEmpty) return;
+    final currentIdx = list.indexWhere(_isCurrentPlaylistItem);
+    if (currentIdx == -1) return;
+    if (currentIdx > 0) {
+      // protobuf 的 repeated 字段不保证可写，重建一份再赋值
+      final reordered = <DetailItem>[list[currentIdx]];
+      for (var i = 0; i < list.length; i++) {
+        if (i != currentIdx) reordered.add(list[i]);
+      }
+      playlist = reordered;
+    }
+    index = 0;
+    _updateCurrItem(playlist!.first);
+  }
+
   void _sortOfflineEntries() {
-    if (offlineEntries == null || offlineEntries!.isEmpty) return;
+    final list = offlineEntries;
+    if (list == null || list.isEmpty) return;
     final currentAvid = oid.toInt();
+    final currentCid = subId.firstOrNull?.toInt();
+    // 先按 avid+cid 找当前曲目，找不到再退回只按 avid（分P 场景）
+    var currentIdx = currentCid == null
+        ? -1
+        : list.indexWhere((e) => e.avid == currentAvid && e.cid == currentCid);
+    if (currentIdx == -1) {
+      currentIdx = list.indexWhere((e) => e.avid == currentAvid);
+    }
+    final BiliDownloadEntryInfo? current = currentIdx != -1
+        ? list[currentIdx]
+        : null;
+    var rest = List.of(list);
+    if (current != null) rest.removeAt(currentIdx);
     switch (order) {
       case ListOrder.ORDER_REVERSE:
-        offlineEntries = offlineEntries!.reversed.toList();
+        rest = rest.reversed.toList();
         break;
       case ListOrder.ORDER_RANDOM:
-        // 随机排序时当前曲目保持在首位
-        final currentIdx = offlineEntries!.indexWhere(
-          (e) => e.avid == currentAvid,
-        );
-        final BiliDownloadEntryInfo? current = currentIdx != -1
-            ? offlineEntries![currentIdx]
-            : null;
-        if (current != null) {
-          final rest = offlineEntries!
-              .where((e) => e.avid != currentAvid)
-              .toList();
-          rest.shuffle();
-          offlineEntries = [current, ...rest];
-          index = 0;
-        } else {
-          offlineEntries = List.of(offlineEntries!);
-          offlineEntries!.shuffle();
-        }
+        rest.shuffle();
         break;
-      default: // ORDER_NORMAL, NO_ORDER — keep original order
-        return;
+      default: // NO_ORDER / ORDER_NORMAL：保持原顺序
+        break;
     }
-    if (offlineEntries == null) return;
-    final newIndex = offlineEntries!.indexWhere((e) => e.avid == currentAvid);
-    if (newIndex != -1) {
-      index = newIndex;
-    } else {
-      index = 0;
-    }
+    // 任何排序都把「当前播放」放回首位
+    offlineEntries = current != null ? [current, ...rest] : rest;
+    index = 0;
   }
 
   /// 歌词缓存键
@@ -2018,7 +2627,13 @@ class AudioController extends GetxController
         final nextText = idx + 1 < result.syncedLines!.length
             ? result.syncedLines![idx + 1].text
             : null;
-        videoPlayerServiceHandler?.updateLyrics(text, nextLyrics: nextText);
+        videoPlayerServiceHandler?.updateLyrics(
+          text,
+          nextLyrics: nextText,
+          // 多音频实例：只有控制权持有者能写通知歌词，否则暂停中的实例会把
+          // 正在播放的那条通知标题改成自己的歌词
+          owner: this,
+        );
         DesktopLyricsService.setLyrics(
           currentLine: text,
           nextLine: nextText ?? '',
@@ -2181,14 +2796,16 @@ class AudioController extends GetxController
       ..onPause = null
       ..isPlaying = null
       ..reset();
-    videoPlayerServiceHandler
-      ?..onPlay = null
-      ..onPause = null
-      ..onSeek = null
-      ..onSkipToNext = null
-      ..onSkipToPrevious = null
-      ..onVideoDetailDispose(hashCode.toString())
-      ..clearIfNeeded();
+    // 先注销再处理通知：控制权是调用时解析的，注销后会自动落到其它还活着
+    // 的音频标签（没有则回退视频播放器）——不再出现"关掉一个标签，通知栏
+    // 按钮全失灵"。
+    _unregisterLive();
+    videoPlayerServiceHandler?.onVideoDetailDispose(hashCode.toString());
+    // 只有确实没有其它音频实例时才清空通知；否则会把正在播放的另一个
+    // 音频标签的通知一起清掉。
+    if (liveInstances.isEmpty) {
+      videoPlayerServiceHandler?.clearIfNeeded();
+    }
     _subscriptions?.forEach((e) => e.cancel());
     _subscriptions?.clear();
     _subscriptions = null;

@@ -457,7 +457,12 @@ class FavDetailController
       if (itemCid == null || itemBvid == null) return null;
       final avid = IdUtils.bv2av(itemBvid);
       return ds.downloadList.firstWhereOrNull(
-        (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+        // 仅音频缓存（mediaType 3）不进视频离线列表
+        (e) =>
+            e.avid == avid &&
+            e.cid == itemCid &&
+            e.isCompleted &&
+            e.mediaType != 3,
       );
     }).whereType<BiliDownloadEntryInfo>().toList();
     collectionCachedEntries.value = cached;
@@ -479,7 +484,11 @@ class FavDetailController
         final avid = m['avid'] as int;
         final ci = m['cid'] as int;
         final found = ds.downloadList.firstWhereOrNull(
-          (e) => e.avid == avid && e.cid == ci && e.isCompleted,
+          (e) =>
+              e.avid == avid &&
+              e.cid == ci &&
+              e.isCompleted &&
+              e.mediaType != 3,
         );
         if (found != null) entries.add(found);
       }
@@ -567,7 +576,8 @@ class FavDetailController
       if (isPlayFromCache.value) {
         SmartDialog.showToast('正在查找本地缓存...');
         final cached = await _findLocalCache(avid, cid);
-        if (cached != null) {
+        // 仅音频缓存（mediaType 3）没有视频画面，不能当视频播
+        if (cached != null && cached.mediaType != 3) {
           _ensureCollectionCachedEntries();
           PageUtils.toVideoPage(
             bvid: item.bvid,
@@ -622,6 +632,9 @@ class FavDetailController
       return;
     }
 
+    // 离线优先但没缓存：照常进在线音频页，同时边播边缓存当前音频
+    var autoCacheAudio = false;
+
     // 离线优先模式
     if (isPlayFromCache.value) {
       final cached = await _findLocalCache(avid, cid);
@@ -634,7 +647,7 @@ class FavDetailController
           // Type 1: 合并 mp4，把整个视频当音频播
           audioPath = '$fileDir/${PathUtils.videoNameType1}';
         } else {
-          // Type 2: dash 分离，单独音频文件
+          // Type 2/3: dash 分离，单独音频文件
           audioPath = '$fileDir/${PathUtils.audioNameType2}';
         }
         final audioFile = File(audioPath);
@@ -651,7 +664,7 @@ class FavDetailController
             cover: cached.cover,
             ownerName: cached.ownerName,
             ownerMid: cached.ownerId,
-            offlineEntries: collectionCachedEntries.toList(),
+            offlineEntries: _audioOfflineEntries(),
           );
           return;
         }
@@ -672,27 +685,62 @@ class FavDetailController
             cover: cached.cover,
             ownerName: cached.ownerName,
             ownerMid: cached.ownerId,
-            offlineEntries: collectionCachedEntries.toList(),
+            offlineEntries: _audioOfflineEntries(),
           );
           return;
         }
         SmartDialog.showToast('本地音频缓存不存在');
         return;
       }
-      SmartDialog.showToast('本地无缓存，尝试在线播放...');
+      SmartDialog.showToast('本地无缓存，尝试在线播放并自动缓存音频...');
+      autoCacheAudio = true;
     }
 
-    // 在线播放
+    // 在线播放：播放列表必须和「视频页 → 听音频」一致，否则只有当前一条。
+    // 播放全部时走收藏夹列表（id = 收藏夹 id / extraId = 2 / USER_FAVOURITE），
+    // 否则保持 UP 投稿列表。
+    final folder = folderInfo.value;
+    final playAll = isPlayAll.value && folder.id != 0;
     AudioPage.toAudioPage(
       oid: avid,
       itemType: 1,
+      id: playAll ? folder.id : null,
+      extraId: playAll ? SourceType.fav.extraId : null,
+      from: playAll
+          ? PlaylistSource.USER_FAVOURITE
+          : PlaylistSource.UP_ARCHIVE,
       subId: [cid],
-      from: PlaylistSource.UP_ARCHIVE,
+      bvid: item.bvid,
       title: item.title,
       cover: item.cover,
       ownerName: item.upper?.name,
       ownerMid: item.upper?.mid,
+      autoCacheAudio: autoCacheAudio,
+      autoCacheCid: autoCacheAudio ? cid : null,
     );
+  }
+
+  /// 音频离线播放列表：完整视频缓存 + 仅音频缓存。
+  /// 仅音频条目没有视频画面，不能进视频页的离线列表，但音频页需要它们。
+  List<BiliDownloadEntryInfo> _audioOfflineEntries() {
+    final ds = Get.find<DownloadService>();
+    final entries = [...collectionCachedEntries];
+    // downloadList 是全局缓存表：只挑当前收藏夹里的音频，避免串夹
+    final items = _loadFavCacheItems() ?? switch (loadingState.value) {
+      Success(:final response) => response,
+      _ => null,
+    };
+    final avids = items
+        ?.where((e) => e.bvid != null)
+        .map((e) => IdUtils.bv2av(e.bvid!))
+        .toSet();
+    for (final e in ds.downloadList) {
+      if (!e.isCompleted || e.mediaType != 3) continue;
+      if (avids != null && avids.isNotEmpty && !avids.contains(e.avid)) continue;
+      if (entries.any((c) => c.cid == e.cid)) continue;
+      entries.add(e);
+    }
+    return entries;
   }
 
   void _ensureCollectionCachedEntries() {
@@ -718,7 +766,11 @@ class FavDetailController
           if (itemCid == null || itemBvid == null) return null;
           final avid = IdUtils.bv2av(itemBvid);
           return ds.downloadList.firstWhereOrNull(
-            (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+            (e) =>
+                e.avid == avid &&
+                e.cid == itemCid &&
+                e.isCompleted &&
+                e.mediaType != 3,
           );
         }).whereType<BiliDownloadEntryInfo>().toList();
         if (matched.length > collectionCachedEntries.length) {
@@ -761,7 +813,11 @@ class FavDetailController
         if (itemCid == null || itemBvid == null) return null;
         final avid = IdUtils.bv2av(itemBvid);
         return ds.downloadList.firstWhereOrNull(
-          (e) => e.avid == avid && e.cid == itemCid && e.isCompleted,
+          (e) =>
+              e.avid == avid &&
+              e.cid == itemCid &&
+              e.isCompleted &&
+              e.mediaType != 3,
         );
       }).whereType<BiliDownloadEntryInfo>().toList();
       if (matched.isNotEmpty) {

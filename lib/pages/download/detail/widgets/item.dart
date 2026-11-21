@@ -14,6 +14,9 @@ import 'package:PiliPlus/models/common/video/video_quality.dart';
 import 'package:PiliPlus/models_new/download/bili_download_entry_info.dart';
 import 'package:PiliPlus/pages/common/multi_select/base.dart';
 import 'package:PiliPlus/pages/download/downloading/view.dart';
+import 'package:PiliPlus/pages/audio/view.dart' show AudioPage;
+import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pbenum.dart'
+    show PlaylistSource;
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
@@ -112,6 +115,30 @@ class DetailItem extends StatelessWidget {
             return;
           }
           if (entry.isCompleted) {
+            // 仅音频缓存（mediaType 3）：没有视频画面，直接进离线音频页
+            if (entry.mediaType == 3) {
+              final fileDir = entry.typeTag != null
+                  ? path.join(entry.entryDirPath, entry.typeTag!)
+                  : entry.entryDirPath;
+              final audioPath = path.join(fileDir, PathUtils.audioNameType2);
+              if (!File(audioPath).existsSync()) {
+                SmartDialog.showToast('本地音频文件不存在');
+                return;
+              }
+              AudioPage.toAudioPage(
+                oid: entry.avid,
+                itemType: 1,
+                subId: [cid!],
+                from: PlaylistSource.UP_ARCHIVE,
+                audioUrl: audioPath,
+                title: entry.title,
+                cover: entry.cover,
+                ownerName: entry.ownerName,
+                ownerMid: entry.ownerId,
+                offlineEntries: [entry],
+              );
+              return;
+            }
             await PageUtils.toVideoPage(
               aid: entry.avid,
               cid: cid!,
@@ -203,6 +230,13 @@ class DetailItem extends StatelessWidget {
                     PBadge(
                       text: VideoQuality.fromCode(videoQuality).shortDesc,
                       right: 6.0,
+                      top: 6.0,
+                      type: PBadgeType.gray,
+                    )
+                  else if (entry.mediaType == 3)
+                    const PBadge(
+                      text: '仅音频',
+                      left: 6.0,
                       top: 6.0,
                       type: PBadgeType.gray,
                     ),

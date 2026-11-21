@@ -31,34 +31,44 @@ Future<void> exitDesktopFullScreen() async {
   }
 }
 
+/// 上一次下发的方向集合，用于跳过重复调用。
+///
+/// 这个缓存只在「同一个策略被重复下发」时省一次通道调用；一旦 Activity 的
+/// 实际方向被别处改过而缓存仍命中，就会漏掉一次必须的下发（屏幕被钉在某个
+/// 单方向上）。所以恢复全局策略的路径（退出全屏/销毁播放器）必须用
+/// `force: true` 绕过缓存。
 List<DeviceOrientation>? _lastOrientation;
-Future<void>? _setPreferredOrientations(List<DeviceOrientation> orientations) {
-  if (_lastOrientation == orientations) {
+Future<void>? _setPreferredOrientations(
+  List<DeviceOrientation> orientations, {
+  bool force = false,
+}) {
+  if (!force && _lastOrientation == orientations) {
     return null;
   }
   _lastOrientation = orientations;
   return SystemChrome.setPreferredOrientations(orientations);
 }
 
-Future<void>? portraitUpMode() {
-  return _setPreferredOrientations(const [.portraitUp]);
+Future<void>? portraitUpMode({bool force = false}) {
+  return _setPreferredOrientations(const [.portraitUp], force: force);
 }
 
-Future<void>? portraitDownMode() {
-  return _setPreferredOrientations(const [.portraitDown]);
+Future<void>? portraitDownMode({bool force = false}) {
+  return _setPreferredOrientations(const [.portraitDown], force: force);
 }
 
-Future<void>? landscapeLeftMode() {
-  return _setPreferredOrientations(const [.landscapeLeft]);
+Future<void>? landscapeLeftMode({bool force = false}) {
+  return _setPreferredOrientations(const [.landscapeLeft], force: force);
 }
 
-Future<void>? landscapeRightMode() {
-  return _setPreferredOrientations(const [.landscapeRight]);
+Future<void>? landscapeRightMode({bool force = false}) {
+  return _setPreferredOrientations(const [.landscapeRight], force: force);
 }
 
-Future<void>? fullMode() {
+Future<void>? fullMode({bool force = false}) {
   return _setPreferredOrientations(
     const [.portraitUp, .portraitDown, .landscapeLeft, .landscapeRight],
+    force: force,
   );
 }
 

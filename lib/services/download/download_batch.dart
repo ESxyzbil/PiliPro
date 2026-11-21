@@ -174,12 +174,14 @@ Future<({int queued, int restored})> queueBatchDownload(
     final cid = target.cid;
     final bvid = target.bvid;
 
-    // 已存在于 downloadList（已完成）
-    if (ds.downloadList.any((e) => e.cid == cid && e.isCompleted)) {
+    // 已存在于 downloadList（已完成；仅音频条目不挡完整视频缓存）
+    if (ds.downloadList.any(
+      (e) => e.cid == cid && e.isCompleted && e.mediaType != 3,
+    )) {
       continue;
     }
     // 已存在于等待队列
-    if (ds.waitDownloadQueue.any((e) => e.cid == cid)) {
+    if (ds.waitDownloadQueue.any((e) => e.cid == cid && e.mediaType != 3)) {
       continue;
     }
 
@@ -196,7 +198,8 @@ Future<({int queued, int restored})> queueBatchDownload(
           )
             ..pageDirPath = p.join(basePath, target.avid.toString())
             ..entryDirPath = entryDirPath;
-          if (existing.isCompleted) {
+          // 仅音频缓存（mediaType 3）不算已缓存视频，仍要排队下完整视频
+          if (existing.isCompleted && existing.mediaType != 3) {
             if (ds.downloadList.indexWhere((e) => e.cid == cid) < 0) {
               ds.downloadList.add(existing);
             }

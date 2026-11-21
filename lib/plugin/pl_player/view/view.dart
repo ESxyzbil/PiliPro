@@ -1258,14 +1258,178 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
               ? const Duration(milliseconds: 300)
               : null,
         )
-        ..onLongPressStart = ((_) =>
-            plPlayerController.setLongPressStatus(true))
-        ..onLongPressEnd = ((_) => plPlayerController.setLongPressStatus(false))
-        ..onLongPressCancel = (() =>
-            plPlayerController.setLongPressStatus(false));
+        ..onLongPressStart = ((_) {
+          _speedAdjustEntered = false;
+          _speedAdjustEntryDx = 0;
+          _lpCapsuleShift.value = Offset.zero;
+          plPlayerController.endLongPressSpeedAdjust();
+          plPlayerController.setLongPressStatus(true);
+        })
+        ..onLongPressMoveUpdate = _onLongPressMoveUpdate
+        ..onLongPressEnd = ((_) {
+          _speedAdjustEntered = false;
+          _lpCapsuleShift.value = Offset.zero;
+          plPlayerController.endLongPressSpeedAdjust();
+          plPlayerController.setLongPressStatus(false);
+        })
+        ..onLongPressCancel = (() {
+          _speedAdjustEntered = false;
+          _lpCapsuleShift.value = Offset.zero;
+          plPlayerController.endLongPressSpeedAdjust();
+          plPlayerController.setLongPressStatus(false);
+        });
+
+  /// 长按倍速中：手指下滑超过这个距离后，左右滑动连续调节速率
+  static const double _kSpeedAdjustEntryDy = 90;
+
+  /// 胶囊跟随手指的位移（已做阻尼软限幅）
+  final Rx<Offset> _lpCapsuleShift = Offset.zero.obs;
+
+  /// 胶囊最大跟手位移：横向/纵向都很克制，避免飘太远
+  static const double _kCapsuleMaxShiftX = 14;
+  static const double _kCapsuleMaxShiftY = 9;
+
+  /// 阻尼系数（px）：越大越「沉」，全程都在衰减；横向比纵向更重
+  static const double _kCapsuleDampX = 95;
+  static const double _kCapsuleDampY = 60;
+
+  /// 全程阻尼：位移 = max · (1 − e^(−|d|/k))
+  /// 从第一个像素起导数就小于 1（越拖越沉），不会出现一段线性随动
+  Offset _dampCapsuleShift(Offset raw) {
+    double damp(double v, double max, double k) {
+      final a = v.abs();
+      if (a == 0) return 0;
+      final d = max * (1 - math.exp(-a / k));
+      return v.isNegative ? -d : d;
+    }
+
+    return Offset(
+      damp(raw.dx, _kCapsuleMaxShiftX, _kCapsuleDampX),
+      damp(raw.dy, _kCapsuleMaxShiftY, _kCapsuleDampY),
+    );
+  }
+
+  /// 是否已经进入「横滑调速率」
+  bool _speedAdjustEntered = false;
+
+  /// 进入调节时的横向位置（作为左右位移的零点）
+  double _speedAdjustEntryDx = 0;
+
+  void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
+    final ctr = plPlayerController;
+    if (!ctr.longPressStatus.value) return;
+    final offset = details.offsetFromOrigin;
+    // 胶囊从出现那一刻就跟着手指走（全方向、带阻尼）
+    _lpCapsuleShift.value = _dampCapsuleShift(offset);
+    if (!_speedAdjustEntered) {
+      // 下滑到一定区域才进入调速，避免刚开始长按就误触
+      if (offset.dy < _kSpeedAdjustEntryDy) return;
+      _speedAdjustEntered = true;
+      _speedAdjustEntryDx = offset.dx;
+      // 从基准滑到上/下限的横向距离：跟随屏幕宽度，避免大屏拖不动
+      ctr.beginLongPressSpeedAdjust(
+        rangePx: (maxWidth * 0.45).clamp(180.0, 520.0).toDouble(),
+      );
+      return;
+    }
+    ctr.adjustLongPressSpeed(offset.dx - _speedAdjustEntryDx);
+  }
+
   late final ImmediateTapGestureRecognizer _tapGestureRecognizer;
   late final DoubleTapGestureRecognizer _doubleTapGestureRecognizer;
   late final PlayerScaleGestureRecognizer _scaleGestureRecognizer;
+
+  /// 长按倍速胶囊：出现即可跟手（全方向、阻尼），进入调速时轻震 + 回弹上浮
+  /// + 横向拉伸 + 文字淡出淡入。
+  Widget _longPressSpeedToast() {
+    return IgnorePointer(
+      ignoring: true,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: FractionalTranslation(
+          translation: isFullScreen
+              ? const Offset(0.0, 1.2)
+              : const Offset(0.0, 0.8),
+          child: Obx(() {
+            final ctr = plPlayerController;
+            final visible = ctr.longPressStatus.value;
+            final adjusting = ctr.longPressAdjusting.value;
+            final shift = _lpCapsuleShift.value;
+            final speed = adjusting
+                ? ctr.longPressAdjustSpeed.value
+                : ctr.enableAutoLongPressSpeed
+                ? (visible ? ctr.lastPlaybackSpeed : ctr.playbackSpeed) * 2
+                : ctr.longPressSpeed;
+            final label = adjusting
+                ? '${speed.toStringAsFixed(2)}× · 左右滑动调节'
+                : '$speed倍速中';
+            return AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              // 跟手位移本身再套一层短时补间：指针事件之间平滑过渡，
+              // 视觉上更「重」，而不是硬贴手指
+              child: TweenAnimationBuilder<Offset>(
+                tween: Tween<Offset>(end: shift),
+                duration: const Duration(milliseconds: 90),
+                curve: Curves.easeOut,
+                builder: (context, value, child) =>
+                    Transform.translate(offset: value, child: child),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: adjusting ? 1.0 : 0.0),
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeOutBack,
+                  // 只做上浮回弹：不要缩放整块，否则文字会被横向拉扁/拉宽
+                  builder: (context, t, child) => Transform.translate(
+                    offset: Offset(0, -7.0 * t),
+                    child: child,
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                    // 加宽靠 padding + 文字本身变长，文字不被拉伸
+                    padding: EdgeInsets.symmetric(
+                      horizontal: adjusting ? 16 : 8,
+                      vertical: adjusting ? 7 : 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0x88000000),
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(adjusting ? 20 : 16),
+                      ),
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(
+                          scale: Tween<double>(
+                            begin: 0.92,
+                            end: 1,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: Text(
+                        label,
+                        key: ValueKey(adjusting),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
 
   StreamSubscription<bool>? _danmakuListener;
 
@@ -1458,43 +1622,7 @@ class _PLVideoPlayerState extends State<PLVideoPlayer>
           ),
 
         /// 长按倍速 toast
-        if (!isLive)
-          IgnorePointer(
-            ignoring: true,
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: FractionalTranslation(
-                translation: isFullScreen
-                    ? const Offset(0.0, 1.2)
-                    : const Offset(0.0, 0.8),
-                child: Obx(
-                  () => AnimatedOpacity(
-                    curve: Curves.easeInOut,
-                    opacity: plPlayerController.longPressStatus.value
-                        ? 1.0
-                        : 0.0,
-                    duration: const Duration(milliseconds: 150),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: const BoxDecoration(
-                        color: Color(0x88000000),
-                        borderRadius: BorderRadius.all(Radius.circular(16)),
-                      ),
-                      child: Obx(
-                        () => Text(
-                          '${plPlayerController.enableAutoLongPressSpeed ? (plPlayerController.longPressStatus.value ? plPlayerController.lastPlaybackSpeed : plPlayerController.playbackSpeed) * 2 : plPlayerController.longPressSpeed}倍速中',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        if (!isLive) _longPressSpeedToast(),
 
         /// 时间进度 toast
         if (!isLive)

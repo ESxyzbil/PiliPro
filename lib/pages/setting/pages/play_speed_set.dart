@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
 import 'package:PiliPlus/common/widgets/view_safe_area.dart';
+import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/switch_item.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/filtering_text.dart';
@@ -26,6 +27,13 @@ class _PlaySpeedPageState extends State<PlaySpeedPage> {
   late double longPressSpeedDefault = Pref.longPressSpeedDefault;
   late List<double> speedList = Pref.speedList;
   late bool enableAutoLongPressSpeed = Pref.enableAutoLongPressSpeed;
+
+  /// 长按倍速「下滑后横滑调速率」：范围 + 手感
+  late double lpSpeedMin = Pref.longPressSpeedMin;
+  late double lpSpeedMax = Pref.longPressSpeedMax;
+  late int lpSpeedCurve = Pref.longPressSpeedCurve;
+
+  static const _curveLabels = ['线性', '平方（低速更稳）', '根号（起步更快）'];
   List<({int id, String title, Icon icon})> sheetMenu = [
     (
       id: 1,
@@ -179,6 +187,86 @@ class _PlaySpeedPageState extends State<PlaySpeedPage> {
     setState(() {});
   }
 
+  Future<void> _showLpRangeDialog() async {
+    var range = RangeValues(lpSpeedMin, lpSpeedMax);
+    final res = await showDialog<RangeValues>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = Theme.of(context);
+          final valueText =
+              '${range.start.toStringAsFixed(2)}× – ${range.end.toStringAsFixed(2)}×';
+          return AlertDialog(
+            title: const Text('长按调速范围'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(valueText, style: theme.textTheme.titleMedium),
+                RangeSlider(
+                  values: range,
+                  min: 0.25,
+                  max: 4,
+                  divisions: 15,
+                  labels: RangeLabels(
+                    '${range.start.toStringAsFixed(2)}×',
+                    '${range.end.toStringAsFixed(2)}×',
+                  ),
+                  onChanged: (v) {
+                    // 两端至少留 0.25× 间距
+                    if (v.end - v.start < 0.25 - 1e-6) return;
+                    setDialogState(() => range = v);
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '长按进入倍速后，手指下滑再左右滑动，在这个范围内连续调速；'
+                  '滑到边缘不会越界。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, range),
+                child: const Text('确定'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (res == null) return;
+    setState(() {
+      lpSpeedMin = res.start;
+      lpSpeedMax = res.end;
+    });
+    Pref.longPressSpeedMin = res.start;
+    Pref.longPressSpeedMax = res.end;
+  }
+
+  Future<void> _showLpCurveDialog() async {
+    final res = await showDialog<int>(
+      context: context,
+      builder: (context) => SelectDialog<int>(
+        title: '长按调速手感',
+        value: lpSpeedCurve,
+        values: [
+          for (var i = 0; i < _curveLabels.length; i++) (i, _curveLabels[i]),
+        ],
+      ),
+    );
+    if (res == null) return;
+    setState(() => lpSpeedCurve = res);
+    Pref.longPressSpeedCurve = res;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -232,6 +320,22 @@ class _PlaySpeedPageState extends State<PlaySpeedPage> {
                 title: const Text('默认长按倍速'),
                 subtitle: Text(longPressSpeedDefault.toString()),
               ),
+            ListTile(
+              title: const Text('长按调速范围'),
+              subtitle: Text(
+                '${lpSpeedMin.toStringAsFixed(2)}× – ${lpSpeedMax.toStringAsFixed(2)}×'
+                '（长按后下滑再左右滑动，可在此范围内连续调速）',
+              ),
+              onTap: _showLpRangeDialog,
+            ),
+            ListTile(
+              title: const Text('长按调速手感'),
+              subtitle: Text(
+                '${_curveLabels[lpSpeedCurve.clamp(0, 2)]}'
+                '（曲线两端自动按上面的范围对齐）',
+              ),
+              onTap: _showLpCurveDialog,
+            ),
             Padding(
               padding: const EdgeInsets.only(
                 left: 14,

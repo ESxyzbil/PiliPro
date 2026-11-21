@@ -21,6 +21,7 @@ import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
+import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -132,10 +133,15 @@ class DownloadService extends GetxService {
     VideoQuality videoQuality,
   ) {
     final cid = page.cid!;
-    if (downloadList.indexWhere((e) => e.cid == cid) != -1) {
+    // 仅音频条目（mediaType 3）不算「已缓存视频」，不拦住完整的视频缓存
+    if (downloadList.indexWhere((e) => e.cid == cid && e.mediaType != 3) !=
+        -1) {
       return;
     }
-    if (waitDownloadQueue.indexWhere((e) => e.cid == cid) != -1) {
+    if (waitDownloadQueue.indexWhere(
+          (e) => e.cid == cid && e.mediaType != 3,
+        ) !=
+        -1) {
       return;
     }
     final pageData = PageInfo(
@@ -192,10 +198,14 @@ class DownloadService extends GetxService {
     VideoQuality quality,
   ) {
     final cid = episode.cid!;
-    if (downloadList.indexWhere((e) => e.cid == cid) != -1) {
+    if (downloadList.indexWhere((e) => e.cid == cid && e.mediaType != 3) !=
+        -1) {
       return;
     }
-    if (waitDownloadQueue.indexWhere((e) => e.cid == cid) != -1) {
+    if (waitDownloadQueue.indexWhere(
+          (e) => e.cid == cid && e.mediaType != 3,
+        ) !=
+        -1) {
       return;
     }
     final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -252,6 +262,64 @@ class DownloadService extends GetxService {
       pageData: null,
     );
     _createDownload(entry);
+  }
+
+  /// 仅缓存音频（不含视频画面）：mediaType = 3。
+  ///
+  /// 场景：收藏夹耳机图标在「离线优先」下点了一个没缓存过的视频 —— 画面走
+  /// 在线音频页播放，同时把当前音频落到本地，下次离线优先就能直接听。
+  Future<void> downloadAudioOnly({
+    required int avid,
+    required int cid,
+    required String bvid,
+    required String title,
+    String cover = '',
+    int? ownerId,
+    String? ownerName,
+    int durationMs = 0,
+  }) async {
+    if (_tasks.containsKey(cid) ||
+        waitDownloadQueue.any((e) => e.cid == cid) ||
+        downloadList.any((e) => e.cid == cid)) {
+      return;
+    }
+    final currentTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final entry = BiliDownloadEntryInfo(
+      // 3 = 仅音频（1 合并 mp4 / 2 dash 音视频）：离线播放只找 audio.m4s
+      mediaType: 3,
+      hasDashAudio: true,
+      isCompleted: false,
+      totalBytes: 0,
+      downloadedBytes: 0,
+      title: title,
+      cover: cover,
+      preferedVideoQuality: Pref.defaultVideoQa,
+      qualityPithyDescription: '音频',
+      guessedTotalBytes: 0,
+      totalTimeMilli: durationMs,
+      danmakuCount: 0,
+      timeUpdateStamp: currentTime,
+      timeCreateStamp: currentTime,
+      avid: avid,
+      bvid: bvid,
+      ownerId: ownerId,
+      ownerName: ownerName,
+      pageData: PageInfo(
+        cid: cid,
+        page: 1,
+        from: '',
+        part: title,
+        vid: bvid,
+        hasAlias: false,
+        tid: 0,
+        width: 0,
+        height: 0,
+        rotate: 0,
+        downloadTitle: '音频已缓存完成',
+        downloadSubtitle: title,
+      ),
+    );
+    await _createDownload(entry);
   }
 
   Future<void> _createDownload(BiliDownloadEntryInfo entry) async {
@@ -445,8 +513,10 @@ class DownloadService extends GetxService {
     final task = _tasks[cid];
     if (task == null) return;
     final entry = task.entry;
+    // 仅音频条目（mediaType == 3）：不拉弹幕、不下载视频画面
+    final audioOnly = entry.mediaType == 3;
     try {
-      if (!await downloadDanmaku(entry: entry)) {
+      if (!audioOnly && !await downloadDanmaku(entry: entry)) {
         await _closeTask(cid);
         return;
       }
@@ -460,6 +530,7 @@ class DownloadService extends GetxService {
         ep: entry.ep,
         source: entry.source,
         pageData: entry.pageData,
+        audioOnly: audioOnly,
       );
       if (!_tasks.containsKey(cid)) return;
 
@@ -487,6 +558,21 @@ class DownloadService extends GetxService {
           );
           break;
         case Type2 mediaFileInfo:
+          // 仅音频：视频流留空，只下音频，完成后直接标记已缓存
+          if (audioOnly) {
+            final audio = mediaFileInfo.audio;
+            if (audio == null || audio.isEmpty) {
+              throw StateError('无音频流');
+            }
+            _updateEntryStatus(entry, DownloadStatus.audioDownloading);
+            task.audioManager = DownloadManager(
+              url: audio.first.baseUrl,
+              path: path.join(videoDir.path, PathUtils.audioNameType2),
+              onReceiveProgress: (p, t) => _onReceive(entry, p, t),
+              onDone: ([Object? e]) => _onAudioDone(entry, e),
+            );
+            break;
+          }
           task.videoManager = DownloadManager(
             url: mediaFileInfo.video.first.baseUrl,
             path: path.join(videoDir.path, PathUtils.videoNameType2),
@@ -516,8 +602,20 @@ class DownloadService extends GetxService {
       }
     } catch (e) {
       if (_tasks.containsKey(cid)) {
-        _updateEntryStatus(entry, DownloadStatus.failPlayUrl);
-        await _closeTask(cid);
+        if (audioOnly) {
+          // 仅音频缓存是后台派生条目：取不到独立音频流就清掉，不像视频那样
+          // 留在队列里反复重试、在缓存页显示一个永远失败的条目
+          await _closeTask(cid);
+          await deleteDownload(
+            entry: entry,
+            removeQueue: true,
+            removeList: true,
+            downloadNext: false,
+          );
+        } else {
+          _updateEntryStatus(entry, DownloadStatus.failPlayUrl);
+          await _closeTask(cid);
+        }
       }
       if (kDebugMode) {
         debugPrint('get download url error: $e');
@@ -658,8 +756,11 @@ class DownloadService extends GetxService {
     if (task == null) {
       return;
     }
-    if (task.videoManager?.status != DownloadStatus.completed) {
-      return;
+    // 仅音频条目没有 videoManager，音频下完即算完成
+    if (task.videoManager case final video?) {
+      if (video.status != DownloadStatus.completed) {
+        return;
+      }
     }
     if (error == null) {
       entry.downloadedBytes = entry.totalBytes;

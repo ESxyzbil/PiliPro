@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
+import 'package:PiliPlus/grpc/bilibili/app/listener/v1.pbenum.dart' show ListOrder;
 import 'package:PiliPlus/models/common/super_chat_type.dart';
 import 'package:PiliPlus/models/common/video/subtitle_pref_type.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
@@ -13,6 +14,7 @@ import 'package:PiliPlus/plugin/pl_player/models/fullscreen_mode.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
+import 'package:PiliPlus/utils/extension/list_order_ext.dart' show ListOrderExt;
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -296,6 +298,13 @@ List<SettingsModel> get playSettings => [
         .put(VideoBoxKey.playRepeat, value.index)
         .whenComplete(setState),
   ),
+  NormalModel(
+    title: '音频默认播放顺序',
+    subtitle: '音频页/听视频页每次打开时使用的排序；音频页右上角排序菜单里的锁图标也能直接设置',
+    leading: const Icon(Icons.sort_outlined),
+    getSubtitle: () => '当前：${_audioListOrder.title}',
+    onTap: _showAudioListOrderDialog,
+  ),
   const SwitchModel(
     title: '播放器设置仅对当前生效',
     subtitle: '弹幕、字幕及部分设置中没有的设置除外',
@@ -326,11 +335,33 @@ Future<void> _showSubtitleDialog(
   }
 }
 
-Future<void> _showFullScreenModeDialog(
+ListOrder get _audioListOrder => ListOrder.values[Pref.audioListOrder.clamp(
+  0,
+  ListOrder.values.length - 1,
+)];
+
+Future<void> _showAudioListOrderDialog(
   BuildContext context,
   VoidCallback setState,
 ) async {
-  final res = await showDialog<FullScreenMode>(
+  final res = await showDialog<ListOrder>(
+    context: context,
+    builder: (context) => SelectDialog<ListOrder>(
+      title: '音频默认播放顺序',
+      value: _audioListOrder,
+      values: ListOrder.values.map((e) => (e, e.title)).toList(),
+    ),
+  );
+  if (res != null) {
+    Pref.audioListOrder = res.value;
+    setState();
+  }
+}
+
+Future<void> _showFullScreenModeDialog(
+  BuildContext context,
+  VoidCallback setState,
+) async {  final res = await showDialog<FullScreenMode>(
     context: context,
     builder: (context) => SelectDialog<FullScreenMode>(
       title: '默认全屏方向',

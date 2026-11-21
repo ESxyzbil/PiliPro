@@ -507,6 +507,26 @@ class TabHostController extends GetxController {
     return -1;
   }
 
+  /// 预测性返回手势中「松手后将要露出的页面」在 MainApp 标签 Stack 里的
+  /// 坐标：0 = 主内容页，i >= 1 = tabs[i - 1]；-1 = 无有效目标。
+  ///
+  /// 必须与 [close] 的选中逻辑**完全一致**：
+  /// - 有来源标签（replaceCurrent 保活的下层）→ 回到来源层；
+  /// - 否则沿标签条顺序取前一个**可见**标签（跳过 hidden 保活层）；
+  /// - 前面没有可见标签（含当前是第一个标签）→ 回主内容页。
+  /// 之前渲染层用的是「标签数 > 1 就选 index>0 ? index : 1」，第一个标签
+  /// 返回时会渐显**第二个标签**而不是主页（用户反馈的核心 bug）。
+  int closeTargetStackIndex(int index) {
+    if (index < 0 || index >= tabs.length) return -1;
+    final source = tabs[index].source;
+    if (source != null) {
+      final srcIdx = tabs.indexOf(source);
+      if (srcIdx >= 0) return srcIdx + 1;
+    }
+    final next = _visibleNeighborForClose(index);
+    return next >= 0 ? next + 1 : 0;
+  }
+
   /// 保证 currentIndex 恒为合法值：-1（主内容页）或指向**可见**标签。
   /// ⚠️ 任何改动 tabs（移除/插入/隐藏）之后都必须调用：否则 currentIndex
   /// 可能落在 hidden 保活层（渲染透明 → 整页空白）、越界（Stack 无可见层

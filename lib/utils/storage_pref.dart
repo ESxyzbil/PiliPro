@@ -1054,6 +1054,27 @@ abstract final class Pref {
   static double get longPressSpeedDefault =>
       _video.get(VideoBoxKey.longPressSpeedDefault, defaultValue: 3.0);
 
+  /// 长按倍速「横滑调速率」的可调范围下限
+  static double get longPressSpeedMin =>
+      _video.get(VideoBoxKey.longPressSpeedMin, defaultValue: 0.5);
+
+  static set longPressSpeedMin(double value) =>
+      _video.put(VideoBoxKey.longPressSpeedMin, value);
+
+  /// 长按倍速「横滑调速率」的可调范围上限
+  static double get longPressSpeedMax =>
+      _video.get(VideoBoxKey.longPressSpeedMax, defaultValue: 4.0);
+
+  static set longPressSpeedMax(double value) =>
+      _video.put(VideoBoxKey.longPressSpeedMax, value);
+
+  /// 调速手感：0=线性 1=平方 2=根号
+  static int get longPressSpeedCurve =>
+      _video.get(VideoBoxKey.longPressSpeedCurve, defaultValue: 0);
+
+  static set longPressSpeedCurve(int value) =>
+      _video.put(VideoBoxKey.longPressSpeedCurve, value);
+
   static bool get defaultShowComment =>
       _setting.get(SettingBoxKey.defaultShowComment, defaultValue: false);
 
@@ -1166,6 +1187,13 @@ abstract final class Pref {
   static PlayRepeat get audioPlayMode =>
       PlayRepeat.values[_setting.get(SettingBoxKey.audioPlayMode) ??
           PlayRepeat.listOrder.index];
+
+  /// 音频页默认播放顺序（grpc ListOrder 的 value：0 无序 / 1 正序 / 2 倒序 / 3 随机）
+  static int get audioListOrder =>
+      _setting.get(SettingBoxKey.audioListOrder, defaultValue: 1);
+
+  static set audioListOrder(int value) =>
+      _setting.put(SettingBoxKey.audioListOrder, value);
 
   static bool get enablePlayAll =>
       _setting.get(SettingBoxKey.enablePlayAll, defaultValue: true);

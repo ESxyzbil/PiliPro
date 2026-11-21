@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:PiliPlus/pages/tabhost/tab_controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart' show PlPlayerController;
 import 'package:flutter/services.dart';
@@ -28,6 +30,47 @@ PredictiveBackEvent? gTabBackCurrentEvent;
 /// （active/closing 变化）读取它把 controller 起点设为 1-进度——退出动画
 /// 从手势位置续播（而不是从完整状态重播），与路由 pop 的「松手续播」一致。
 double gTabBackCommitProgress = -1.0;
+
+/// 标签预测性返回「整窗卡片」动画进行中（含松手后的 commit / cancel 回弹）。
+///
+/// 状态栏那一段平时由 MainApp 的静态色带承托；手势期间静态色带必须让位，
+/// 改由随手势缩放/裁圆的卡片自己绘制顶部色带——否则卡片缩小时，屏幕最
+/// 上方会残留一条不跟着动的色带，上方的圆角就贴不住屏幕四角（用户反馈）。
+/// 松手后的续播动画约 200ms，这里多留 120ms 再恢复静态色带，避免交接闪烁。
+final ValueNotifier<bool> tabBackWindowAnimating = ValueNotifier<bool>(false);
+
+/// 松手后的续播动画（commit/cancel）结束后恢复静态色带
+Timer? _tabBackWindowSettleTimer;
+
+/// 兜底：系统偶尔只发 start 就不再发 cancel/commit（ColorOS 等），
+/// 若手势进度仍是 0，说明卡片没动过，直接恢复静态色带，避免状态栏
+/// 一直露出背景图。
+Timer? _tabBackWindowIdleTimer;
+
+void _setTabBackWindowAnimating(bool active) {
+  _tabBackWindowSettleTimer?.cancel();
+  _tabBackWindowSettleTimer = null;
+  _tabBackWindowIdleTimer?.cancel();
+  _tabBackWindowIdleTimer = null;
+  if (active) {
+    tabBackWindowAnimating.value = true;
+    _tabBackWindowIdleTimer = Timer(const Duration(seconds: 2), () {
+      _tabBackWindowIdleTimer = null;
+      // 进度仍为 0：没有任何跟手变形，静态色带和卡片色带外观一致，
+      // 可以安全地切回去。
+      if (tabBackGestureProgress.value <= 0.001 &&
+          gTabBackCommitProgress < 0) {
+        tabBackWindowAnimating.value = false;
+      }
+    });
+    return;
+  }
+  if (!tabBackWindowAnimating.value) return;
+  _tabBackWindowSettleTimer = Timer(const Duration(milliseconds: 320), () {
+    _tabBackWindowSettleTimer = null;
+    tabBackWindowAnimating.value = false;
+  });
+}
 
 /// 本次返回手势是否在「视频全屏」状态下消费：true 时只消费手势
 /// （避免系统直接播放返回桌面动画/退出），但**不驱动应用内跟手动画**
@@ -87,6 +130,8 @@ class RootBackGestureObserver with WidgetsBindingObserver {
       // 记录手势起点事件（跟手 Y 位移用 currentTouchY - startTouchY）
       gTabBackStartEvent = backEvent;
       gTabBackCurrentEvent = backEvent;
+      // 整窗卡片动画开始：静态状态栏色带让位给卡片自绘色带
+      _setTabBackWindowAnimating(true);
       return true;
     }
     // 只有根路由（没有任何可 pop 的 route）才消费；
@@ -101,6 +146,11 @@ class RootBackGestureObserver with WidgetsBindingObserver {
   void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
     // 全屏返回手势：不驱动应用内跟手动画（页面不缩小），松手只退出全屏
     if (gTabBackFullScreenGesture) return;
+    // 兜底：看门狗/系统漏事件导致整窗卡片状态被复位后，只要还有进度
+    // 事件就重新进入卡片模式，否则跟手到一半静态色带会突然露出来。
+    if (!tabBackWindowAnimating.value) {
+      _setTabBackWindowAnimating(true);
+    }
     // 标签模式：写入全局手势进度，当前标签页（TabTransition）读取它
     // 做应用内跟手动画（缩小+右移）；系统窗口动画由系统呈现。
     // 非标签模式（根路由返回桌面）：无需应用内驱动。
@@ -117,6 +167,8 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     gTabBackStartEvent = null;
     gTabBackCurrentEvent = null;
     gTabBackFullScreenGesture = false;
+    // 回弹动画播完后恢复静态状态栏色带
+    _setTabBackWindowAnimating(false);
   }
 
   @override
@@ -129,6 +181,7 @@ class RootBackGestureObserver with WidgetsBindingObserver {
       gTabBackCommitProgress = -1.0;
       gTabBackStartEvent = null;
       gTabBackCurrentEvent = null;
+      _setTabBackWindowAnimating(false);
       if (TabHostController.handleBack()) {
         return;
       }
@@ -148,6 +201,8 @@ class RootBackGestureObserver with WidgetsBindingObserver {
     // 清空触摸事件（commit 续播只需要锁定的 progress，不再需要触摸点）
     gTabBackStartEvent = null;
     gTabBackCurrentEvent = null;
+    // commit 滑出动画播完后恢复静态状态栏色带
+    _setTabBackWindowAnimating(false);
     if (handled) {
       return;
     }

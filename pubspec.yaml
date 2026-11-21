@@ -139,7 +139,10 @@ dependencies:
     git:
       url: https://github.com/bggRGjQaUbCoE/flutter_native_device_orientation.git
       ref: master
-  onnxruntime: ^1.4.1
+  # ⚠️ 不要加 onnxruntime 这个 Dart 插件：Dart 侧从未 import 它，但它会给
+  # 每个 ABI 打进一份 libonnxruntime.so，与 sherpa_onnx_android_* 自带的同名库
+  # 冲突（ASR 开启时 Gradle 报 "2 files found with path
+  # 'lib/arm64-v8a/libonnxruntime.so'"）。ASR 用的是 sherpa 随包的那份 ORT。
   package_info_plus: ^10.1.0
   path: ^1.9.1
   path_provider: ^2.1.5

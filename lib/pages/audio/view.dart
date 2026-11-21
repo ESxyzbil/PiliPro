@@ -36,6 +36,7 @@ import 'package:PiliPlus/services/shutdown_timer_service.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
 import 'package:PiliPlus/utils/duration_utils.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
+import 'package:PiliPlus/utils/extension/list_order_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -81,6 +82,8 @@ class AudioPage extends StatefulWidget {
     String? bvid,
     List<BiliDownloadEntryInfo>? offlineEntries,
     bool replaceCurrent = false,
+    bool autoCacheAudio = false,
+    int? autoCacheCid,
   }) {
     final args = {
       'id': ?id,
@@ -98,6 +101,10 @@ class AudioPage extends StatefulWidget {
       'ownerMid': ?ownerMid,
       'bvid': ?bvid,
       'offlineEntries': ?offlineEntries?.map((e) => e.toJson()).toList(),
+      // 离线优先但没缓存时：边播边把当前音频缓存到本地（视频画面留空）
+      if (autoCacheAudio) 'autoCacheAudio': true,
+      // 当前列表里只认这个分P（打开页面那一集），其余按播放列表成员判定
+      'autoCacheCid': ?autoCacheCid,
     };
     // 多页面标签页：音频页也开成标签（手机端始终——竖屏标签栏隐藏、
     // 内容全屏，横竖屏切换零重载；若当前在二级路由先退回主界面）
@@ -111,9 +118,7 @@ class AudioPage extends StatefulWidget {
   }
 }
 
-extension _ListOrderExt on ListOrder {
-  String get title => const ['无序', '正序', '倒序', '随机'][value];
-}
+
 
 class _AudioPageState extends State<AudioPage> {
   late final _controller = _initController();
@@ -207,6 +212,7 @@ class _AudioPageState extends State<AudioPage> {
           ),
           Builder(
             builder: (context) {
+              final colorScheme = Theme.of(context).colorScheme;
               return PopupMenuButton<ListOrder>(
                 tooltip: '排序',
                 icon: const Icon(Icons.sort, size: 22),
@@ -215,9 +221,41 @@ class _AudioPageState extends State<AudioPage> {
                   _controller.onChangeOrder(value);
                   (context as Element).markNeedsBuild();
                 },
-                itemBuilder: (context) => ListOrder.values
-                    .map((e) => PopupMenuItem(value: e, child: Text(e.title)))
-                    .toList(),
+                itemBuilder: (menuContext) => ListOrder.values.map((e) {
+                  // 锁：把这个顺序设成「每次打开音频页的默认顺序」
+                  final isDefault = Pref.audioListOrder == e.value;
+                  return PopupMenuItem<ListOrder>(
+                    value: e,
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(e.title)),
+                        IconButton(
+                          tooltip: isDefault ? '当前默认播放顺序' : '设为默认播放顺序',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          iconSize: 18,
+                          color: isDefault
+                              ? colorScheme.primary
+                              : colorScheme.outline,
+                          icon: Icon(
+                            isDefault ? Icons.lock : Icons.lock_open_outlined,
+                          ),
+                          onPressed: () {
+                            Pref.audioListOrder = e.value;
+                            _controller.onChangeOrder(e);
+                            if (menuContext.mounted) {
+                              Navigator.of(menuContext).pop();
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               );
             },
           ),
@@ -1214,7 +1252,7 @@ class _AudioPageState extends State<AudioPage> {
     Widget child = Obx(
       () => ProgressBar(
         progress: _controller.position.value,
-        total: _controller.duration.value,
+        total: _controller.displayDuration,
         baseBarColor: baseBarColor,
         progressBarColor: primary,
         bufferedBarColor: Colors.transparent,
@@ -1280,7 +1318,7 @@ class _AudioPageState extends State<AudioPage> {
               return const SizedBox.shrink();
             }),
             Obx(() {
-              final duration = _controller.duration.value;
+              final duration = _controller.displayDuration;
               if (_controller.player != null) {
                 return Text(
                   DurationUtils.formatDuration(duration),

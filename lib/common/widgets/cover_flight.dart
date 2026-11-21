@@ -162,9 +162,15 @@ abstract final class CoverFlight {
   /// 飞行落地瞬间与之后各截一帧，用于量“落点 vs 最终位置”的实际差
   static final GlobalKey debugBoundaryKey = GlobalKey();
 
-  /// 标签栏当前（动画中）宽度——实时读它的渲染盒，避免用到过期数值
-  static double get stripLiveWidth =>
-      rectOf(TabHostController.stripKey.currentContext)?.width ?? 0;
+  /// 标签栏当前（动画中）宽度。
+  /// ⚠️ 优先用 MainApp 每帧写入的 `stripCurrentWidth`：标签栏为了让动画"只
+  /// 重绘不重建"，布局宽度恒定取展开态、实际可见宽度靠裁剪实现，渲染盒宽度
+  /// 已不等于可见宽度（读 rect 会恒为 200）。rect 仅作兜底。
+  static double get stripLiveWidth {
+    final live = TabHostController.instance?.stripCurrentWidth;
+    if (live != null) return live;
+    return rectOf(TabHostController.stripKey.currentContext)?.width ?? 0;
+  }
 
   /// 当前正在进行的飞行若要被打断（返回关页）时的回调；
   /// 由飞行控件在动效期间挂上、落地/归位后清除。

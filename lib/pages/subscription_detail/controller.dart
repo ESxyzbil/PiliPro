@@ -249,6 +249,7 @@ class SubDetailController
           return ds.downloadList.firstWhereOrNull(
             (e) =>
                 e.isCompleted &&
+                e.mediaType != 3 &&
                 ((bvid != null && e.bvid == bvid) ||
                     (cid != null && e.cid == cid)),
           );
@@ -278,7 +279,11 @@ class SubDetailController
         final ci = e['cid'];
         if (avid is! int || ci is! int) continue;
         final found = ds.downloadList.firstWhereOrNull(
-          (entry) => entry.avid == avid && entry.cid == ci && entry.isCompleted,
+          (entry) =>
+              entry.avid == avid &&
+              entry.cid == ci &&
+              entry.isCompleted &&
+              entry.mediaType != 3,
         );
         if (found != null) entries.add(found);
       }
@@ -440,7 +445,8 @@ class SubDetailController
         item.cid = cid;
         SmartDialog.showToast('正在查找本地缓存...');
         final cached = await findLocalCache(avid, cid);
-        if (cached != null) {
+        // 仅音频缓存（mediaType 3）没有视频画面，不能当视频播
+        if (cached != null && cached.mediaType != 3) {
           _ensureCollectionCachedEntries(current: cached);
           PageUtils.toVideoPage(
             bvid: bvid,
