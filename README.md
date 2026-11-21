@@ -221,10 +221,11 @@
 
 ## 声明
 
-此项目（PiliPlus）是个人为了兴趣而开发，仅用于学习和测试，请于下载后24小时内删除。
+此项目（PiliPro）是个人为了兴趣而开发，仅用于学习和测试，请于下载后24小时内删除。
 所用API皆从官方网站收集，不提供任何破解内容。
 在此致敬原作者：[guozhigq/pilipala](https://github.com/guozhigq/pilipala)
 在此致敬上游作者：[orz12/PiliPalaX](https://github.com/orz12/PiliPalaX)
+致敬上游作者：[guozhigq/pilipala](https://github.com/bggrgjqaubcoe/piliplus)
 本仓库做了更激进的修改，感谢原作者的开源精神。
 
 感谢使用
@@ -244,12 +245,4 @@
 <br/>
 <br/>
 
-## Star History
-
-<a href="https://star-history.dera.page/#bggRGjQaUbCoE/PiliPlus&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=bggRGjQaUbCoE/PiliPlus&type=Date" />
- </picture>
 </a>
