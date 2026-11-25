@@ -1317,8 +1317,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   void _restorePlaybackSpeed(double speed) {
     void apply() {
       if (longPressStatus.value) return;
-      if (_videoPlayerController?.state.rate != speed) {
+      final prevRate = _videoPlayerController?.state.rate ?? speed;
+      if (prevRate != speed) {
         _videoPlayerController?.setRate(speed);
+        // 弹幕滚动速度也要跟着回来（之前只改播放器速率，弹幕停在长按/调节后的速度）
+        _syncDanmakuSpeed(prevRate, speed);
       }
       _playbackSpeed.value = speed;
       lastPlaybackSpeed = speed;
@@ -1326,6 +1329,25 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     apply();
     Future.delayed(const Duration(milliseconds: 60), apply);
+  }
+
+  /// 弹幕滚动速度跟随播放速率：按 old/new 的比例缩放弹幕时长。
+  ///
+  /// 倍速调的是一条独立的 duration，不重建弹幕控制器的话它不会自己变；
+  /// 长按倍速/横滑调速都走这里，松手时也要靠它把弹幕恢复。
+  void _syncDanmakuSpeed(double oldRate, double newRate) {
+    final c = danmakuController;
+    if (c == null) return;
+    if (oldRate <= 0 || newRate <= 0 || oldRate == newRate) return;
+    try {
+      final option = c.option;
+      c.updateOption(
+        option.copyWith(
+          duration: option.duration * oldRate / newRate,
+          staticDuration: option.staticDuration * oldRate / newRate,
+        ),
+      );
+    } catch (_) {}
   }
 
   // ───────── 长按倍速 · 下滑后横滑调速率 ─────────
@@ -1394,12 +1416,15 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     // 0.05 步进，避免速率抖动
     final speed = ((target * 20).roundToDouble() / 20).clamp(lo, hi).toDouble();
     if (speed == longPressAdjustSpeed.value) return;
+    final prevSpeed = longPressAdjustSpeed.value;
     longPressAdjustSpeed.value = speed;
     // 松手时可能已经作废这一代（_lpAdjustGen 变了），别再覆盖恢复后的速率
     if (gen != _lpAdjustGen || !longPressStatus.value) return;
     // 直接改播放器速率：不要走 setPlaybackSpeed，否则会把临时速率写进
     // 正常倍速（_playbackSpeed）里，松手恢复时对不上
     await _videoPlayerController?.setRate(speed);
+    // 弹幕滚动速度同步跟随（否则只有画面变速、弹幕仍是长按初速）
+    _syncDanmakuSpeed(prevSpeed, speed);
   }
 
   void endLongPressSpeedAdjust() {

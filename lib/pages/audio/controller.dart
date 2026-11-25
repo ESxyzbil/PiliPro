@@ -369,10 +369,12 @@ class AudioController extends GetxController
     _autoCacheCid = args['autoCacheCid'] as int?;
 
     if (offlineEntries != null && offlineEntries!.isNotEmpty) {
-      // 离线模式：不请求 API 播放列表，直接用本地缓存
-      index = offlineEntries!.indexWhere((e) => e.avid == oid.toInt());
-      if (index == -1) index = 0;
-      final entry = offlineEntries![index!];
+      // 离线模式：不请求 API 播放列表，直接用本地缓存。
+      // ⚠️ 先按「设置 → 音频默认播放顺序」排一遍：以前只在手动切换顺序时
+      // 才排序，打开页面时用的是缓存原始顺序，默认顺序等于没生效。
+      _sortOfflineEntries();
+      index = 0;
+      final entry = offlineEntries!.first;
       audioTitle.value = entry.title;
       audioArtist.value = entry.ownerName ?? '';
       if (entry.cover.isNotEmpty) {
