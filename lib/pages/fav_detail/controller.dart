@@ -154,6 +154,9 @@ class FavDetailController
 
     mediaId = int.parse(mediaIdParam ?? Get.parameters['mediaId']!);
     heroTag = heroTagParam ?? Get.parameters['heroTag'];
+    // 路由里的 mediaId 就是权威值：先灌进 folderInfo，避免「缓存先到 /
+    // 在线刷新未完成」的窗口里 folderInfo.id 还是 0，导致播放列表只回当前一条
+    folderInfo.value.id = mediaId;
 
     if (hasLocalFavCache) {
       // 有离线缓存 → 先显示缓存，再静默尝试在线刷新
@@ -325,6 +328,8 @@ class FavDetailController
     }).toList();
     final data = {
       'folderInfo': {
+        'id': folderInfo.value.id,
+        'mid': folderInfo.value.mid,
         'title': folderInfo.value.title,
         'cover': folderInfo.value.cover,
         'mediaCount': folderInfo.value.mediaCount,
@@ -422,6 +427,11 @@ class FavDetailController
       folderInfo.value.title = (fi['title'] as String?) ?? '';
       folderInfo.value.cover = (fi['cover'] as String?) ?? '';
       folderInfo.value.mediaCount = (fi['mediaCount'] as int?) ?? 0;
+      // ⚠️ id 必须恢复：老缓存没写 id、默认值是 0，会导致「播放全部」传
+      // mediaId=0 给视频页/音频页，媒体列表接口只回当前这一条（用户实测：
+      // 手表从缓存进收藏夹，播放列表只有当前视频）。
+      folderInfo.value.id = (fi['id'] as int?) ?? mediaId;
+      folderInfo.value.mid = (fi['mid'] as int?) ?? folderInfo.value.mid;
       if (fi['upper'] != null) {
         folderInfo.value.upper = Owner.fromJson(fi['upper'] as Map<String, dynamic>);
       }
@@ -607,7 +617,9 @@ class FavDetailController
         extraArguments: isPlayAll.value
             ? {
                 'sourceType': SourceType.fav,
-                'mediaId': folder.id,
+                // 用路由里的 mediaId，而不是 folderInfo.id：从本地缓存进入时
+                // 后者可能还是 0（老缓存没存 id），会让媒体列表只剩当前一条
+                'mediaId': mediaId,
                 'oid': item.id,
                 'favTitle': folder.title,
                 'count': folder.mediaCount,
@@ -699,12 +711,13 @@ class FavDetailController
     // 在线播放：播放列表必须和「视频页 → 听音频」一致，否则只有当前一条。
     // 播放全部时走收藏夹列表（id = 收藏夹 id / extraId = 2 / USER_FAVOURITE），
     // 否则保持 UP 投稿列表。
-    final folder = folderInfo.value;
-    final playAll = isPlayAll.value && folder.id != 0;
+    // ⚠️ 收藏夹 id 用路由里的 mediaId：从本地缓存进入时 folderInfo.id 可能
+    // 还是 0（老缓存没存 id），传 0 会让服务端只回当前这一条
+    final playAll = isPlayAll.value;
     AudioPage.toAudioPage(
       oid: avid,
       itemType: 1,
-      id: playAll ? folder.id : null,
+      id: playAll ? mediaId : null,
       extraId: playAll ? SourceType.fav.extraId : null,
       from: playAll
           ? PlaylistSource.USER_FAVOURITE
